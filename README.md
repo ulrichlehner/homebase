@@ -93,10 +93,11 @@ day for the period before the portal readings start. It is clearly marked as rec
 The script validates itself against the real readings where charts and portal data overlap (from
 September 2023 on) and logs the agreement.
 
-Labels the OCR cannot verify (typically small bars whose label overlaps the printed daily total) are
-read by a human and recorded in `reconstruction/corrections.csv`
-(`start_local;kwh;read_by;note`). The wrapper passes that file to the script, the affected rows get
-`method=manual`. To review candidates, run `./homebase reconstruct -d` and look for "no readable label".
+Labels the OCR cannot verify (typically small bars whose label overlaps the printed daily total) can
+be read by a human and recorded in `<DATA_DIR>/<meterId>_reconstructed_corrections.csv`
+(`start_local;kwh;read_by;note`, `start_local` as in the output file). The script picks that file up
+automatically, the affected rows get `method=manual`. To find candidates, run `./homebase reconstruct -d`
+and look for "no readable label", or check the `method` column of the output.
 
 `update` re-fetches the last 7 days (`--overlap`) because the portal corrects values retroactively.
 Writes are idempotent, re-loading a range simply overwrites the same points. Use `--chunk-days` (default 366)

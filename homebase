@@ -93,15 +93,10 @@ case "$cmd" in
     ;;
   reconstruct)
     ensure_image
-    # human-read corrections are versioned in ./reconstruction (see README)
-    extra=()
-    [ -f "./reconstruction/corrections.csv" ] && extra=(--corrections /app/reconstruction/corrections.csv)
-    docker run --rm $( [ -t 0 ] && [ -t 1 ] && echo -it || echo -i ) \
-      --env-file "$ENV_FILE" -e EXPORT_DIR=/app/export \
-      -v "$DATA_DIR:/app/export" -v "$PWD/reconstruction:/app/reconstruction:ro" \
-      "$IMAGE" python3 /app/reconstruct.py \
+    # charts, readings and the optional <meterId>_reconstructed_corrections.csv all live in DATA_DIR
+    run_standalone python3 /app/reconstruct.py \
       --charts /app/export --meter "$METER_ID" --tz "${TZ_VALUE:-Europe/Vienna}" \
-      --readings "/app/export/${METER_ID}_readings.csv" "${extra[@]}" "$@"
+      --readings "/app/export/${METER_ID}_readings.csv" "$@"
     ;;
   up)
     ensure_image
