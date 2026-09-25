@@ -28,6 +28,10 @@ meter_id = os.environ['METER_ID']
 tz = os.environ['TZ']
 zone = ZoneInfo(tz)
 
+# Minutes the 6-hour blocks are shifted from the full hour. 0 matches the legend (00:00-06:00, ...);
+# the original InfluxDB-based renderer used 15 (00:15-06:15, ...), kept for reproducing old charts.
+block_offset = timedelta(minutes=int(os.environ.get('BLOCK_OFFSET_MINUTES', '0')))
+
 labels = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
 x_label_locations = np.arange(len(labels))  # the label locations
 width = 0.25  # the width of the bars
@@ -92,8 +96,8 @@ def get_bar_chart_values(weeks_back, date):
     values = []
     for day in range(7):
         for block in range(4):
-            start = local_plus(monday, days=day, hours=6 * block)
-            stop = local_plus(monday, days=day, hours=6 * (block + 1))
+            start = local_plus(monday, days=day, hours=6 * block) + block_offset
+            stop = local_plus(monday, days=day, hours=6 * (block + 1)) + block_offset
             values.append(sum_between(start, stop))
     logging.debug(f'Bar chart values (weeks_back={weeks_back}, date={date}): {values}')
     return values
