@@ -5,7 +5,7 @@
 # ./databot change.
 #
 #   ./homebase csv                 update the readings CSV in DATA_DIR from the portal (+ unified file)
-#   ./homebase render [args]       render the Kindle chart(s) from the CSV, e.g. `render --archive`
+#   ./homebase render [args]       render the weekly chart(s) from the CSV, e.g. `render --archive`
 #   ./homebase reconstruct         reconstruct 6h values from the chart PNGs in DATA_DIR (+ unified file)
 #   ./homebase merge               rewrite the unified <meterId>_all.csv from the two files above
 #   ./homebase check               report incomplete days in the readings CSV

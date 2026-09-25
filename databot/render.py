@@ -1,4 +1,4 @@
-"""Renders the weekly consumption chart for the Kindle from the CSV data.
+"""Renders the weekly consumption chart from the CSV data.
 
 Data source: <EXPORT_DIR>/<meterId>_all.csv (reconstructed 6h blocks followed by
 the measured quarter hours, written by `databot csv` / `databot merge`), falling
@@ -248,17 +248,17 @@ def render(date=datetime.now(), filename='current.png', title_suffix=''):
     fig.suptitle('Stromverbrauch (kWh)' + title_suffix)
     # fig.tight_layout()
 
-    # Kindle Paperwhite has native resolution of 1024 x 758 px @ 212 dpi
+    # Portrait 758 x 1024 px @ 212 dpi (the size of the e-ink display the chart was designed for)
     dpi = 212
     # Some buffer needed to actually get 758w ...
     fig.set_size_inches(760 / dpi, 1024 / dpi)
-    # Write to a temporary file and replace atomically: the Kindle never sees a
+    # Write to a temporary file and replace atomically: readers never see a
     # half-written image, and overwriting files in place can fail on synced
     # folders (iCloud Drive returns EDEADLK through a Docker bind mount).
     tmp_path = base_path + '.' + filename + '.tmp.png'
     plt.savefig(tmp_path, dpi=dpi)
 
-    # Convert to greyscale supported by Kindle
+    # Convert to greyscale (e-ink friendly, and the archived charts look the same)
     img = Image.open(tmp_path).convert('L')
     img.save(tmp_path)
     os.replace(tmp_path, base_path + filename)
