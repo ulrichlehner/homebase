@@ -1,67 +1,24 @@
-FROM node:18
+FROM python:3.12-slim
 
-# TODO: split into builder and runtime stages
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends cron tzdata tesseract-ocr \
+    && rm -rf /var/lib/apt/lists/*
 
-# USER root
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    # build-essential 
-    make \
-    gcc \
-    cron \
-    python3\
-    python3-pip \
-    python3-venv \
-    python3-dev \
-    chromium
-
-# RUN groupadd -r appuser && useradd -rm -g appuser -G audio,video appuser
-
-# COPY --chown=appuser:appuser requirements.txt /app/
-# COPY --chown=appuser:appuser *.py /app
-# COPY --chown=appuser:appuser *.sh /app
-# COPY --chown=appuser:appuser *.json /app
-# COPY --chown=appuser:appuser *.ts /app
-COPY requirements.txt /app/
-COPY *.py /app
-COPY *.sh /app
-COPY *.json /app
-COPY *.ts /app
 WORKDIR /app
 
-# Install python dependencies
-# RUN python3 -m pip3 install --upgrade pip
-ENV VIRTUAL_ENV=/opt/venv
-RUN python3 -m venv $VIRTUAL_ENV
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-RUN pip3 install -r requirements.txt
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install node dependencies and install
-# RUN npm install -g n
-# RUN n 18
-RUN npm install
-RUN npm run build
-RUN npm install -g
+COPY *.py *.sh /app/
+RUN chmod 0644 /app/*.sh && chmod +x /app/start.sh /app/databot.py \
+    && ln -s /app/databot.py /usr/local/bin/databot
 
-# Permissions for cron job
-RUN chmod 0644 /app/*.sh
-RUN chmod +x /app/start.sh
-RUN chmod +x /app/index.js
-
-# Permnissions for cron as non-root user
-# RUN chmod gu+rw /var/run
-# RUN chmod gu+s /usr/sbin/cron
-
-# USER appuser
-
-# Load and render smartmeter data every 30 minutes
-RUN crontab -l | { cat; echo "*/30 * * * * /bin/bash /app/cron_current.sh > /proc/1/fd/1 2>/proc/1/fd/2"; } | crontab -
-
-# Archive charts weekly (at 00:00 on Thursday)
-RUN crontab -l | { cat; echo "0 0 * * 4 /bin/bash /app/cron_archive.sh > /proc/1/fd/1 2>/proc/1/fd/2"; } | crontab -
-
-# Run integrity jobs once a day at 00:00
-RUN crontab -l | { cat; echo "0 0 * * * /bin/bash /app/cron_integrity.sh > /proc/1/fd/1 2>/proc/1/fd/2"; } | crontab -
-
+# Load new smart meter data and render the chart every 30 minutes
+RUN echo "*/30 * * * * /bin/bash /app/cron_current.sh > /proc/1/fd/1 2>/proc/1/fd/2" > /etc/cron.d/databot \
+    # Archive charts weekly (at 00:00 on Thursday)
+    && echo "0 0 * * 4 /bin/bash /app/cron_archive.sh > /proc/1/fd/1 2>/proc/1/fd/2" >> /etc/cron.d/databot \
+    # Backfill older data and repair gaps once a day at 03:00
+    && echo "0 3 * * * /bin/bash /app/cron_integrity.sh > /proc/1/fd/1 2>/proc/1/fd/2" >> /etc/cron.d/databot \
+    && chmod 0644 /etc/cron.d/databot && crontab /etc/cron.d/databot
 
 CMD [ "/app/start.sh" ]

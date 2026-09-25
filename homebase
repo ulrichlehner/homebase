@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+#
+# Docker wrapper for the homebase tools. Nothing needs to be installed locally
+# except Docker. The image is (re)built automatically whenever the sources in
+# ./databot change.
+#
+#   ./homebase csv                 update the readings CSV in DATA_DIR from the portal
+#   ./homebase reconstruct         reconstruct 6h values from the chart PNGs in DATA_DIR
+#   ./homebase up | down | logs    run the full stack (InfluxDB + cron jobs) in the background
+#   ./homebase databot <args>      any databot command against the running stack, e.g. `check`
+#   ./homebase render [args]       render the Kindle chart from the running stack
+#   ./homebase test                run the unit tests
+#   ./homebase build               force a rebuild of the image
+#   ./homebase shell               open a shell inside the container
+#
+# Configuration comes from ./.env (see README). DATA_DIR selects the folder that is
+# mounted as /app/export in the container (default: ./data/databot). Put it in iCloud
+# to keep the CSV files safe.
+
+set -euo pipefail
+
+cd "$(dirname "$(readlink -f "$0")")"
+
+IMAGE="ghcr.io/ulrichlehner/homebase-databot:main"
+SRC_DIR="./databot"
+ENV_FILE="./.env"
+
+die() { echo "error: $*" >&2; exit 1; }
+
+[ -f "$ENV_FILE" ] || die "$ENV_FILE not found, see README for the required variables"
+command -v docker >/dev/null || die "docker is not installed"
+
+# Read DATA_DIR and METER_ID from .env without exporting everything into this shell
+env_value() { grep -E "^$1=" "$ENV_FILE" | tail -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"; }
+DATA_DIR="$(env_value DATA_DIR)"
+DATA_DIR="${DATA_DIR:-./data/databot}"
+DATA_DIR="${DATA_DIR/#\~/$HOME}"
+METER_ID="$(env_value METER_ID)"
+TZ_VALUE="$(env_value TZ)"
+mkdir -p "$DATA_DIR"
+DATA_DIR="$(cd "$DATA_DIR" && pwd)"
+
+# -- Image build, only when the sources changed ------------------------------
+
+source_hash() {
+  # hash of every file that goes into the image
+  find "$SRC_DIR" -type f \( -name '*.py' -o -name '*.sh' -o -name 'requirements*.txt' -o -name Dockerfile \) \
+    -not -path '*/tests/*' -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | cut -d' ' -f1
+}
+
+image_hash() {
+  docker image inspect --format '{{ index .Config.Labels "homebase.source" }}' "$IMAGE" 2>/dev/null || true
+}
+
+build() {
+  echo ">> building image $IMAGE"
+  docker build --label "homebase.source=$(source_hash)" -t "$IMAGE" "$SRC_DIR"
+}
+
+ensure_image() {
+  if [ "$(image_hash)" != "$(source_hash)" ]; then
+    build
+  fi
+}
+
+# -- Run helpers --------------------------------------------------------------
+
+# One-off container without the database (csv, reconstruct, tests, shell)
+run_standalone() {
+  local tty_flags="-i"
+  [ -t 0 ] && [ -t 1 ] && tty_flags="-it"
+  docker run --rm $tty_flags \
+    --env-file "$ENV_FILE" \
+    -e EXPORT_DIR=/app/export \
+    -v "$DATA_DIR:/app/export" \
+    "$IMAGE" "$@"
+}
+
+# One-off container attached to the running stack (needs InfluxDB)
+run_in_stack() {
+  DATA_DIR="$DATA_DIR" docker compose run --rm "$@"
+}
+
+usage() { sed -n '3,20p' "$0"; }
+
+cmd="${1:-}"
+[ $# -gt 0 ] && shift
+
+case "$cmd" in
+  csv)
+    ensure_image
+    run_standalone python3 /app/databot.py csv "$@"
+    ;;
+  reconstruct)
+    ensure_image
+    # charts, readings and the optional <meterId>_reconstructed_corrections.csv all live in DATA_DIR
+    run_standalone python3 /app/reconstruct.py \
+      --charts /app/export --meter "$METER_ID" --tz "${TZ_VALUE:-Europe/Vienna}" \
+      --readings "/app/export/${METER_ID}_readings.csv" "$@"
+    ;;
+  up)
+    ensure_image
+    DATA_DIR="$DATA_DIR" docker compose up -d "$@"
+    ;;
+  down)
+    DATA_DIR="$DATA_DIR" docker compose down "$@"
+    ;;
+  logs)
+    DATA_DIR="$DATA_DIR" docker compose logs -f "$@"
+    ;;
+  databot)
+    ensure_image
+    run_in_stack databot databot "$@"
+    ;;
+  render)
+    ensure_image
+    run_in_stack databot python3 /app/render.py "$@"
+    ;;
+  test)
+    ensure_image
+    docker run --rm -v "$PWD/$SRC_DIR:/app" "$IMAGE" sh -c 'pip install -q pytest >/dev/null && python3 -m pytest -q tests'
+    ;;
+  build)
+    build
+    ;;
+  shell)
+    ensure_image
+    run_standalone bash
+    ;;
+  ''|-h|--help|help)
+    usage
+    ;;
+  *)
+    die "unknown command '$cmd'. $(usage)"
+    ;;
+esac

@@ -2,6 +2,7 @@
 
 script_path=$(dirname "$(readlink -f "$0")")
 source "${script_path}/.env.sh"
-PATH=/usr/local/bin:$PATH
 cd /app
-databot --continue-migration
+# Fetch older data the portal still has, then re-fetch days with missing intervals
+python3 /app/databot.py backfill
+python3 /app/databot.py repair --days 60

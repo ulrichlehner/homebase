@@ -1,46 +1,120 @@
 # Homebase
 
-Raspberry Pi based home monitoring dashboard
+Raspberry Pi based home monitoring dashboard: fetches quarter-hour smart meter readings from the
+[LINZ NETZ service portal](https://www.linznetz.at/portal/de/home/online_services/serviceportal),
+stores them in InfluxDB and renders weekly consumption charts for a Kindle.
+
+## How it works
+
+`databot/linznetz.py` talks to the portal ("Verbrauchsdateninformation") over plain HTTP: it logs in via
+the Keycloak SSO, replays the JSF form posts that select *Viertelstundenwerte* and the date range, and
+downloads the CSV exports for *Energiemenge in kWh* and *Leistung in kW*. No browser is involved. The readings are written to InfluxDB with the schema
+
+| Measurement          | Tag       | Fields                                  | Timestamp      |
+| -------------------- | --------- | --------------------------------------- | -------------- |
+| `meteredValues`      | `meterId` | `value` (kWh per 15 min), `substitute`  | interval start |
+| `meteredPeakDemands` | `meterId` | `value` (kW, the portal's "Leistung")     | interval start |
+
+`substitute` is `true` when the portal delivered an "Ersatzwert" instead of a metered value. Every raw
+CSV that was fetched is archived under `data/databot/csv/` (`_kwh` and `_kw` files).
+
+Cron jobs inside the container run `databot update` every 30 minutes (followed by rendering the chart),
+`databot backfill` and `databot repair` once a day, and archive the weekly chart on Thursdays.
 
 ## Run
 
-```bash
-docker compose up --build
-```
-
-## Develop
-
-Run scripts direclty:
+Everything runs in Docker through the `./homebase` wrapper, nothing else needs to be installed. The
+wrapper rebuilds the image automatically whenever the sources in `databot/` change.
 
 ```bash
-cd ./databot
-LOGLEVEL=DEBUG INFLUX_URL=http://localhost:8086 PIPENV_DOTENV_LOCATION=../.env pipenv run python3 render.py
+./homebase csv            # update the readings CSV from the portal (no database needed)
+./homebase reconstruct    # reconstruct 6h values from the archived chart PNGs (see below)
+./homebase up             # start InfluxDB + the cron jobs in the background
+./homebase logs           # follow the container logs
+./homebase databot check  # any databot command against the running stack
+./homebase render         # render the Kindle chart
+./homebase test           # run the unit tests
+./homebase down           # stop the stack
 ```
+
+`DATA_DIR` in `.env` selects the folder that holds the CSV files, the raw portal exports, the
+charts and the reconstruction. Point it at an iCloud folder so nothing is lost when the machine
+dies; the default is `./data/databot`.
+
+On first start of the stack the database is empty, so the first `update` cron run turns into a full
+backfill: it walks backwards a year per request until the portal has no more data. To start it right
+away:
 
 ```bash
-cd ./databot
-INFLUX_URL=http://localhost:8086 ts-node index.ts -c ../.env -d
+./homebase databot backfill
 ```
-
-For some reason the `pipenv` in the Docker environment won't work. Thus a `requirements.txt` file is used. To update it run `pipenv run pip freeze > requirements.txt`.
 
 ## Commands
 
-### Migrate data
-
-Although a migration is performed when smartmeter data is fetched the first time, you can trigger a manual migration with following command:
+All commands read the configuration from `.env` (see [App setup](#app)).
 
 ```bash
-docker compose run --rm databot databot --migrate
+./homebase databot update            # fetch everything since the last stored reading (default)
+./homebase databot backfill          # fetch older data until the portal has none left
+./homebase databot backfill --until 01.01.2022 --limit 365
+./homebase databot load --from 01.09.2025 --to 30.09.2025
+./homebase databot check --days 60   # report days with missing quarter-hour intervals
+./homebase databot repair            # ... and re-fetch them
+./homebase databot export            # dump all readings to <DATA_DIR>/<meterId>_all.csv
+./homebase render --archive
 ```
 
-### Archive previous week charts
+### Standalone CSV without the database
 
-This task is performed automatically via a cron job
+`./homebase csv` keeps a single CSV file up to date straight from the portal, no InfluxDB needed. Run
+it whenever you like: the first run downloads the complete history, every later run re-fetches the
+last 7 days and appends what is new. Each run also checks every day in the file for the expected
+number of quarter-hour intervals and re-fetches incomplete days, and looks for data older than the
+first row, so a damaged or partial file heals itself. Malformed lines are skipped with a warning.
+Do not edit the file with Excel, it rewrites the timestamps. The file has one row per quarter hour with local and UTC start
+time, kWh, kW and a substitute-value flag (`<DATA_DIR>/<meterId>_readings.csv`). The raw portal
+exports of every run are kept in `<DATA_DIR>/csv/`.
+
+### Reconstructing lost history from the chart PNGs
+
+The portal only keeps about 36 months. Readings before 2023-09-01 were only in the original InfluxDB,
+which was lost, but the weekly charts it rendered survive. `./homebase reconstruct` reads every
+chart PNG in `DATA_DIR` and writes `<meterId>_reconstructed_6h.csv` with the four 6-hour sums per
+day for the period before the portal readings start. It is clearly marked as reconstructed:
+
+- `source` is always `chart_ocr`, `method` says how the value was obtained (`label`: printed value
+  read by OCR and verified against the bar height; `sum`: derived from the printed daily total;
+  `height`: estimated from the bar height only), and `note` explains it in words.
+- The blocks run from 00:15 to 06:15, 06:15 to 12:15, and so on, because the charts were rendered that
+  way; `start_local` / `end_local` state it explicitly. Weeks containing a DST switch are flagged.
+- Values are 6-hour sums, not quarter-hour readings. Days that were missing in the old database are
+  missing here too.
+
+The script validates itself against the real readings where charts and portal data overlap (from
+September 2023 on) and logs the agreement.
+
+Labels the OCR cannot verify (typically small bars whose label overlaps the printed daily total) can
+be read by a human and recorded in `<DATA_DIR>/<meterId>_reconstructed_corrections.csv`
+(`start_local;kwh;read_by;note`, `start_local` as in the output file). The script picks that file up
+automatically, the affected rows get `method=manual`. To find candidates, run `./homebase reconstruct -d`
+and look for "no readable label", or check the `method` column of the output.
+
+`update` re-fetches the last 7 days (`--overlap`) because the portal corrects values retroactively.
+Writes are idempotent, re-loading a range simply overwrites the same points. Use `--chunk-days` (default 366)
+to change how many days are requested from the portal per request, and `-d` for debug logging.
+
+## Develop
 
 ```bash
-docker compose run --rm databot python3 render.py --archive
+cd databot
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pytest tests
+INFLUX_URL=http://localhost:8086 .venv/bin/python databot.py -c ../.env -d check
+LOGLEVEL=DEBUG INFLUX_URL=http://localhost:8086 .venv/bin/python render.py
 ```
+
+For local runs InfluxDB must be reachable, e.g. by uncommenting the `ports` mapping in `docker-compose.yml`.
+Without a local Python, `./homebase test` and `./homebase shell` run the same inside the container.
 
 ## Flux queries
 
@@ -65,17 +139,6 @@ from(bucket: "smartmeter")
     r._field == "value"
   )
   |> aggregateWindow(every: 6h, offset: -12h, fn: mean)
-```
-
-```
-from(bucket: "smartmeter")
-  |> range(start: time(v: "2022-07-10T23:45:00Z"), stop: time(v: "2022-07-18T00:00:00Z"))
-  |> filter(fn: (r) =>
-    r._measurement == "meteredValues" and
-    r._field == "value"
-  )
-  //|> aggregateWindow(every: 6h, createEmpty: false, offset: -12h, fn: mean)
-  //|> count()
 ```
 
 ## Setup
@@ -148,9 +211,10 @@ from(bucket: "smartmeter")
 Clone this repo and create a `./.env` in the app folder with following content:
 
 ```bash
-USERNAME=...
-PASSWORD=...
-METER_ID=...
+USERNAME=<LINZ NETZ portal login>
+PASSWORD=<LINZ NETZ portal password>
+METER_ID=<Zählpunktnummer, used as tag in the database>
+DATA_DIR="/Users/<you>/Library/Mobile Documents/com~apple~CloudDocs/<folder>"  # optional, default ./data/databot
 INFLUX_ORG=ulrichlehner
 INFLUX_BUCKET=smartmeter
 INFLUX_TOKEN=<genereate a secure token string>
