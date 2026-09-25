@@ -10,6 +10,7 @@ Commands:
   repair    like check, then re-fetch the incomplete days
   export    dump all stored readings to one CSV (for migrations)
   csv       maintain a standalone CSV straight from the portal, no database needed
+  merge     write the unified CSV (reconstructed 6h blocks + measured quarter hours)
 
 InfluxDB schema (unchanged from the original scraper):
   meteredValues       tag meterId, field value (kWh per 15 min), field substitute (bool)
@@ -523,10 +524,72 @@ def cmd_csv(args, config: Config, store=None) -> int:
                 merge(readings, power)
                 time.sleep(REQUEST_PAUSE_SECONDS)
     write_csv_file(path, rows)
+    if rows:
+        unified = config.export_dir / f'{config.meter_id}_all.csv'
+        logger.info('Wrote %d rows to the unified file %s', write_unified(config, rows, unified), unified)
     first = datetime.fromtimestamp(min(rows), zone) if rows else None
     last = datetime.fromtimestamp(max(rows), zone) if rows else None
     logger.info('%s now has %d readings (%d new), %s - %s', path, len(rows), added,
                 first.strftime('%d.%m.%Y %H:%M') if first else '-', last.strftime('%d.%m.%Y %H:%M') if last else '-')
+    return 0
+
+
+# -- Unified file: reconstructed history + measured readings ------------------
+
+UNIFIED_HEADER = ['start_local', 'end_local', 'kwh', 'kw', 'source', 'method', 'note']
+
+
+def write_unified(config: Config, rows: dict, path: Path) -> int:
+    """Writes one file with everything: the reconstructed 6-hour blocks (if a
+    reconstruction exists) followed by all measured quarter-hour readings. Every row
+    says where its value comes from. A reconstructed block overlapping the first
+    measured reading is trimmed so nothing is counted twice."""
+    zone = ZoneInfo(config.tz)
+    out = []
+    measured_start = datetime.fromtimestamp(min(rows), zone) if rows else None
+    reconstructed = config.export_dir / f'{config.meter_id}_reconstructed_6h.csv'
+    if reconstructed.exists():
+        with reconstructed.open(newline='') as fh:
+            for r in csv.DictReader(fh, delimiter=';'):
+                start, end = datetime.fromisoformat(r['start_local']), datetime.fromisoformat(r['end_local'])
+                if measured_start and start >= measured_start:
+                    continue
+                kwh, note = float(r['kwh']), r['note']
+                if measured_start and end > measured_start:
+                    overlap = sum(float(rows[ts][2]) for ts in rows
+                                  if measured_start.timestamp() <= ts < end.timestamp())
+                    kwh = round(kwh - overlap, 3)
+                    end = measured_start
+                    note += f' / trimmed at the boundary to the measured data ({overlap:.3f} kWh subtracted)'
+                out.append([start.isoformat(), end.isoformat(), f'{kwh:.3f}', '', r['source'], r['method'],
+                            '6h block from weekly chart PNG / ' + note])
+    for ts in sorted(rows):
+        start_local, start_utc, kwh, kw, substitute = rows[ts]
+        start = datetime.fromisoformat(start_local)
+        # add in UTC: wall-clock arithmetic goes wrong on DST switch days
+        end = (start.astimezone(ZoneInfo('UTC')) + timedelta(minutes=15)).astimezone(zone)
+        out.append([start_local, end.isoformat(), kwh, kw, 'portal',
+                    'substitute' if substitute == 'true' else 'measured',
+                    'Ersatzwert reported by LINZ NETZ' if substitute == 'true' else 'quarter-hour reading from the LINZ NETZ portal'])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + '.tmp')
+    with tmp.open('w', newline='') as fh:
+        writer = csv.writer(fh, delimiter=';')
+        writer.writerow(UNIFIED_HEADER)
+        writer.writerows(out)
+    tmp.replace(path)
+    return len(out)
+
+
+def cmd_merge(args, config: Config, store=None) -> int:
+    readings = Path(args.file) if args.file else config.export_dir / f'{config.meter_id}_readings.csv'
+    rows = read_csv_file(readings)
+    if not rows:
+        logger.error('%s is missing or empty, run `csv` first', readings)
+        return 1
+    out = config.export_dir / f'{config.meter_id}_all.csv'
+    n = write_unified(config, rows, out)
+    logger.info('Wrote %d rows to %s', n, out)
     return 0
 
 
@@ -579,6 +642,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument('-f', '--file', help='CSV file to create or extend (default: <EXPORT_DIR>/<meterId>_readings.csv)')
     p.add_argument('--overlap', type=int, default=DEFAULT_OVERLAP_DAYS,
                    help=f'days to re-fetch before the last reading in the file (default {DEFAULT_OVERLAP_DAYS})')
+
+    p = sub.add_parser('merge', help='write <meterId>_all.csv from the readings CSV and the reconstruction')
+    p.add_argument('-f', '--file', help='readings CSV (default: <EXPORT_DIR>/<meterId>_readings.csv)')
     return parser
 
 
@@ -590,12 +656,12 @@ def main(argv=None) -> int:
     if not args.debug:
         logging.getLogger('urllib3').setLevel(logging.WARNING)
     command = args.command or 'update'
-    config = load_config(args.config, need_influx=command != 'csv')
+    config = load_config(args.config, need_influx=command not in ('csv', 'merge'))
     handler = {
         'update': cmd_update, 'backfill': cmd_backfill, 'load': cmd_load,
-        'check': cmd_check, 'repair': cmd_repair, 'export': cmd_export, 'csv': cmd_csv,
+        'check': cmd_check, 'repair': cmd_repair, 'export': cmd_export, 'csv': cmd_csv, 'merge': cmd_merge,
     }[command]
-    store = Store(config) if command != 'csv' else None
+    store = Store(config) if command not in ('csv', 'merge') else None
     try:
         return handler(args, config, store)
     except LoginError as err:

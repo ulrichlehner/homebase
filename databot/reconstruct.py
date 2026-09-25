@@ -361,10 +361,11 @@ def validate(found: dict, values: dict, readings_csv: Path, tz: str) -> None:
 
 # -- Output ---------------------------------------------------------------------
 
+# Notes must not contain commas or semicolons, the files are semicolon-separated
 METHOD_NOTES = {
-    'label': 'value label read from chart, verified against bar height and daily sum',
-    'sum': 'label unreadable, derived from the printed daily sum and the other three blocks',
-    'height': 'label unreadable, estimated from bar height (about +/-0.02 kWh)',
+    'label': 'value label read from chart by OCR and verified against bar height',
+    'sum': 'label unreadable / derived from the printed daily sum and the other three blocks',
+    'height': 'label unreadable / estimated from bar height (about +/-0.02 kWh)',
     'manual': 'value label read by a human from the chart (corrections file)',
 }
 
@@ -410,7 +411,7 @@ def write_output(values: dict, path: Path, before: Optional[date], tz: str, shif
             end = end.replace(hour=0 if h1 == 24 else h1, minute=shift_minutes)
             note = METHOD_NOTES[method]
             if dst_switch_in_week(d, tz):
-                note += '; DST switch in this week, block boundaries may be off by one hour'
+                note += ' / DST switch in this week so block boundaries may be off by one hour'
             writer.writerow([start.isoformat(), end.isoformat(), f'{value:.2f}', 'chart_ocr', method, note])
             rows += 1
     return rows

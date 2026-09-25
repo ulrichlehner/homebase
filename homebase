@@ -4,8 +4,9 @@
 # except Docker. The image is (re)built automatically whenever the sources in
 # ./databot change.
 #
-#   ./homebase csv                 update the readings CSV in DATA_DIR from the portal
-#   ./homebase reconstruct         reconstruct 6h values from the chart PNGs in DATA_DIR
+#   ./homebase csv                 update the readings CSV in DATA_DIR from the portal (+ unified file)
+#   ./homebase reconstruct         reconstruct 6h values from the chart PNGs in DATA_DIR (+ unified file)
+#   ./homebase merge               rewrite the unified <meterId>_all.csv from the two files above
 #   ./homebase up | down | logs    run the full stack (InfluxDB + cron jobs) in the background
 #   ./homebase databot <args>      any databot command against the running stack, e.g. `check`
 #   ./homebase render [args]       render the Kindle chart from the running stack
@@ -91,12 +92,18 @@ case "$cmd" in
     ensure_image
     run_standalone python3 /app/databot.py csv "$@"
     ;;
+  merge)
+    ensure_image
+    run_standalone python3 /app/databot.py merge "$@"
+    ;;
   reconstruct)
     ensure_image
     # charts, readings and the optional <meterId>_reconstructed_corrections.csv all live in DATA_DIR
     run_standalone python3 /app/reconstruct.py \
       --charts /app/export --meter "$METER_ID" --tz "${TZ_VALUE:-Europe/Vienna}" \
       --readings "/app/export/${METER_ID}_readings.csv" "$@"
+    # refresh the unified file
+    run_standalone python3 /app/databot.py merge
     ;;
   up)
     ensure_image

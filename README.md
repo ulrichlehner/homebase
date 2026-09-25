@@ -93,6 +93,15 @@ day for the period before the portal readings start. It is clearly marked as rec
 The script validates itself against the real readings where charts and portal data overlap (from
 September 2023 on) and logs the agreement.
 
+### One file with everything
+
+`<DATA_DIR>/<meterId>_all.csv` is written after every `csv` and `reconstruct` run (or with
+`./homebase merge`). It contains the reconstructed 6-hour blocks followed by every measured quarter
+hour, contiguous and without double counting (the last reconstructed block is trimmed to the first
+measured reading). Columns: `start_local;end_local;kwh;kw;source;method;note`, where `source` is
+`chart_ocr` or `portal`, `method` is `label`, `manual`, `sum`, `height`, `measured` or `substitute`,
+and `note` explains it in words. All files are semicolon-separated and contain no commas.
+
 Labels the OCR cannot verify (typically small bars whose label overlaps the printed daily total) can
 be read by a human and recorded in `<DATA_DIR>/<meterId>_reconstructed_corrections.csv`
 (`start_local;kwh;read_by;note`, `start_local` as in the output file). The script picks that file up
