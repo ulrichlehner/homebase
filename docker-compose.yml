@@ -1,27 +1,32 @@
 services:
   databot:
-    # platform: linux/arm64/v8
-    # build: ./databot
-    image: ghcr.io/ulrichson/homebase-databot:main
+    # `./homebase` builds this image locally when the sources change; on a machine
+    # without the sources `docker compose pull` fetches the published multi-arch image
+    image: ghcr.io/ulrichlehner/homebase-databot:main
+    build: ./databot
+    pull_policy: missing
     container_name: databot
     environment:
       - INFLUX_URL=http://influxdb:8086
+      - EXPORT_DIR=/app/export
     env_file:
       - ./.env
     depends_on:
       - influxdb
     restart: always
     volumes:
-      - ./data/databot:/app/export
+      # DATA_DIR from the environment (set by ./homebase), default ./data/databot
+      - ${DATA_DIR:-./data/databot}:/app/export
     networks:
       - local
   influxdb:
-    image: influxdb:2.3-alpine
+    image: influxdb:2.7-alpine
     container_name: influxdb
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
     env_file:
       - ./.env
+    # Expose the UI / API on the host if needed, e.g. for Home Assistant or Grafana
     # ports:
     #   - '8086:8086'
     volumes:
