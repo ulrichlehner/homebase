@@ -1,25 +1,28 @@
 # Homebase
 
 Raspberry Pi based home monitoring dashboard: fetches quarter-hour smart meter readings from the
-[LINZ NETZ service portal](https://www.linznetz.at/portal/de/home/online_services/serviceportal),
-stores them in InfluxDB and renders weekly consumption charts for a Kindle.
+[LINZ NETZ service portal](https://www.linznetz.at/portal/de/home/online_services/serviceportal)
+into CSV files and renders weekly consumption charts for a Kindle.
 
 ## How it works
 
 `databot/linznetz.py` talks to the portal ("Verbrauchsdateninformation") over plain HTTP: it logs in via
 the Keycloak SSO, replays the JSF form posts that select *Viertelstundenwerte* and the date range, and
-downloads the CSV exports for *Energiemenge in kWh* and *Leistung in kW*. No browser is involved. The readings are written to InfluxDB with the schema
+downloads the CSV exports for *Energiemenge in kWh* and *Leistung in kW*. No browser, no database.
 
-| Measurement          | Tag       | Fields                                  | Timestamp      |
-| -------------------- | --------- | --------------------------------------- | -------------- |
-| `meteredValues`      | `meterId` | `value` (kWh per 15 min), `substitute`  | interval start |
-| `meteredPeakDemands` | `meterId` | `value` (kW, the portal's "Leistung")     | interval start |
+Everything lives in one data folder (`DATA_DIR`, see below):
 
-`substitute` is `true` when the portal delivered an "Ersatzwert" instead of a metered value. Every raw
-CSV that was fetched is archived under `data/databot/csv/` (`_kwh` and `_kw` files).
+| File                             | Content                                                                 |
+| -------------------------------- | ----------------------------------------------------------------------- |
+| `<meterId>_readings.csv`         | every measured quarter hour: local + UTC start, kWh, kW, substitute flag |
+| `<meterId>_reconstructed_6h.csv` | 6-hour values reconstructed from old chart PNGs (optional, see below)   |
+| `<meterId>_all.csv`              | both combined into one contiguous timeline with `source`/`method`/`note` |
+| `csv/`                           | the raw portal exports, exactly as downloaded                            |
+| `*.png`                          | the rendered charts                                                      |
 
-Cron jobs inside the container run `databot update` every 30 minutes (followed by rendering the chart),
-`databot backfill` and `databot repair` once a day, and archive the weekly chart on Thursdays.
+`databot csv` keeps the readings file current and rewrites the unified file; `render.py` draws the
+charts from the unified file. The cron jobs in the container run both every 30 minutes and archive the
+chart of the finished week on Mondays.
 
 ## Run
 
@@ -27,51 +30,34 @@ Everything runs in Docker through the `./homebase` wrapper, nothing else needs t
 wrapper rebuilds the image automatically whenever the sources in `databot/` change.
 
 ```bash
-./homebase csv            # update the readings CSV from the portal (no database needed)
-./homebase reconstruct    # reconstruct 6h values from the archived chart PNGs (see below)
-./homebase up             # start InfluxDB + the cron jobs in the background
-./homebase logs           # follow the container logs
-./homebase databot check  # any databot command against the running stack
-./homebase render         # render the Kindle chart
+./homebase csv            # fetch new readings from the portal into the CSV files
+./homebase render         # render the current chart, `render --archive` for finished weeks
+./homebase up             # start the cron container (csv + render every 30 minutes)
+./homebase logs           # follow its logs
+./homebase down           # stop it
+./homebase check          # report incomplete days in the readings CSV
+./homebase reconstruct    # reconstruct 6h values from archived chart PNGs (see below)
 ./homebase test           # run the unit tests
-./homebase down           # stop the stack
 ```
 
-`DATA_DIR` in `.env` selects the folder that holds the CSV files, the raw portal exports, the
-charts and the reconstruction. Point it at an iCloud folder so nothing is lost when the machine
-dies; the default is `./data/databot`.
-
-On first start of the stack the database is empty, so the first `update` cron run turns into a full
-backfill: it walks backwards a year per request until the portal has no more data. To start it right
-away:
-
-```bash
-./homebase databot backfill
-```
+`DATA_DIR` in `.env` selects the folder that holds the CSV files and the charts. Point it at an
+iCloud folder so nothing is lost when the machine dies; the default is `./data/databot`. The first
+`csv` run downloads the complete history the portal offers (about three years), later runs take a
+few seconds.
 
 ## Commands
 
 All commands read the configuration from `.env` (see [App setup](#app)).
 
-```bash
-./homebase databot update            # fetch everything since the last stored reading (default)
-./homebase databot backfill          # fetch older data until the portal has none left
-./homebase databot backfill --until 01.01.2022 --limit 365
-./homebase databot load --from 01.09.2025 --to 30.09.2025
-./homebase databot check --days 60   # report days with missing quarter-hour intervals
-./homebase databot repair            # ... and re-fetch them
-./homebase databot export            # dump all readings to <DATA_DIR>/<meterId>_all.csv
-./homebase render --archive
-```
+### Readings CSV
 
-### Standalone CSV without the database
-
-`./homebase csv` keeps a single CSV file up to date straight from the portal, no InfluxDB needed. Run
-it whenever you like: the first run downloads the complete history, every later run re-fetches the
-last 7 days and appends what is new. Each run also checks every day in the file for the expected
-number of quarter-hour intervals and re-fetches incomplete days, and looks for data older than the
-first row, so a damaged or partial file heals itself. Malformed lines are skipped with a warning.
-Do not edit the file with Excel, it rewrites the timestamps. The file has one row per quarter hour with local and UTC start
+`./homebase csv` keeps `<meterId>_readings.csv` up to date straight from the portal. Run it whenever
+you like: the first run downloads the complete history, every later run re-fetches the last 7 days
+(`--overlap`, the portal corrects values retroactively) and appends what is new. Each run also checks
+every day in the file for the expected number of quarter-hour intervals and re-fetches incomplete
+days, looks for data older than the first row, and finally rewrites the unified file, so a damaged
+or partial file heals itself. Malformed lines are skipped with a warning. Do not edit the files with
+Excel, it rewrites the timestamps. Writes are atomic, an interrupted run leaves the previous file. The file has one row per quarter hour with local and UTC start
 time, kWh, kW and a substitute-value flag (`<DATA_DIR>/<meterId>_readings.csv`). The raw portal
 exports of every run are kept in `<DATA_DIR>/csv/`.
 
@@ -118,37 +104,11 @@ to change how many days are requested from the portal per request, and `-d` for 
 cd databot
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python -m pytest tests
-INFLUX_URL=http://localhost:8086 .venv/bin/python databot.py -c ../.env -d check
-LOGLEVEL=DEBUG INFLUX_URL=http://localhost:8086 .venv/bin/python render.py
+EXPORT_DIR=../data/databot .venv/bin/python databot.py -c ../.env -d csv
+EXPORT_DIR=../data/databot LOGLEVEL=DEBUG .venv/bin/python render.py
 ```
 
-For local runs InfluxDB must be reachable, e.g. by uncommenting the `ports` mapping in `docker-compose.yml`.
 Without a local Python, `./homebase test` and `./homebase shell` run the same inside the container.
-
-## Flux queries
-
-Query all data:
-
-```
-from(bucket: "smartmeter")
-  |> range(start: v.timeRangeStart, stop:v.timeRangeStop)
-  |> filter(fn: (r) =>
-    r._measurement == "meteredValues" and
-    r._field == "value"
-  )
-```
-
-Split in 6h time windows:
-
-```
-from(bucket: "smartmeter")
-  |> range(start: v.timeRangeStart, stop:v.timeRangeStop)
-  |> filter(fn: (r) =>
-    r._measurement == "meteredValues" and
-    r._field == "value"
-  )
-  |> aggregateWindow(every: 6h, offset: -12h, fn: mean)
-```
 
 ## Setup
 
@@ -222,20 +182,10 @@ Clone this repo and create a `./.env` in the app folder with following content:
 ```bash
 USERNAME=<LINZ NETZ portal login>
 PASSWORD=<LINZ NETZ portal password>
-METER_ID=<Zählpunktnummer, used as tag in the database>
-DATA_DIR="/Users/<you>/Library/Mobile Documents/com~apple~CloudDocs/<folder>"  # optional, default ./data/databot
-INFLUX_ORG=ulrichlehner
-INFLUX_BUCKET=smartmeter
-INFLUX_TOKEN=<genereate a secure token string>
+METER_ID=<your metering point number, used as file name prefix>
 TZ=Europe/Vienna
-DOCKER_INFLUXDB_INIT_USERNAME=admin
-DOCKER_INFLUXDB_INIT_PASSWORD=<generate a secure password>
-DOCKER_INFLUXDB_INIT_ORG=ulrichlehner
-DOCKER_INFLUXDB_INIT_BUCKET=smartmeter
-DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=<genereate a secure token string>
+DATA_DIR="/Users/<you>/Library/Mobile Documents/com~apple~CloudDocs/<folder>"  # optional, default ./data/databot
 ```
-
-The variables `INFLUX_BUCKET` and `DOCKER_INFLUXDB_INIT_BUCKET` must have the same value, as well as `INFLUX_TOKEN` = `DOCKER_INFLUXDB_INIT_ADMIN_TOKEN` and `INFLUX_ORG` = `DOCKER_INFLUXDB_INIT_ORG`.
 
 ### Kindle
 

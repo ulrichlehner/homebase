@@ -1,128 +1,118 @@
+"""Renders the weekly consumption chart for the Kindle from the CSV data.
+
+Data source: <EXPORT_DIR>/<meterId>_all.csv (reconstructed 6h blocks followed by
+the measured quarter hours, written by `databot csv` / `databot merge`), falling
+back to <meterId>_readings.csv. No database involved.
+"""
+
+import csv
 import logging
 import os
 from argparse import ArgumentParser
 from cmath import nan
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from glob import glob
 from os.path import exists
+from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-import pytz
-from influxdb_client import InfluxDBClient, QueryApi
 from PIL import Image
 
-base_path = 'export/'
+base_path = os.environ.get('EXPORT_DIR', 'export').rstrip('/') + '/'
 
 # Load environment variables
 meter_id = os.environ['METER_ID']
 tz = os.environ['TZ']
-bucket = os.environ['INFLUX_BUCKET']
-org = os.environ['INFLUX_ORG']
-token = os.environ['INFLUX_TOKEN']
-url = os.environ['INFLUX_URL']
+zone = ZoneInfo(tz)
 
 labels = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
 x_label_locations = np.arange(len(labels))  # the label locations
 width = 0.25  # the width of the bars
 
-influxdb_client = InfluxDBClient(
-    url=url,
-    token=token,
-    org=org
-)
-query_api = QueryApi(influxdb_client)
+_readings = None  # list of (start epoch seconds, local start datetime, kwh), sorted
 
 
-def get_datetime_range(weeks_back, date):
-    date = date.replace(hour=0, minute=0, second=0, microsecond=0)
-    start = date - timedelta(days=date.weekday(), weeks=weeks_back)
-    stop = start + timedelta(weeks=1)
+def load_readings():
+    """Loads the CSV once. Prefers the unified file (it also covers the reconstructed
+    history), falls back to the plain readings file."""
+    global _readings
+    if _readings is not None:
+        return _readings
+    for name in (f'{meter_id}_all.csv', f'{meter_id}_readings.csv'):
+        path = Path(base_path) / name
+        if path.exists():
+            break
+    else:
+        raise FileNotFoundError(f'no data file found in {base_path}, run `databot csv` first')
+    rows = []
+    with path.open(newline='') as fh:
+        for r in csv.DictReader(fh, delimiter=';'):
+            try:
+                start = datetime.fromisoformat(r['start_local'])
+                rows.append((start.timestamp(), start.astimezone(zone), float(r['kwh'])))
+            except (KeyError, ValueError):
+                continue
+    rows.sort()
+    logging.debug(f'Loaded {len(rows)} readings from {path}')
+    _readings = rows
+    return rows
 
-    # Add 15 min to be coherent with NÖ Netz interval
-    start += timedelta(minutes=15)
-    stop += timedelta(minutes=15)
 
-    # UTC offset - 15min for correct interval
-    offset = '-{:.0f}m'.format(pytz.timezone(tz).localize(
-        date).utcoffset().total_seconds() / 60 - 15)
-
-    # Convert to UTC as it's stored in DB
-    start = pytz.timezone(tz).localize(start).astimezone(pytz.UTC)
-    stop = pytz.timezone(tz).localize(stop).astimezone(pytz.UTC)
-
-    return start.strftime("%Y-%m-%dT%H:%M:%SZ"), stop.strftime("%Y-%m-%dT%H:%M:%SZ"), offset
+def sum_between(start, stop):
+    """Sum of kWh of all intervals starting in [start, stop). Returns nan if there are none."""
+    import bisect
+    rows = load_readings()
+    keys = [r[0] for r in rows]
+    lo, hi = bisect.bisect_left(keys, start.timestamp()), bisect.bisect_left(keys, stop.timestamp())
+    if hi <= lo:
+        return nan
+    return sum(r[2] for r in rows[lo:hi])
 
 
-def get_line_chart_values(weeks_back, date):
-    start, stop, offset = get_datetime_range(weeks_back, date)
+def week_start(weeks_back, day):
+    """Monday 00:00 local of the week `weeks_back` weeks before the week containing `day`."""
+    day = day.date() if isinstance(day, datetime) else day
+    monday = day - timedelta(days=day.weekday(), weeks=weeks_back)
+    return datetime(monday.year, monday.month, monday.day, tzinfo=zone)
 
-    # '|> map(fn: (r) => ({r with _value: r._value * 1000.0 })) ' -> add if you want Wh instead of kWh
-    flux_query = f'from(bucket: "{bucket}") ' \
-        f'|> range(start: time(v: "{start}"), stop: time(v: "{stop}")) ' \
-        f'|> filter(fn: (r) => r._measurement == "meteredValues" and r._field == "value")' \
-        f'|> aggregateWindow(every: 1h, createEmpty: false, offset: {offset}, fn: sum)'
 
-    logging.debug(
-        f'Query get_line_chart_values (weeks_back={str(weeks_back)}, date={str(date)}):\n{flux_query}')
-
-    response = query_api.query(flux_query)
-    if len(response) == 0 or len(response[0].records) == 0:
-        logging.warning(f'No line chart data between {start} and {stop}')
-        return []
-
-    values = list(map(lambda r: r.get_value(), response[0].records))
-
-    return values
+def local_plus(t, **delta):
+    """Adds a calendar delta in local wall-clock time (DST-safe)."""
+    naive = t.replace(tzinfo=None) + timedelta(**delta)
+    return naive.replace(tzinfo=zone)
 
 
 def get_bar_chart_values(weeks_back, date):
-    start, stop, offset = get_datetime_range(weeks_back, date)
-
-    # '|> map(fn: (r) => ({r with _value: r._value * 1000.0 })) ' -> add if you want Wh instead of kWh
-    flux_query = f'from(bucket: "{bucket}") ' \
-        f'|> range(start: time(v: "{start}"), stop: time(v: "{stop}")) ' \
-        f'|> filter(fn: (r) => r._measurement == "meteredValues" and r._field == "value") ' \
-        f'|> aggregateWindow(every: 6h, createEmpty: false, offset: {offset}, fn: sum)'
-
-    logging.debug(
-        f'Query get_bar_chart_values (weeks_back={str(weeks_back)}, date={str(date)}):\n{flux_query}')
-
-    response = query_api.query(flux_query)
-    if len(response) == 0 or len(response[0].records) == 0:
-        logging.warning(f'No bar chart data between {start} and {stop}')
-        return []
-
-    values = list(map(lambda r: r.get_value(), response[0].records))
-
+    """28 values: four 6-hour sums (00-06, 06-12, 12-18, 18-24 local) for each day of the week,
+    nan where there is no data."""
+    monday = week_start(weeks_back, date)
+    values = []
+    for day in range(7):
+        for block in range(4):
+            start = local_plus(monday, days=day, hours=6 * block)
+            stop = local_plus(monday, days=day, hours=6 * (block + 1))
+            values.append(sum_between(start, stop))
+    logging.debug(f'Bar chart values (weeks_back={weeks_back}, date={date}): {values}')
     return values
 
 
 def get_ytd_statistics(date):
-    # Convert to UTC as it's stored in DB
-    start = pytz.timezone(tz).localize(
-        datetime(date.year, 1, 1)).astimezone(pytz.UTC)
-    stop = pytz.timezone(tz).localize(date).astimezone(pytz.UTC)
-    flux_query_mean = f'from(bucket: "{bucket}") ' \
-        f'|> range(start: time(v: "{start.strftime("%Y-%m-%dT%H:%M:%SZ")}"), stop: time(v: "{stop.strftime("%Y-%m-%dT%H:%M:%SZ")}")) ' \
-        f'|> filter(fn: (r) => r._measurement == "meteredValues" and r._field == "value") ' \
-        f'|> aggregateWindow(every: 24h, createEmpty: false, fn: sum)' \
-        f'|> mean()'
-    response_mean = query_api.query(flux_query_mean)
-    flux_query_sum = f'from(bucket: "{bucket}") ' \
-        f'|> range(start: time(v: "{start.strftime("%Y-%m-%dT%H:%M:%SZ")}"), stop: time(v: "{stop.strftime("%Y-%m-%dT%H:%M:%SZ")}")) ' \
-        f'|> filter(fn: (r) => r._measurement == "meteredValues" and r._field == "value") ' \
-        f'|> aggregateWindow(every: 24h, createEmpty: false, fn: sum)' \
-        f'|> sum()'
-    response_sum = query_api.query(flux_query_sum)
-
-    logging.debug(
-        f'Query get_ytd_statistics mean (date={str(date)}):\n{flux_query_mean}')
-    logging.debug(
-        f'Query get_ytd_statistics sum (date={str(date)}):\n{flux_query_sum}')
-
-    return response_mean[0].records[0].get_value(), response_sum[0].records[0].get_value()
+    """Mean daily consumption and total since 1 January of `date`'s year."""
+    day = date.date() if isinstance(date, datetime) else date
+    first = datetime(day.year, 1, 1, tzinfo=zone)
+    daily = []
+    d = first
+    while d.date() <= day:
+        value = sum_between(d, local_plus(d, days=1))
+        if value == value:  # not nan
+            daily.append(value)
+        d = local_plus(d, days=1)
+    if not daily:
+        return nan, nan
+    return sum(daily) / len(daily), sum(daily)
 
 
 def add_bars(values, axs, ylabel):
@@ -206,7 +196,7 @@ def render(date=datetime.now(), filename='current.png', title_suffix=''):
     values_w0 = get_bar_chart_values(weeks_back=0, date=date)
     values_w1 = get_bar_chart_values(weeks_back=1, date=date)
     values_w2 = get_bar_chart_values(weeks_back=2, date=date)
-    has_data = len(values_w0) > 0 or len(values_w1) > 0 or len(values_w2) > 0
+    has_data = any(v == v for v in values_w0 + values_w1 + values_w2)  # any value that is not nan
 
     if not has_data:
         return False
@@ -253,7 +243,7 @@ def render(date=datetime.now(), filename='current.png', title_suffix=''):
         ax.xaxis.get_minor_ticks()[4].tick1line.set_visible(False)
         ax.xaxis.get_minor_ticks()[5].tick1line.set_visible(False)
 
-    os.makedirs('export', exist_ok=True)
+    os.makedirs(base_path, exist_ok=True)
 
     fig.suptitle('Stromverbrauch (kWh)' + title_suffix)
     # fig.tight_layout()

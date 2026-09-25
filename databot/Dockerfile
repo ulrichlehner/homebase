@@ -13,12 +13,10 @@ COPY *.py *.sh /app/
 RUN chmod 0644 /app/*.sh && chmod +x /app/start.sh /app/databot.py \
     && ln -s /app/databot.py /usr/local/bin/databot
 
-# Load new smart meter data and render the chart every 30 minutes
+# Fetch new readings into the CSV files and render the chart every 30 minutes
 RUN echo "*/30 * * * * /bin/bash /app/cron_current.sh > /proc/1/fd/1 2>/proc/1/fd/2" > /etc/cron.d/databot \
-    # Archive charts weekly (at 00:00 on Thursday)
-    && echo "0 0 * * 4 /bin/bash /app/cron_archive.sh > /proc/1/fd/1 2>/proc/1/fd/2" >> /etc/cron.d/databot \
-    # Backfill older data and repair gaps once a day at 03:00
-    && echo "0 3 * * * /bin/bash /app/cron_integrity.sh > /proc/1/fd/1 2>/proc/1/fd/2" >> /etc/cron.d/databot \
+    # Archive the chart of the finished week (at 00:00 on Monday)
+    && echo "0 0 * * 1 /bin/bash /app/cron_archive.sh > /proc/1/fd/1 2>/proc/1/fd/2" >> /etc/cron.d/databot \
     && chmod 0644 /etc/cron.d/databot && crontab /etc/cron.d/databot
 
 CMD [ "/app/start.sh" ]
