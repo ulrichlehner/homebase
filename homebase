@@ -5,11 +5,12 @@
 # ./databot change.
 #
 #   ./homebase csv                 update the readings CSV in DATA_DIR from the portal (+ unified file)
+#   ./homebase render [args]       render the weekly chart(s) from the CSV, e.g. `render --archive`
 #   ./homebase reconstruct         reconstruct 6h values from the chart PNGs in DATA_DIR (+ unified file)
 #   ./homebase merge               rewrite the unified <meterId>_all.csv from the two files above
-#   ./homebase up | down | logs    run the full stack (InfluxDB + cron jobs) in the background
-#   ./homebase databot <args>      any databot command against the running stack, e.g. `check`
-#   ./homebase render [args]       render the Kindle chart from the running stack
+#   ./homebase check               report incomplete days in the readings CSV
+#   ./homebase up | down | logs    run the cron container in the background (csv + render every 30 min)
+#   ./homebase databot <args>      any databot command, e.g. `databot csv --overlap 30`
 #   ./homebase test                run the unit tests
 #   ./homebase build               force a rebuild of the image
 #   ./homebase shell               open a shell inside the container
@@ -66,7 +67,7 @@ ensure_image() {
 
 # -- Run helpers --------------------------------------------------------------
 
-# One-off container without the database (csv, reconstruct, tests, shell)
+# One-off container with DATA_DIR mounted as /app/export
 run_standalone() {
   local tty_flags="-i"
   [ -t 0 ] && [ -t 1 ] && tty_flags="-it"
@@ -75,11 +76,6 @@ run_standalone() {
     -e EXPORT_DIR=/app/export \
     -v "$DATA_DIR:/app/export" \
     "$IMAGE" "$@"
-}
-
-# One-off container attached to the running stack (needs InfluxDB)
-run_in_stack() {
-  DATA_DIR="$DATA_DIR" docker compose run --rm "$@"
 }
 
 usage() { sed -n '3,20p' "$0"; }
@@ -117,11 +113,15 @@ case "$cmd" in
     ;;
   databot)
     ensure_image
-    run_in_stack databot databot "$@"
+    run_standalone python3 /app/databot.py "$@"
+    ;;
+  check)
+    ensure_image
+    run_standalone python3 /app/databot.py check "$@"
     ;;
   render)
     ensure_image
-    run_in_stack databot python3 /app/render.py "$@"
+    run_standalone python3 /app/render.py "$@"
     ;;
   test)
     ensure_image

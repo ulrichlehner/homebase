@@ -111,9 +111,10 @@ def test_group_days():
 
 def test_cli_defaults():
     args = databot.build_parser().parse_args([])
-    assert args.command in (None, 'update') and args.overlap == databot.DEFAULT_OVERLAP_DAYS
-    args = databot.build_parser().parse_args(['backfill', '--until', '01.01.2022'])
-    assert args.until == date(2022, 1, 1) and args.stop_after_empty == databot.DEFAULT_EMPTY_CHUNKS_TO_STOP
+    assert args.command in (None, 'csv') and args.overlap == databot.DEFAULT_OVERLAP_DAYS
+    args = databot.build_parser().parse_args(['csv', '--overlap', '30', '--stop-after-empty', '3'])
+    assert args.overlap == 30 and args.stop_after_empty == 3
+    assert databot.build_parser().parse_args(['check']).command == 'check'
 
 
 def test_csv_file_round_trip(tmp_path):
@@ -164,8 +165,7 @@ def test_incomplete_days_in_rows():
 
 def test_write_unified_trims_boundary(tmp_path):
     z = ZoneInfo(TZ)
-    cfg = databot.Config(username='u', password='p', meter_id='M', tz=TZ, influx_url='', influx_org='',
-                         influx_bucket='', influx_token='', export_dir=tmp_path)
+    cfg = databot.Config(username='u', password='p', meter_id='M', tz=TZ, export_dir=tmp_path)
     # reconstructed block 18:15-00:15 overlapping the first measured reading at 00:00
     (tmp_path / 'M_reconstructed_6h.csv').write_text(
         'start_local;end_local;kwh;source;method;note\n'

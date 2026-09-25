@@ -7,33 +7,10 @@ services:
     pull_policy: missing
     container_name: databot
     environment:
-      - INFLUX_URL=http://influxdb:8086
       - EXPORT_DIR=/app/export
     env_file:
       - ./.env
-    depends_on:
-      - influxdb
     restart: always
     volumes:
       # DATA_DIR from the environment (set by ./homebase), default ./data/databot
       - ${DATA_DIR:-./data/databot}:/app/export
-    networks:
-      - local
-  influxdb:
-    image: influxdb:2.7-alpine
-    container_name: influxdb
-    environment:
-      - DOCKER_INFLUXDB_INIT_MODE=setup
-    env_file:
-      - ./.env
-    # Expose the UI / API on the host if needed, e.g. for Home Assistant or Grafana
-    # ports:
-    #   - '8086:8086'
-    volumes:
-      - ./data/influxdb:/var/lib/influxdb2
-    restart: always
-    networks:
-      - local
-
-networks:
-  local:
