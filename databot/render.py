@@ -262,12 +262,16 @@ def render(date=datetime.now(), filename='current.png', title_suffix=''):
     dpi = 212
     # Some buffer needed to actually get 758w ...
     fig.set_size_inches(760 / dpi, 1024 / dpi)
-    plt.savefig(base_path + filename, dpi=dpi)
-    # plt.show()
+    # Write to a temporary file and replace atomically: the Kindle never sees a
+    # half-written image, and overwriting files in place can fail on synced
+    # folders (iCloud Drive returns EDEADLK through a Docker bind mount).
+    tmp_path = base_path + '.' + filename + '.tmp.png'
+    plt.savefig(tmp_path, dpi=dpi)
 
     # Convert to greyscale supported by Kindle
-    img = Image.open(base_path + filename).convert('L')
-    img.save(base_path + filename)
+    img = Image.open(tmp_path).convert('L')
+    img.save(tmp_path)
+    os.replace(tmp_path, base_path + filename)
 
     logging.info(f'Rendering chart {date_str} done')
     plt.close()
