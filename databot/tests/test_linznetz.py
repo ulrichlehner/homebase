@@ -182,3 +182,62 @@ def test_write_unified_trims_boundary(tmp_path):
     assert lines[1]['method'] == 'measured' and lines[2]['method'] == 'substitute'
     assert all(a['end_local'] == b['start_local'] for a, b in zip(lines, lines[1:]))
     assert not any(',' in v for l in lines for v in l.values())
+
+
+def test_find_charts_prefers_kept_originals(tmp_path):
+    import reconstruct
+    name = 'M_2023-03-06-2023-03-12.png'
+    other = 'M_2023-03-13-2023-03-19.png'
+    (tmp_path / 'archive').mkdir()
+    (tmp_path / 'archive' / name).write_bytes(b'archived')
+    (tmp_path / other).write_bytes(b'top')
+    (tmp_path / 'current.png').write_bytes(b'x')
+    (tmp_path / 'M_readings.csv').write_text('x')
+    found = reconstruct.find_charts(tmp_path, 'M')
+    assert [p.name for p in found] == [name, other]            # subfolders are searched, other files ignored
+    (tmp_path / 'original_charts' / 'archive').mkdir(parents=True)
+    (tmp_path / 'original_charts' / 'archive' / name).write_bytes(b'original')
+    found = reconstruct.find_charts(tmp_path, 'M')
+    assert [p.read_bytes() for p in found] == [b'original']    # kept originals are used exclusively
+
+
+def test_render_all_replaces_in_place_and_keeps_originals(tmp_path, monkeypatch):
+    import importlib
+    from datetime import datetime
+    monkeypatch.setenv('METER_ID', 'M')
+    monkeypatch.setenv('TZ', TZ)
+    monkeypatch.setenv('EXPORT_DIR', str(tmp_path))
+    z = ZoneInfo(TZ)
+    today = datetime.now(z).date()
+    this_monday = today - timedelta(days=today.weekday())
+    first_monday = this_monday - timedelta(weeks=3)
+    lines = ['start_local;end_local;kwh;kw;source;method;note']
+    t = datetime.combine(first_monday, datetime.min.time(), tzinfo=z)
+    end = datetime.combine(this_monday, datetime.min.time(), tzinfo=z)
+    while t < end:
+        lines.append(f'{t.isoformat()};;0.100;0.400;portal;measured;n')
+        t = (t.astimezone(ZoneInfo('UTC')) + timedelta(minutes=15)).astimezone(z)
+    (tmp_path / 'M_all.csv').write_text('\n'.join(lines) + '\n')
+
+    def name(weeks_ago):
+        mon = this_monday - timedelta(weeks=weeks_ago)
+        return f'M_{mon:%Y-%m-%d}-{mon + timedelta(days=6):%Y-%m-%d}.png'
+    (tmp_path / 'archive').mkdir()
+    (tmp_path / 'archive' / name(3)).write_bytes(b'old archived')   # oldest week lives in archive/
+    (tmp_path / name(2)).write_bytes(b'old top level')              # middle week at the top level
+    # newest finished week does not exist yet
+
+    render = importlib.reload(__import__('render'))
+    render.render_all()
+
+    assert (tmp_path / 'archive' / name(3)).read_bytes() != b'old archived'
+    assert not (tmp_path / name(3)).exists()                        # not duplicated at the top level
+    assert (tmp_path / name(2)).read_bytes() != b'old top level'
+    assert (tmp_path / name(1)).exists()                            # missing week created at the top level
+    assert (tmp_path / 'current.png').exists()
+    assert (tmp_path / 'original_charts' / 'archive' / name(3)).read_bytes() == b'old archived'
+    assert (tmp_path / 'original_charts' / name(2)).read_bytes() == b'old top level'
+    assert not (tmp_path / 'original_charts' / name(1)).exists()    # nothing to keep for a new chart
+    render.render_all()                                              # second run must not touch the originals
+    assert (tmp_path / 'original_charts' / name(2)).read_bytes() == b'old top level'
+    assert not [p for p in tmp_path.rglob('*') if p.name.endswith('.tmp.png') or p.name.endswith('.tmp')]

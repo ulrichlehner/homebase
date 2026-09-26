@@ -5,14 +5,15 @@ the measured quarter hours, written by `databot csv` / `databot merge`), falling
 back to <meterId>_readings.csv. No database involved.
 """
 
+import bisect
 import csv
 import logging
 import os
+import shutil
 from argparse import ArgumentParser
 from cmath import nan
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from glob import glob
-from os.path import exists
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -37,12 +38,13 @@ x_label_locations = np.arange(len(labels))  # the label locations
 width = 0.25  # the width of the bars
 
 _readings = None  # list of (start epoch seconds, local start datetime, kwh), sorted
+_keys = None  # the epoch seconds of _readings, for bisect
 
 
 def load_readings():
     """Loads the CSV once. Prefers the unified file (it also covers the reconstructed
     history), falls back to the plain readings file."""
-    global _readings
+    global _readings, _keys
     if _readings is not None:
         return _readings
     for name in (f'{meter_id}_all.csv', f'{meter_id}_readings.csv'):
@@ -62,15 +64,14 @@ def load_readings():
     rows.sort()
     logging.debug(f'Loaded {len(rows)} readings from {path}')
     _readings = rows
+    _keys = [r[0] for r in rows]
     return rows
 
 
 def sum_between(start, stop):
     """Sum of kWh of all intervals starting in [start, stop). Returns nan if there are none."""
-    import bisect
     rows = load_readings()
-    keys = [r[0] for r in rows]
-    lo, hi = bisect.bisect_left(keys, start.timestamp()), bisect.bisect_left(keys, stop.timestamp())
+    lo, hi = bisect.bisect_left(_keys, start.timestamp()), bisect.bisect_left(_keys, stop.timestamp())
     if hi <= lo:
         return nan
     return sum(r[2] for r in rows[lo:hi])
@@ -195,7 +196,9 @@ def add_bars(values, axs, ylabel):
                    linewidth=0.8, which='minor')
 
 
-def render(date=datetime.now(), filename='current.png', title_suffix=''):
+def render(date=datetime.now(), filename='current.png', title_suffix='', targets=None):
+    """Renders one chart. `targets` is a list of files to write (default: filename in the data
+    folder); every target gets the same image."""
     date_str = date.strftime('%Y-%m-%d')
     values_w0 = get_bar_chart_values(weeks_back=0, date=date)
     values_w1 = get_bar_chart_values(weeks_back=1, date=date)
@@ -259,18 +262,76 @@ def render(date=datetime.now(), filename='current.png', title_suffix=''):
     # Write to a temporary file and replace atomically: readers never see a
     # half-written image, and overwriting files in place can fail on synced
     # folders (iCloud Drive returns EDEADLK through a Docker bind mount).
-    tmp_path = base_path + '.' + filename + '.tmp.png'
+    targets = [Path(t) for t in (targets or [base_path + filename])]
+    tmp_path = targets[0].with_name('.' + targets[0].name + '.tmp.png')
     plt.savefig(tmp_path, dpi=dpi)
 
     # Convert to greyscale (e-ink friendly, and the archived charts look the same)
     img = Image.open(tmp_path).convert('L')
     img.save(tmp_path)
-    os.replace(tmp_path, base_path + filename)
+    for target in targets[1:]:
+        copy = target.with_name('.' + target.name + '.tmp.png')
+        shutil.copyfile(tmp_path, copy)
+        os.replace(copy, target)
+    os.replace(tmp_path, targets[0])
 
     logging.info(f'Rendering chart {date_str} done')
     plt.close()
 
     return True
+
+
+def chart_dirs():
+    """Folders that may hold weekly charts: the data folder and its `archive` subfolder."""
+    return [Path(base_path), Path(base_path) / 'archive']
+
+
+def existing_copies(filename):
+    """All existing copies of a weekly chart (top level and archive/)."""
+    return [d / filename for d in chart_dirs() if (d / filename).exists()]
+
+
+def backup_original(path):
+    """Keeps a copy of a chart under original_charts/ (same relative path) before it is
+    replaced. Only the first replacement counts, so the true original is never lost.
+    Returns True if a copy was made."""
+    path = Path(path)
+    if not path.exists():
+        return False
+    backup = Path(base_path) / 'original_charts' / path.relative_to(base_path)
+    if backup.exists():
+        return False
+    backup.parent.mkdir(parents=True, exist_ok=True)
+    tmp = backup.with_name('.' + backup.name + '.tmp')
+    shutil.copy2(path, tmp)
+    os.replace(tmp, backup)
+    return True
+
+
+def render_all():
+    """Re-renders every weekly chart from the first week with data up to the last finished
+    week, plus current.png. Existing charts are replaced where they are (top level and/or
+    archive/) after their original was kept in original_charts/; missing weeks are created
+    at the top level."""
+    rows = load_readings()
+    first = rows[0][1].date()
+    today = datetime.now(zone).date()
+    monday = first - timedelta(days=first.weekday())
+    last_monday = today - timedelta(days=today.weekday(), weeks=1)
+    rendered = backed_up = 0
+    while monday <= last_monday:
+        sunday = monday + timedelta(days=6)
+        filename = f'{meter_id}_{monday:%Y-%m-%d}-{sunday:%Y-%m-%d}.png'
+        targets = existing_copies(filename) or [Path(base_path) / filename]
+        for target in targets:
+            backed_up += backup_original(target)
+        if render(date=datetime.combine(sunday, time()), filename=filename,
+                  title_suffix=f' {monday:%Y-%m-%d} - {sunday:%Y-%m-%d}', targets=targets):
+            rendered += 1
+        monday += timedelta(weeks=1)
+    render()  # current.png
+    logging.info(f'Re-rendered {rendered} weekly charts and current.png, kept {backed_up} originals in '
+                 f'{Path(base_path) / "original_charts"}')
 
 
 def clean():
@@ -297,7 +358,7 @@ def archive():
         stop = start + timedelta(days=6)
         try:
             filename = f'{meter_id}_{start.strftime(date_format)}-{stop.strftime(date_format)}.png'
-            if exists(base_path + filename) or not render(date=stop, filename=filename, title_suffix=f' {start.strftime(date_format)} - {stop.strftime(date_format)}'):
+            if existing_copies(filename) or not render(date=stop, filename=filename, title_suffix=f' {start.strftime(date_format)} - {stop.strftime(date_format)}'):
                 allowed_skip_weeks -= 1
             delta_week += 1
         except Exception as err:
@@ -320,6 +381,9 @@ def main():
     parser = ArgumentParser()
     parser.add_argument('-a', '--archive', default=False,
                         action='store_true', help='Archive previous charts')
+    parser.add_argument('--all', default=False, action='store_true',
+                        help='Re-render ALL weekly charts and current.png from the CSV data '
+                             '(originals are kept in original_charts/)')
     parser.add_argument('-c', '--clean', default=False,
                         action='store_true', help='Clean previous charts')
     parser.add_argument('-d', '--day', type=str, help='Load specific day')
@@ -328,6 +392,8 @@ def main():
     try:
         if args.clean:
             clean()
+        elif args.all:
+            render_all()
         elif args.archive:
             archive()
         elif args.day:

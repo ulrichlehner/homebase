@@ -18,7 +18,8 @@ Everything lives in one data folder (`DATA_DIR`, see below):
 | `<meterId>_reconstructed_6h.csv` | 6-hour values reconstructed from old chart PNGs (optional, see below)   |
 | `<meterId>_all.csv`              | both combined into one contiguous timeline with `source`/`method`/`note` |
 | `csv/`                           | the raw portal exports, exactly as downloaded                            |
-| `*.png`                          | the rendered charts                                                      |
+| `*.png`, `archive/`              | the rendered weekly charts (you may move old ones into `archive/`)       |
+| `original_charts/`               | the charts as they were before `render --all` replaced them             |
 
 `databot csv` keeps the readings file current and rewrites the unified file; `render.py` draws the
 charts from the unified file. The cron jobs in the container run both every 30 minutes and archive the
@@ -32,6 +33,7 @@ wrapper rebuilds the image automatically whenever the sources in `databot/` chan
 ```bash
 ./homebase csv            # fetch new readings from the portal into the CSV files
 ./homebase render         # render the current chart, `render --archive` for finished weeks
+./homebase render --all   # re-render ALL weekly charts and the current one from the CSV data
 ./homebase up             # start the cron container (csv + render every 30 minutes)
 ./homebase logs           # follow its logs
 ./homebase down           # stop it
@@ -61,11 +63,25 @@ Excel, it rewrites the timestamps. Writes are atomic, an interrupted run leaves 
 time, kWh, kW and a substitute-value flag (`<DATA_DIR>/<meterId>_readings.csv`). The raw portal
 exports of every run are kept in `<DATA_DIR>/csv/`.
 
+### Charts
+
+`./homebase render` draws `current.png` (the running week plus the two before) from `<meterId>_all.csv`.
+`./homebase render --archive` adds the chart of each finished week as `<meterId>_<monday>-<sunday>.png`
+(the Monday cron job does this).
+
+`./homebase render --all` re-renders **every** weekly chart from the first week with data to the last
+finished week, plus `current.png`, e.g. after the renderer changed or after gaps in the data were
+filled. It takes about a minute. Charts are replaced where they are, at the top level of `DATA_DIR`
+and/or in `DATA_DIR/archive/`; weeks without a chart are created at the top level. Before a chart is
+replaced for the first time, the original is kept under `DATA_DIR/original_charts/` (same relative
+path) and is never overwritten again. Those originals are the input of the reconstruction below, so
+keep the folder; `reconstruct` reads it in preference to the re-rendered charts.
+
 ### Reconstructing lost history from the chart PNGs
 
 The portal only keeps about 36 months. Readings before 2023-09-01 were only in the original InfluxDB,
 which was lost, but the weekly charts it rendered survive. `./homebase reconstruct` reads every
-chart PNG in `DATA_DIR` and writes `<meterId>_reconstructed_6h.csv` with the four 6-hour sums per
+chart PNG in `DATA_DIR` (subfolders such as `archive/` included, or `original_charts/` once it exists) and writes `<meterId>_reconstructed_6h.csv` with the four 6-hour sums per
 day for the period before the portal readings start. It is clearly marked as reconstructed:
 
 - `source` is always `chart_ocr`, `method` says how the value was obtained (`label`: printed value
