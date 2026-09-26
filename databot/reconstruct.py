@@ -240,6 +240,20 @@ def analyze_chart(path: Path) -> list:
 
 # -- Consolidation --------------------------------------------------------------
 
+def find_charts(chart_dir: Path, meter: str) -> list:
+    """Weekly chart PNGs to read. If `./homebase render --all` has kept the originals in
+    <chart_dir>/original_charts, those are used exclusively (the re-rendered charts are drawn
+    from the very data this script produces). Otherwise the charts are searched in the folder
+    and its subfolders, e.g. archive/."""
+    originals = chart_dir / 'original_charts'
+    root = originals if originals.is_dir() else chart_dir
+    found = {}
+    for p in sorted(root.rglob(f'{meter}_*.png')):
+        if FILE_RE.match(p.name):
+            found[p.name] = p
+    return [found[name] for name in sorted(found)]
+
+
 def _analyze(path: Path):
     try:
         return path, analyze_chart(path)
@@ -255,7 +269,7 @@ def collect(chart_dir: Path, meter: str, tz: str, before: Optional[date] = None)
     method is 'label' (OCR agreed with bar height) or 'height' (bar height only)."""
     found = defaultdict(dict)
     stats = Counter()
-    files = sorted(p for p in chart_dir.glob(f'{meter}_*.png') if FILE_RE.match(p.name))
+    files = find_charts(chart_dir, meter)
     if before:
         # a chart shows its own week and the two before; keep a few weeks past the
         # cut-off so the result can be validated against real readings

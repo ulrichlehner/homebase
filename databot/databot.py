@@ -1,23 +1,17 @@
 #!/usr/bin/env python3
-"""Fetches smart meter readings from the LINZ NETZ portal and stores them in InfluxDB.
+#!/usr/bin/env python3
+"""Fetches smart meter readings from the LINZ NETZ portal into CSV files.
 
 Commands:
-  update    (default) load everything since the last stored reading, re-loading
-            a few days of overlap since the portal corrects values retroactively
-  backfill  walk backwards from the oldest stored reading until the portal has no more data
-  load      load an explicit date range
-  check     report days with missing quarter-hour intervals
-  repair    like check, then re-fetch the incomplete days
-  export    dump all stored readings to one CSV (for migrations)
-  csv       maintain a standalone CSV straight from the portal, no database needed
-  merge     write the unified CSV (reconstructed 6h blocks + measured quarter hours)
+  csv       (default) create or extend <EXPORT_DIR>/<meterId>_readings.csv straight from the
+            portal: first run downloads everything, later runs re-load a few days of overlap
+            (the portal corrects values retroactively), re-fetch incomplete days, extend
+            backwards if the portal has older data, then rewrite the unified file
+  merge     write <meterId>_all.csv (reconstructed 6h blocks + measured quarter hours)
+  check     report days with missing quarter-hour intervals in the readings file
 
-InfluxDB schema (unchanged from the original scraper):
-  meteredValues       tag meterId, field value (kWh per 15 min), field substitute (bool)
-  meteredPeakDemands  tag meterId, field value (kW as reported by the portal)
-  timestamp = interval start, second precision
+Raw portal exports are archived under <EXPORT_DIR>/csv/.
 """
-
 from __future__ import annotations
 
 import argparse
@@ -30,12 +24,10 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
-from influxdb_client import InfluxDBClient, WritePrecision
-from influxdb_client.client.write_api import SYNCHRONOUS
 
 from linznetz import (
     DATE_FORMAT,
@@ -49,8 +41,6 @@ from linznetz import (
 
 logger = logging.getLogger('databot')
 
-MEASUREMENT_ENERGY = 'meteredValues'
-MEASUREMENT_POWER = 'meteredPeakDemands'
 DEFAULT_CHUNK_DAYS = 366
 DEFAULT_OVERLAP_DAYS = 7
 DEFAULT_EMPTY_CHUNKS_TO_STOP = 2
@@ -63,20 +53,13 @@ class Config:
     password: str
     meter_id: str
     tz: str
-    influx_url: str
-    influx_org: str
-    influx_bucket: str
-    influx_token: str
     export_dir: Path
 
 
-def load_config(env_file: Optional[str], need_influx: bool = True) -> Config:
+def load_config(env_file: Optional[str]) -> Config:
     if env_file:
         load_dotenv(env_file)
-    required = ['USERNAME', 'PASSWORD', 'METER_ID', 'TZ']
-    if need_influx:
-        required += ['INFLUX_URL', 'INFLUX_ORG', 'INFLUX_BUCKET', 'INFLUX_TOKEN']
-    missing = [k for k in required if not os.environ.get(k)]
+    missing = [k for k in ('USERNAME', 'PASSWORD', 'METER_ID', 'TZ') if not os.environ.get(k)]
     if missing:
         raise SystemExit(f'Missing environment variable(s): {", ".join(missing)}')
     return Config(
@@ -84,98 +67,8 @@ def load_config(env_file: Optional[str], need_influx: bool = True) -> Config:
         password=os.environ['PASSWORD'],
         meter_id=os.environ['METER_ID'],
         tz=os.environ['TZ'],
-        influx_url=os.environ.get('INFLUX_URL', ''),
-        influx_org=os.environ.get('INFLUX_ORG', ''),
-        influx_bucket=os.environ.get('INFLUX_BUCKET', ''),
-        influx_token=os.environ.get('INFLUX_TOKEN', ''),
         export_dir=Path(os.environ.get('EXPORT_DIR', 'export')),
     )
-
-
-# -- Storage ------------------------------------------------------------------
-
-class Store:
-    def __init__(self, config: Config):
-        self.config = config
-        self.client = InfluxDBClient(url=config.influx_url, token=config.influx_token, org=config.influx_org,
-                                     timeout=120_000)
-        self.query_api = self.client.query_api()
-        self.write_api = self.client.write_api(write_options=SYNCHRONOUS)
-
-    def close(self) -> None:
-        self.client.close()
-
-    def _base_query(self) -> str:
-        return (
-            f'from(bucket: "{self.config.influx_bucket}") '
-            f'|> range(start: 0) '
-            f'|> filter(fn: (r) => r._measurement == "{MEASUREMENT_ENERGY}" and r._field == "value" '
-            f'and r.meterId == "{self.config.meter_id}")'
-        )
-
-    def _single_time(self, selector: str) -> Optional[datetime]:
-        tables = self.query_api.query(self._base_query() + f' |> {selector}()')
-        for table in tables:
-            for record in table.records:
-                return record.get_time().astimezone(ZoneInfo(self.config.tz))
-        return None
-
-    def first_time(self) -> Optional[datetime]:
-        return self._single_time('first')
-
-    def last_time(self) -> Optional[datetime]:
-        return self._single_time('last')
-
-    def counts_per_day(self, start: date, stop: date) -> Counter:
-        """Number of stored intervals per local day in [start, stop]."""
-        zone = ZoneInfo(self.config.tz)
-        range_start = datetime.combine(start, datetime.min.time(), tzinfo=zone)
-        range_stop = datetime.combine(stop + timedelta(days=1), datetime.min.time(), tzinfo=zone)
-        query = (
-            f'from(bucket: "{self.config.influx_bucket}") '
-            f'|> range(start: {range_start.isoformat()}, stop: {range_stop.isoformat()}) '
-            f'|> filter(fn: (r) => r._measurement == "{MEASUREMENT_ENERGY}" and r._field == "value" '
-            f'and r.meterId == "{self.config.meter_id}") '
-            f'|> keep(columns: ["_time"])'
-        )
-        counter: Counter = Counter()
-        for table in self.query_api.query(query):
-            for record in table.records:
-                counter[record.get_time().astimezone(zone).date()] += 1
-        return counter
-
-    def all_readings(self) -> Iterable:
-        zone = ZoneInfo(self.config.tz)
-        query = self._base_query() + ' |> keep(columns: ["_time", "_value"]) |> sort(columns: ["_time"])'
-        for table in self.query_api.query(query):
-            for record in table.records:
-                yield record.get_time().astimezone(zone), record.get_value()
-
-    def write(self, readings: list, power: Optional[dict] = None) -> int:
-        """Writes energy readings; ``power`` maps interval start (epoch seconds) to the
-        portal's kW value. Intervals without a portal kW value get kWh / hours."""
-        if not readings:
-            return 0
-        power = power or {}
-        points = []
-        for r in readings:
-            hours = (r.end.timestamp() - r.start.timestamp()) / 3600 or 0.25
-            kw = power.get(r.start.timestamp(), float(r.kwh) / hours)
-            points.append({
-                'measurement': MEASUREMENT_ENERGY,
-                'tags': {'meterId': self.config.meter_id},
-                'time': r.start,
-                'fields': {'value': float(r.kwh), 'substitute': bool(r.substitute)},
-            })
-            points.append({
-                'measurement': MEASUREMENT_POWER,
-                'tags': {'meterId': self.config.meter_id},
-                'time': r.start,
-                'fields': {'value': float(kw)},
-            })
-        self.write_api.write(bucket=self.config.influx_bucket, org=self.config.influx_org,
-                             record=points, write_precision=WritePrecision.S)
-        return len(readings)
 
 
 # -- Fetching -----------------------------------------------------------------
@@ -230,98 +123,7 @@ def fetch_readings(portal: LinzNetz, config: Config, date_from: date, date_to: d
     return readings, power
 
 
-def fetch_range(portal: LinzNetz, store: Store, config: Config, date_from: date, date_to: date) -> Optional[int]:
-    """Fetches and stores one range. Returns the number of readings, or None if the portal has no data."""
-    readings, power = fetch_readings(portal, config, date_from, date_to)
-    if readings is None:
-        return None
-    n = store.write(readings, power)
-    days = {r.start.date() for r in readings}
-    substitutes = sum(1 for r in readings if r.substitute)
-    logger.info('Stored %d readings (%d with kW) for %s - %s (%d day%s%s)', n, len(power),
-                min(days).strftime(DATE_FORMAT), max(days).strftime(DATE_FORMAT), len(days),
-                '' if len(days) == 1 else 's', f', {substitutes} substitute values' if substitutes else '')
-    return n
-
-
-def load_forward(portal, store, config, date_from: date, date_to: date, chunk_days: int) -> int:
-    total = 0
-    for a, b in chunks(date_from, date_to, chunk_days):
-        n = fetch_range(portal, store, config, a, b)
-        total += n or 0
-        time.sleep(REQUEST_PAUSE_SECONDS)
-    return total
-
-
-# -- Commands -----------------------------------------------------------------
-
-def cmd_update(args, config: Config, store: Store) -> int:
-    last = store.last_time()
-    today = datetime.now(ZoneInfo(config.tz)).date()
-    if last is None:
-        logger.info('Database is empty, starting a full backfill')
-        return cmd_backfill(args, config, store)
-    date_from = last.date() - timedelta(days=args.overlap)
-    logger.info('Updating from %s to %s (last stored reading %s)', date_from.strftime(DATE_FORMAT),
-                today.strftime(DATE_FORMAT), last.strftime('%d.%m.%Y %H:%M'))
-    with LinzNetz(config.username, config.password, config.tz) as portal:
-        total = load_forward(portal, store, config, date_from, today, args.chunk_days)
-    logger.info('Update done, %d readings written', total)
-    return 0
-
-
-def cmd_backfill(args, config: Config, store: Store) -> int:
-    today = datetime.now(ZoneInfo(config.tz)).date()
-    first = store.first_time()
-    if args.from_date:
-        stop = args.from_date
-    elif first is not None:
-        stop = first.date() - timedelta(days=1)
-    else:
-        stop = today
-    until = args.until or date(2000, 1, 1)
-    if args.limit:
-        until = max(until, stop - timedelta(days=args.limit - 1))
-    logger.info('Backfilling backwards from %s%s', stop.strftime(DATE_FORMAT),
-                f' until {until.strftime(DATE_FORMAT)}' if args.until or args.limit else ' until the portal has no more data')
-    empty_streak = 0
-    total = 0
-    with LinzNetz(config.username, config.password, config.tz) as portal:
-        for a, b in chunks(until, stop, args.chunk_days, backwards=True):
-            n = fetch_range(portal, store, config, a, b)
-            if n is None:
-                empty_streak += 1
-                if empty_streak >= args.stop_after_empty:
-                    logger.info('Stopping, %d consecutive empty ranges', empty_streak)
-                    break
-            else:
-                empty_streak = 0
-                total += n
-            time.sleep(REQUEST_PAUSE_SECONDS)
-    logger.info('Backfill done, %d readings written', total)
-    return 0
-
-
-def cmd_load(args, config: Config, store: Store) -> int:
-    date_to = args.to_date or args.from_date
-    with LinzNetz(config.username, config.password, config.tz) as portal:
-        total = load_forward(portal, store, config, args.from_date, date_to, args.chunk_days)
-    logger.info('Load done, %d readings written', total)
-    return 0
-
-
-def incomplete_days(config: Config, store: Store, start: date, stop: date) -> list:
-    counts = store.counts_per_day(start, stop)
-    result = []
-    day = start
-    while day <= stop:
-        expected = expected_intervals(day, config.tz)
-        have = counts.get(day, 0)
-        if have < expected:
-            result.append((day, have, expected))
-        day += timedelta(days=1)
-    return result
-
+# -- Helpers -----------------------------------------------------------------
 
 def group_days(days: list) -> list:
     """Groups sorted dates into inclusive contiguous ranges."""
@@ -332,61 +134,6 @@ def group_days(days: list) -> list:
         else:
             ranges.append((d, d))
     return ranges
-
-
-def cmd_check(args, config: Config, store: Store, repair: bool = False) -> int:
-    first, last = store.first_time(), store.last_time()
-    if first is None or last is None:
-        logger.info('Database is empty')
-        return 0
-    today = datetime.now(ZoneInfo(config.tz)).date()
-    start = args.from_date or first.date()
-    # Today is always incomplete while the day is running, so check up to yesterday by default
-    stop = args.to_date or min(last.date(), today - timedelta(days=1))
-    if stop < start:
-        logger.info('Nothing to check yet')
-        return 0
-    if args.days:
-        start = max(start, stop - timedelta(days=args.days - 1))
-    logger.info('Checking %s - %s (stored range %s - %s)', start.strftime(DATE_FORMAT), stop.strftime(DATE_FORMAT),
-                first.strftime(DATE_FORMAT), last.strftime(DATE_FORMAT))
-    bad = incomplete_days(config, store, start, stop)
-    if not bad:
-        logger.info('All %d days complete', (stop - start).days + 1)
-        return 0
-    for day, have, expected in bad:
-        logger.warning('%s: %d of %d intervals', day.strftime(DATE_FORMAT), have, expected)
-    ranges = group_days([d for d, _, _ in bad])
-    logger.info('%d incomplete day(s) in %d range(s)', len(bad), len(ranges))
-    if not repair:
-        return 1
-    total = 0
-    with LinzNetz(config.username, config.password, config.tz) as portal:
-        for a, b in ranges:
-            total += load_forward(portal, store, config, a, b, args.chunk_days)
-    still_bad = incomplete_days(config, store, start, stop)
-    logger.info('Repair done, %d readings written, %d day(s) still incomplete', total, len(still_bad))
-    for day, have, expected in still_bad:
-        logger.warning('%s: %d of %d intervals (portal has no more data)', day.strftime(DATE_FORMAT), have, expected)
-    return 0
-
-
-def cmd_repair(args, config: Config, store: Store) -> int:
-    return cmd_check(args, config, store, repair=True)
-
-
-def cmd_export(args, config: Config, store: Store) -> int:
-    path = Path(args.output) if args.output else config.export_dir / f'{config.meter_id}_all.csv'
-    path.parent.mkdir(parents=True, exist_ok=True)
-    n = 0
-    with path.open('w', newline='') as fh:
-        writer = csv.writer(fh, delimiter=';')
-        writer.writerow(['start_local', 'start_utc', 'kwh'])
-        for t, value in store.all_readings():
-            writer.writerow([t.isoformat(), t.astimezone(ZoneInfo('UTC')).strftime('%Y-%m-%dT%H:%M:%SZ'), value])
-            n += 1
-    logger.info('Exported %d readings to %s', n, path)
-    return 0
 
 
 # -- Standalone CSV file (no database) ---------------------------------------
@@ -456,7 +203,7 @@ def incomplete_days_in_rows(rows: dict, tz: str, until: date) -> list:
     return result
 
 
-def cmd_csv(args, config: Config, store=None) -> int:
+def cmd_csv(args, config: Config) -> int:
     path = Path(args.file) if args.file else config.export_dir / f'{config.meter_id}_readings.csv'
     zone = ZoneInfo(config.tz)
     today = datetime.now(zone).date()
@@ -581,7 +328,29 @@ def write_unified(config: Config, rows: dict, path: Path) -> int:
     return len(out)
 
 
-def cmd_merge(args, config: Config, store=None) -> int:
+def cmd_check(args, config: Config) -> int:
+    readings = Path(args.file) if args.file else config.export_dir / f'{config.meter_id}_readings.csv'
+    rows = read_csv_file(readings)
+    if not rows:
+        logger.error('%s is missing or empty, run `csv` first', readings)
+        return 1
+    zone = ZoneInfo(config.tz)
+    first, last = datetime.fromtimestamp(min(rows), zone), datetime.fromtimestamp(max(rows), zone)
+    today = datetime.now(zone).date()
+    stop = min(last.date(), today - timedelta(days=1))
+    bad = incomplete_days_in_rows(rows, config.tz, stop)
+    logger.info('%s: %d readings, %s - %s', readings, len(rows), first.strftime('%d.%m.%Y %H:%M'),
+                last.strftime('%d.%m.%Y %H:%M'))
+    if bad:
+        for d in bad:
+            logger.warning('%s incomplete', d.strftime(DATE_FORMAT))
+        logger.info('%d incomplete day(s) up to %s, run `csv` to re-fetch them', len(bad), stop.strftime(DATE_FORMAT))
+        return 1
+    logger.info('All %d days up to %s complete', (stop - first.date()).days + 1, stop.strftime(DATE_FORMAT))
+    return 0
+
+
+def cmd_merge(args, config: Config) -> int:
     readings = Path(args.file) if args.file else config.export_dir / f'{config.meter_id}_readings.csv'
     rows = read_csv_file(readings)
     if not rows:
@@ -610,40 +379,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('-d', '--debug', action='store_true', help='debug logging')
     parser.add_argument('--chunk-days', type=int, default=DEFAULT_CHUNK_DAYS,
                         help=f'days per portal request (default {DEFAULT_CHUNK_DAYS})')
-    parser.set_defaults(command='update', from_date=None, to_date=None, until=None, limit=None, days=None,
-                        output=None, overlap=DEFAULT_OVERLAP_DAYS, stop_after_empty=DEFAULT_EMPTY_CHUNKS_TO_STOP)
+    parser.set_defaults(command='csv', file=None, overlap=DEFAULT_OVERLAP_DAYS,
+                        stop_after_empty=DEFAULT_EMPTY_CHUNKS_TO_STOP)
     sub = parser.add_subparsers(dest='command')
 
-    p = sub.add_parser('update', help='load new readings since the last stored one (default)')
-    p.add_argument('--overlap', type=int, default=DEFAULT_OVERLAP_DAYS,
-                   help=f'days to re-load before the last reading (default {DEFAULT_OVERLAP_DAYS})')
-
-    p = sub.add_parser('backfill', help='load older readings until the portal has none')
-    p.add_argument('--from', dest='from_date', type=parse_date, help='start here instead of the oldest stored day')
-    p.add_argument('--until', type=parse_date, help='do not go further back than this date')
-    p.add_argument('--limit', type=int, help='at most this many days back')
-    p.add_argument('--stop-after-empty', type=int, default=DEFAULT_EMPTY_CHUNKS_TO_STOP,
-                   help='stop after this many consecutive empty ranges')
-
-    p = sub.add_parser('load', help='load an explicit date range')
-    p.add_argument('--from', dest='from_date', type=parse_date, required=True)
-    p.add_argument('--to', dest='to_date', type=parse_date, help='defaults to --from')
-
-    for name in ('check', 'repair'):
-        p = sub.add_parser(name, help='report incomplete days' + (' and re-fetch them' if name == 'repair' else ''))
-        p.add_argument('--from', dest='from_date', type=parse_date)
-        p.add_argument('--to', dest='to_date', type=parse_date)
-        p.add_argument('--days', type=int, help='only the last N days')
-
-    p = sub.add_parser('export', help='export all stored readings from the database to CSV')
-    p.add_argument('-o', '--output', help='output file')
-
-    p = sub.add_parser('csv', help='maintain a standalone CSV file straight from the portal (no database needed)')
+    p = sub.add_parser('csv', help='create or extend the readings CSV from the portal (default)')
     p.add_argument('-f', '--file', help='CSV file to create or extend (default: <EXPORT_DIR>/<meterId>_readings.csv)')
     p.add_argument('--overlap', type=int, default=DEFAULT_OVERLAP_DAYS,
                    help=f'days to re-fetch before the last reading in the file (default {DEFAULT_OVERLAP_DAYS})')
+    p.add_argument('--stop-after-empty', type=int, default=DEFAULT_EMPTY_CHUNKS_TO_STOP,
+                   help='stop looking for older data after this many consecutive empty ranges')
 
     p = sub.add_parser('merge', help='write <meterId>_all.csv from the readings CSV and the reconstruction')
+    p.add_argument('-f', '--file', help='readings CSV (default: <EXPORT_DIR>/<meterId>_readings.csv)')
+
+    p = sub.add_parser('check', help='report days with missing quarter-hour intervals')
     p.add_argument('-f', '--file', help='readings CSV (default: <EXPORT_DIR>/<meterId>_readings.csv)')
     return parser
 
@@ -655,24 +405,16 @@ def main(argv=None) -> int:
                         format='[ %(asctime)s %(levelname)s ] %(message)s')
     if not args.debug:
         logging.getLogger('urllib3').setLevel(logging.WARNING)
-    command = args.command or 'update'
-    config = load_config(args.config, need_influx=command not in ('csv', 'merge'))
-    handler = {
-        'update': cmd_update, 'backfill': cmd_backfill, 'load': cmd_load,
-        'check': cmd_check, 'repair': cmd_repair, 'export': cmd_export, 'csv': cmd_csv, 'merge': cmd_merge,
-    }[command]
-    store = Store(config) if command not in ('csv', 'merge') else None
+    config = load_config(args.config)
+    handler = {'csv': cmd_csv, 'merge': cmd_merge, 'check': cmd_check}[args.command or 'csv']
     try:
-        return handler(args, config, store)
+        return handler(args, config)
     except LoginError as err:
         logger.error('Login failed: %s', err)
         return 2
     except LinzNetzError as err:
         logger.error('Portal error: %s', err)
         return 1
-    finally:
-        if store:
-            store.close()
 
 
 if __name__ == '__main__':
