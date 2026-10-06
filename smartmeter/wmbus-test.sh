@@ -13,6 +13,7 @@
 #   GAIN=40          feste Verstärkung für monitor/raw (Default auto)
 #   FREQS/GAINS/DWELL  Suchraster für scan (Default "868950000 868300000" / "auto 40 30 49.6 20" / 30 s)
 #   TARGET_M=DEV     gesuchter Hersteller für scan
+#   DRIVER=drivers/amiplus_linznetz.xmq   eigenen XMQ-Treiber für analyze laden
 #
 # Voraussetzung: Homebrew und Xcode Command Line Tools (xcode-select --install).
 set -euo pipefail
@@ -26,7 +27,7 @@ BREW_PKGS=(librtlsdr rtl_433 pkg-config libxml2)
 BREW_STATE="$DIR/.wmbus-brew-installed"   # merkt sich, welche Pakete setup neu installiert hat
 
 usage() {
-  sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
   exit 1
 }
 
@@ -245,7 +246,9 @@ analyze() {
     hex="$(tail -n1 "$src")"
     echo "Verwende letztes Telegramm aus $(basename "$src"): $hex"
   fi
-  "$bin" "--analyze=$key" "$hex"
+  local driver_args=()
+  [ -z "${DRIVER:-}" ] || driver_args=("--driver=$DRIVER")
+  "$bin" ${driver_args[@]+"${driver_args[@]}"} "--analyze=$key" "$hex"
 }
 
 confirm() {

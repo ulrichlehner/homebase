@@ -1,0 +1,79 @@
+// LINZ NETZ smart meter (Develco, manufacturer DEV, version 0x01, type 0x02).
+//
+// Why this driver exists: LN-666 specifies the energy counters (1.8.0 import, 2.8.0 export)
+// in Wh, i.e. VIF 0x03. The meter however sometimes sends the very same BCD digits with a
+// different VIF exponent (0x04 = 10 Wh, 0x07 = 10^4 Wh), switching from one telegram to the
+// next. The digits are always right, only the exponent is wrong. The builtin amiplus driver
+// scales by VIF (as it should), so Home Assistant sees values that are 10x or 10000x too high.
+//
+// Fix: ignore the VIF exponent for the energy counters and read the raw digits as Wh.
+// Field names match amiplus, so existing Home Assistant entities keep working.
+// Voltages and tariff counters are left out, this meter does not send them.
+driver {
+    name           = amiplus_linznetz
+    meter_type     = ElectricityMeter
+    default_fields = name,id,total_energy_consumption_kwh,current_power_consumption_kw,total_energy_production_kwh,current_power_production_kw,timestamp
+    detect {
+        mvt = DEV,01,02
+    }
+    fields {
+        field {
+            name              = total_energy_consumption
+            quantity          = Energy
+            info              = 'The total energy consumption recorded by this meter (VIF exponent ignored, digits are Wh).'
+            vif_scaling       = None
+            override_vif_unit = wh
+            dif_signedness    = Signed
+            match {
+                measurement_type = Instantaneous
+                vif_range        = AnyEnergyVIF
+            }
+        }
+        field {
+            name           = current_power_consumption
+            quantity       = Power
+            info           = 'Current power consumption.'
+            vif_scaling    = Auto
+            dif_signedness = Signed
+            match {
+                measurement_type = Instantaneous
+                vif_range        = PowerW
+            }
+        }
+        field {
+            name              = total_energy_production
+            quantity          = Energy
+            info              = 'The total energy production recorded by this meter (VIF exponent ignored, digits are Wh).'
+            vif_scaling       = None
+            override_vif_unit = wh
+            dif_signedness    = Signed
+            match {
+                measurement_type = Instantaneous
+                vif_range        = AnyEnergyVIF
+                add_combinable   = BackwardFlow
+            }
+        }
+        field {
+            name           = current_power_production
+            quantity       = Power
+            info           = 'Current power production.'
+            vif_scaling    = Auto
+            dif_signedness = Signed
+            match {
+                measurement_type = Instantaneous
+                vif_range        = PowerW
+                add_combinable   = BackwardFlow
+            }
+        }
+        field {
+            name         = device
+            quantity     = PointInTime
+            info         = 'Device date time.'
+            display_unit = datetime
+            match {
+                measurement_type = Instantaneous
+                vif_range        = DateTime
+            }
+        }
+    }
+}

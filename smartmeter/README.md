@@ -50,6 +50,9 @@ live power plus import/export counters, usable in the Energy dashboard. Scraping
     portal. Take it from the add-on log, from the telegram of the matching electricity meter.
   - Old readings from the CSV files may have to be merged into HA's history. Counters must line up
     with the live meter, or `total_increasing` breaks in the Energy dashboard.
+- **Wrong energy scaling, sometimes** (found 2026-10-06): see [Wrong energy VIF](#wrong-energy-vif-and-the-custom-driver).
+  Fix: custom driver `drivers/amiplus_linznetz.xmq`, verified against all captured telegrams,
+  not yet running in Home Assistant.
 - **Open:** compare the counters once against the meter display or the portal. Import looks
   suspiciously low and export is > 0. Find out whether the meter is new and whether there is a
   feed-in source.
@@ -78,6 +81,57 @@ Quirks learned along the way:
 - bash 3.2: expand possibly empty arrays as `${arr[@]+"${arr[@]}"}`.
 - `scan` uses python3 from the Xcode Command Line Tools.
 - `.env` is only read (via `sed`), never sourced.
+
+## Wrong energy VIF and the custom driver
+
+LN-666 specifies the energy counters in Wh (VIF `0x03`). The meter sometimes sends the same BCD
+digits with a different VIF exponent: `0E04` (10 Wh, inferred from the ×10 phase, not seen in a
+captured telegram) or `0E07` (10⁴ Wh). The same happens for export (`0E83 3C` / `0E84 3C` /
+`0E87 3C`). It switches from one telegram to the next, check bytes stay OK and the digits keep
+counting exactly, so it is not a radio or decoding error. Power values are never affected.
+wmbusmeters scales by VIF, as it should, so Home Assistant gets ×10 or ×10 000 values and
+`total_increasing` sensors jump up and then count as a reset.
+
+Observed on 2026-10-06: three phases of about 26 minutes each (×10, ×10⁴, ×10⁴). In a 1023-telegram
+capture 85 telegrams used `0E07` and 938 used `0E03`.
+
+**Fix at the source:** `drivers/amiplus_linznetz.xmq` reads the energy digits as Wh and ignores the
+VIF exponent (`vif_scaling = None`, `override_vif_unit = wh`). Field names match `amiplus`
+(`total_energy_consumption_kwh`, `total_energy_production_kwh`), so entities keep their IDs.
+Voltages and tariff counters are left out, the meter does not send them.
+
+Tests:
+
+```bash
+smartmeter/tests/run.sh     # synthetic telegrams (tests/telegrams.txt), custom vs builtin amiplus
+```
+
+All three variants give the same kWh with the custom driver; builtin `amiplus` is ×10 / ×10 000 off
+for `0E04` / `0E07`. Verified locally against all captured real telegrams (not committed): every
+one decodes, import and export are monotonic with the custom driver, and builtin `amiplus` differs in
+exactly the `0E07` ones. The public LN-666 test vector gives 18.565 / 16.604 kWh with both drivers.
+
+Try it on a telegram with your key:
+
+```bash
+DRIVER=drivers/amiplus_linznetz.xmq ./wmbus-test.sh analyze [KEY] [HEX]
+```
+
+### Install in the Home Assistant add-on
+
+1. Add-on web UI → tab **Drivers** → add a driver named `amiplus_linznetz.xmq`, paste the content
+   of `drivers/amiplus_linznetz.xmq`. The add-on copies `/data/drivers` to
+   `wmbusmeters.drivers.d` on start.
+2. Meters → change the driver of the electricity meter from `amiplus` to `amiplus_linznetz`.
+3. Restart the add-on and check the log for the driver name and plausible kWh values.
+4. Check in HA that the existing entities kept their IDs. If discovery created new ones, the old
+   ones can be renamed or the statistics moved.
+
+After it is confirmed in operation:
+
+- Fix the HA statistics of the affected hours (Developer tools → Statistics, adjust or delete the
+  jumped values), otherwise the Energy dashboard keeps the spikes.
+- Remove the template-sensor fallback (the one that divides by 10 above 1.5× the last good value).
 
 ## Home Assistant integration
 
