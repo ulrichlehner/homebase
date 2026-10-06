@@ -11,7 +11,7 @@ BIN="$(find "$DIR/wmbus-tools/wmbusmeters" -type f -name wmbusmeters -perm -u+x 
 DRIVER="$DIR/drivers/amiplus_linznetz.xmq"
 
 field() { # field <json> <name>
-  printf '%s' "$1" | sed -n "s/.*\"$2\":\([-0-9.]*\).*/\1/p"
+  printf '%s' "$1" | sed -n "s/.*\"$2\":\([-0-9.a-z]*\).*/\1/p"
 }
 
 fail=0

@@ -8,6 +8,9 @@
 //
 // Fix: ignore the VIF exponent for the energy counters and read the raw digits as Wh.
 // Field names match amiplus, so existing Home Assistant entities keep working.
+// The meter also sends telegrams where both energy counters are all zero (observed 2026-10-06,
+// VIF 0x00 / 0x80 0x3C). A real counter is never 0, and Home Assistant would count the drop to 0
+// as a reset and the return as consumption of the whole counter. null_value turns 0 into null.
 // Voltages and tariff counters are left out, this meter does not send them.
 //
 // The detect triplet is a dummy that this meter never sends (real: DEV,01,02). With the real
@@ -27,6 +30,7 @@ driver {
             info              = 'The total energy consumption recorded by this meter (VIF exponent ignored, digits are Wh).'
             vif_scaling       = None
             override_vif_unit = wh
+            null_value        = 0
             dif_signedness    = Signed
             match {
                 measurement_type = Instantaneous
@@ -50,6 +54,7 @@ driver {
             info              = 'The total energy production recorded by this meter (VIF exponent ignored, digits are Wh).'
             vif_scaling       = None
             override_vif_unit = wh
+            null_value        = 0
             dif_signedness    = Signed
             match {
                 measurement_type = Instantaneous
