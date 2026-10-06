@@ -9,12 +9,16 @@
 // Fix: ignore the VIF exponent for the energy counters and read the raw digits as Wh.
 // Field names match amiplus, so existing Home Assistant entities keep working.
 // Voltages and tariff counters are left out, this meter does not send them.
+//
+// The detect triplet is a dummy that this meter never sends (real: DEV,01,02). With the real
+// one, wmbusmeters removes the builtin amiplus as soon as this file is loaded. This driver is
+// therefore never auto-detected: select it explicitly in the meter config.
 driver {
     name           = amiplus_linznetz
     meter_type     = ElectricityMeter
     default_fields = name,id,total_energy_consumption_kwh,current_power_consumption_kw,total_energy_production_kwh,current_power_production_kw,timestamp
     detect {
-        mvt = DEV,01,02
+        mvt = DEV,FE,02
     }
     fields {
         field {

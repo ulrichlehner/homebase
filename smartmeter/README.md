@@ -122,10 +122,23 @@ DRIVER=drivers/amiplus_linznetz.xmq ./wmbus-test.sh analyze [KEY] [HEX]
 1. Add-on web UI → tab **Drivers** → add a driver named `amiplus_linznetz.xmq`, paste the content
    of `drivers/amiplus_linznetz.xmq`. The add-on copies `/data/drivers` to
    `wmbusmeters.drivers.d` on start.
-2. Meters → change the driver of the electricity meter from `amiplus` to `amiplus_linznetz`.
-3. Restart the add-on and check the log for the driver name and plausible kWh values.
-4. Check in HA that the existing entities kept their IDs. If discovery created new ones, the old
-   ones can be renamed or the statistics moved.
+2. **MQTT discovery file.** The add-on creates the HA entities from `<driver>.json`. Without one
+   it logs `File …/mqtt_discovery/amiplus_linznetz.json not found` and removes all sensors of the
+   meter. Copy `ha/mqtt_discovery/amiplus_linznetz.json` to
+   `/config/wmbusmeters/etc/mqtt_discovery/amiplus_linznetz.json` on the HA host (File editor or
+   Samba share; the add-on only copies files that are missing, it does not overwrite yours). The
+   file keeps the `unique_id`s and device identifiers of `amiplus`, so entities and history stay.
+3. Meters → change the driver of the electricity meter from `amiplus` to `amiplus_linznetz`.
+   Do this after step 2, otherwise the sensors are removed (see above).
+4. Restart the add-on and check the log: no `No such driver`, discovery topics are added again,
+   telegrams decode with plausible kWh values.
+5. Check in HA that the existing entities kept their IDs and come back from "unavailable". Voltage
+   and tariff entities of the old driver stay unavailable and can be deleted.
+
+The driver deliberately uses a dummy `detect` triplet (`DEV,FE,02`). With the real one
+(`DEV,01,02`), wmbusmeters removes the builtin `amiplus` as soon as the file is loaded, and a meter
+still configured as `amiplus` crashes in a restart loop (`No such driver amiplus`, exit status 5).
+This happened in the first install attempt.
 
 After it is confirmed in operation:
 

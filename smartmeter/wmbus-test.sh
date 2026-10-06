@@ -246,9 +246,14 @@ analyze() {
     hex="$(tail -n1 "$src")"
     echo "Verwende letztes Telegramm aus $(basename "$src"): $hex"
   fi
-  local driver_args=()
-  [ -z "${DRIVER:-}" ] || driver_args=("--driver=$DRIVER")
-  "$bin" ${driver_args[@]+"${driver_args[@]}"} "--analyze=$key" "$hex"
+  if [ -n "${DRIVER:-}" ]; then
+    # custom drivers are not auto-detected, so name the driver explicitly
+    local name
+    name="$(basename "$DRIVER" .xmq)"
+    "$bin" "--driver=$DRIVER" "--analyze=$name:$key" "$hex"
+  else
+    "$bin" "--analyze=$key" "$hex"
+  fi
 }
 
 confirm() {
