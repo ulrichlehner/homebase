@@ -1,0 +1,13 @@
+# lokale Builds und Daten
+wmbus-tools/
+wmbus-out/
+.wmbus-brew-installed
+*.hex
+*.jsonl
+
+# Secrets (Zugangscode, Zähler-ID)
+.env
+*.key
+
+# macOS
+.DS_Store
