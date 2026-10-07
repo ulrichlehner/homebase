@@ -169,9 +169,17 @@ Copy `ha/mqtt_discovery/amiplus_linznetz.json` to
 File editor, Samba). The add-on only copies missing files, it does not overwrite yours. The file
 keeps the `unique_id`s and device identifiers of `amiplus`, so entities and history stay.
 
-**4. Switch the meter.** Tab **Home** → Meters → `driver = amiplus_linznetz`. Keep `id`, `key`
-and `name`. The `id` is the one from the add-on log, not the meter number from the portal. Save,
-restart the add-on.
+**4. Switch the meter.** Tab **Home** → Meters → `driver = amiplus_linznetz`, `id`, `key`, `name`.
+The `id` is the one from the add-on log, not the meter number from the portal. Save, restart the
+add-on.
+
+Naming: `name` becomes the MQTT topic (`wmbusmeters/<name>`), the device name and the prefix of all
+entity IDs. Use lowercase ASCII without spaces, **unique per meter** (two meters with the same name
+publish to the same topic and overwrite each other), no street or house number (names show up in
+logs and screenshots). Scheme `<place>_<role>`, for example `<place>_grid` for the grid meter and
+later `<place>_pv` for a PV inverter. The place is the municipality, not the street. The discovery
+file names the entities `energy import`, `energy export`, `power import` and `power export`, which
+gives IDs like `sensor.<place>_grid_energy_import`.
 
 **5. Check the add-on log:**
 

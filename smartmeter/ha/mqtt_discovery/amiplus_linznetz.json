@@ -11,7 +11,7 @@
         "name": "{name}",
         "hw_version": "{id}"
       },
-      "name": "total energy consumption",
+      "name": "energy import",
       "unique_id": "wmbusmeters_{id}_{attribute}",
       "state_topic": "wmbusmeters/{name}",
       "value_template": "{{ value_json.total_energy_consumption_kwh }}",
@@ -35,7 +35,7 @@
         "name": "{name}",
         "hw_version": "{id}"
       },
-      "name": "total energy production",
+      "name": "energy export",
       "unique_id": "wmbusmeters_{id}_{attribute}",
       "state_topic": "wmbusmeters/{name}",
       "value_template": "{{ value_json.total_energy_production_kwh }}",
@@ -59,7 +59,7 @@
         "name": "{name}",
         "hw_version": "{id}"
       },
-      "name": "current power consumption",
+      "name": "power import",
       "unique_id": "wmbusmeters_{id}_{attribute}",
       "state_topic": "wmbusmeters/{name}",
       "value_template": "{{ value_json.{attribute} }}",
@@ -83,7 +83,7 @@
         "name": "{name}",
         "hw_version": "{id}"
       },
-      "name": "current power production",
+      "name": "power export",
       "unique_id": "wmbusmeters_{id}_{attribute}",
       "state_topic": "wmbusmeters/{name}",
       "value_template": "{{ value_json.{attribute} }}",
