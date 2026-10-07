@@ -157,9 +157,11 @@ The add-on copies `/data/drivers` to its `wmbusmeters.drivers.d` folder on every
 **2. Move the config location into the HA configuration.** Tab **Home** →
 `wmbusmeters config location` → set `/homeassistant/wmbusmeters`, save, restart the add-on.
 This version mounts the HA configuration as `/homeassistant`. A location under `/config` is an
-empty folder inside the container that is wiped on restart, so files you put there disappear. The
-folder `/addon_configs/…_wmbusmeters` does not exist for this add-on either. Check on the HA
-host that `ls /config/wmbusmeters/etc` shows `mqtt_discovery`.
+empty folder inside the container; per the add-on's `run.sh`, files there are lost when the add-on
+is updated (a plain restart was not tested). The folder `/addon_configs/…_wmbusmeters` does not
+exist for this add-on either. The add-on only creates `etc/mqtt_discovery` once MQTT discovery is
+enabled (Home tab, MQTT) and it has started. Check on the HA host with `ls /config/wmbusmeters/etc`;
+if the folder is missing, create it with `mkdir -p /config/wmbusmeters/etc/mqtt_discovery`.
 
 **3. Add the MQTT discovery file.** The add-on creates the HA entities from
 `mqtt_discovery/<driver>.json`. For an unknown driver it logs
@@ -231,7 +233,7 @@ name and ID.
 |---|---|
 | restart loop, `No such driver amiplus … triggered a removal of the builtin driver`, exit status 5 | the driver declared `detect` = `DEV,01,02`, same as `amiplus` (fixed: dummy triplet) |
 | `File …/amiplus_linznetz.json not found`, then `Removing topic …` | no discovery file for the new driver (step 3) |
-| file under `/config/wmbusmeters` missing after restart | add-on `/config` is ephemeral (step 2) |
+| file under `/config/wmbusmeters` missing after an add-on update | add-on `/config` is ephemeral (step 2) |
 | the add-on log prints key, ID and meter name in clear text on every start | by design, never share or commit it |
 
 **After it is confirmed in operation:**
