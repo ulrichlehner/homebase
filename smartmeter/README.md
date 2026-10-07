@@ -174,11 +174,11 @@ The `id` is the one from the add-on log, not the meter number from the portal. S
 add-on.
 
 Naming: `name` becomes the MQTT topic (`wmbusmeters/<name>`), the device name and the prefix of all
-entity names. A readable name such as `<Place> Grid` works: Home Assistant shows
-"<Place> Grid energy import" and turns it into the entity ID `sensor.<place>_grid_energy_import`. Keep
+entity names. A readable name such as `<Place> grid` works: Home Assistant shows
+"<Place> grid energy import" and turns it into the entity ID `sensor.<place>_grid_energy_import`. Keep
 it unique per meter (two meters with the same name publish to the same topic and overwrite each
 other) and leave out the street and house number, because names show up in logs and screenshots.
-Scheme `<Place> <Role>`: `<Place> Grid` for the grid meter, later `<Place> PV` for a PV inverter,
+Scheme `<Place> <Role>`: `<Place> grid` for the grid meter, later `<Place> PV` for a PV inverter,
 with the municipality as the place. The discovery file names the entities `energy import`,
 `energy export`, `power import` and `power export`.
 
