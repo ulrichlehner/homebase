@@ -110,8 +110,10 @@ Energy dashboard.
 
 **Fix at the source:** `drivers/amiplus_linznetz.xmq`
 
-- reads the energy digits as Wh and ignores the VIF exponent (`vif_scaling = None`,
-  `override_vif_unit = wh`),
+- reads the energy digits as Wh and ignores the VIF exponent (`vif_scaling = None` plus
+  `force_scale = 1/1000` to get kWh). Do not use `override_vif_unit = wh` here: it only exists
+  in wmbusmeters since 2026-09-25, and an older add-on image silently ignores it, which makes
+  Home Assistant show Wh as kWh (values 1000× too high, seen on 2026-10-07),
 - turns a counter value of 0 into `null` (`null_value = 0`), because a real counter is never 0;
   in Home Assistant the sensor then goes `unknown` for those telegrams instead of 0. If your
   meter legitimately exports 0 kWh, remove the `null_value` line from the export field,

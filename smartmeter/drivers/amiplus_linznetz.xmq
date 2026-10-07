@@ -7,6 +7,8 @@
 // scales by VIF (as it should), so Home Assistant sees values that are 10x or 10000x too high.
 //
 // Fix: ignore the VIF exponent for the energy counters and read the raw digits as Wh.
+// force_scale turns Wh into kWh. override_vif_unit is deliberately not used: older wmbusmeters
+// builds (add-on images before 2026-09-25) ignore it and would report Wh as kWh.
 // Field names match amiplus, so existing Home Assistant entities keep working.
 // The meter also sends telegrams where both energy counters are all zero (observed 2026-10-06,
 // VIF 0x00 / 0x80 0x3C). A real counter is never 0, and Home Assistant would count the drop to 0
@@ -29,7 +31,7 @@ driver {
             quantity          = Energy
             info              = 'The total energy consumption recorded by this meter (VIF exponent ignored, digits are Wh).'
             vif_scaling       = None
-            override_vif_unit = wh
+            force_scale       = 1/1000
             null_value        = 0
             dif_signedness    = Signed
             match {
@@ -53,7 +55,7 @@ driver {
             quantity          = Energy
             info              = 'The total energy production recorded by this meter (VIF exponent ignored, digits are Wh).'
             vif_scaling       = None
-            override_vif_unit = wh
+            force_scale       = 1/1000
             null_value        = 0
             dif_signedness    = Signed
             match {
