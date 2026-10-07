@@ -1,0 +1,166 @@
+{
+  "total_energy_consumption_kwh": {
+    "component": "sensor",
+    "discovery_payload": {
+      "device": {
+        "identifiers": [
+          "wmbusmeters_{id}"
+        ],
+        "manufacturer": "Develco",
+        "model": "Electricity meter LINZ NETZ (driver: {driver})",
+        "name": "{name}",
+        "hw_version": "{id}"
+      },
+      "name": "total energy consumption",
+      "unique_id": "wmbusmeters_{id}_{attribute}",
+      "state_topic": "wmbusmeters/{name}",
+      "value_template": "{{ value_json.total_energy_consumption_kwh }}",
+      "json_attributes_topic": "wmbusmeters/{name}",
+      "icon": "mdi:transmission-tower-import",
+      "unit_of_measurement": "kWh",
+      "state_class": "total_increasing",
+      "device_class": "energy",
+      "enabled_by_default": true
+    }
+  },
+  "total_energy_production_kwh": {
+    "component": "sensor",
+    "discovery_payload": {
+      "device": {
+        "identifiers": [
+          "wmbusmeters_{id}"
+        ],
+        "manufacturer": "Develco",
+        "model": "Electricity meter LINZ NETZ (driver: {driver})",
+        "name": "{name}",
+        "hw_version": "{id}"
+      },
+      "name": "total energy production",
+      "unique_id": "wmbusmeters_{id}_{attribute}",
+      "state_topic": "wmbusmeters/{name}",
+      "value_template": "{{ value_json.total_energy_production_kwh }}",
+      "json_attributes_topic": "wmbusmeters/{name}",
+      "icon": "mdi:transmission-tower-export",
+      "unit_of_measurement": "kWh",
+      "state_class": "total_increasing",
+      "device_class": "energy",
+      "enabled_by_default": true
+    }
+  },
+  "current_power_consumption_kw": {
+    "component": "sensor",
+    "discovery_payload": {
+      "device": {
+        "identifiers": [
+          "wmbusmeters_{id}"
+        ],
+        "manufacturer": "Develco",
+        "model": "Electricity meter LINZ NETZ (driver: {driver})",
+        "name": "{name}",
+        "hw_version": "{id}"
+      },
+      "name": "current power consumption",
+      "unique_id": "wmbusmeters_{id}_{attribute}",
+      "state_topic": "wmbusmeters/{name}",
+      "value_template": "{{ value_json.{attribute} }}",
+      "json_attributes_topic": "wmbusmeters/{name}",
+      "icon": "mdi:counter",
+      "unit_of_measurement": "kW",
+      "state_class": "measurement",
+      "device_class": "power",
+      "enabled_by_default": true
+    }
+  },
+  "current_power_production_kw": {
+    "component": "sensor",
+    "discovery_payload": {
+      "device": {
+        "identifiers": [
+          "wmbusmeters_{id}"
+        ],
+        "manufacturer": "Develco",
+        "model": "Electricity meter LINZ NETZ (driver: {driver})",
+        "name": "{name}",
+        "hw_version": "{id}"
+      },
+      "name": "current power production",
+      "unique_id": "wmbusmeters_{id}_{attribute}",
+      "state_topic": "wmbusmeters/{name}",
+      "value_template": "{{ value_json.{attribute} }}",
+      "json_attributes_topic": "wmbusmeters/{name}",
+      "icon": "mdi:counter",
+      "unit_of_measurement": "kW",
+      "state_class": "measurement",
+      "device_class": "power",
+      "enabled_by_default": true
+    }
+  },
+  "timestamp": {
+    "component": "sensor",
+    "discovery_payload": {
+      "device": {
+        "identifiers": [
+          "wmbusmeters_{id}"
+        ],
+        "manufacturer": "Develco",
+        "model": "Electricity meter LINZ NETZ (driver: {driver})",
+        "name": "{name}",
+        "hw_version": "{id}"
+      },
+      "entity_category": "diagnostic",
+      "name": "timestamp",
+      "unique_id": "wmbusmeters_{id}_{attribute}",
+      "state_topic": "wmbusmeters/{name}",
+      "value_template": "{{ value_json.{attribute} }}",
+      "icon": "mdi:calendar-clock",
+      "device_class": "timestamp",
+      "enabled_by_default": false
+    }
+  },
+  "device_date_time": {
+    "component": "sensor",
+    "discovery_payload": {
+      "device": {
+        "identifiers": [
+          "wmbusmeters_{id}"
+        ],
+        "manufacturer": "Develco",
+        "model": "Electricity meter LINZ NETZ (driver: {driver})",
+        "name": "{name}",
+        "hw_version": "{id}"
+      },
+      "entity_category": "diagnostic",
+      "name": "Device date and time",
+      "unique_id": "wmbusmeters_{id}_{attribute}",
+      "state_topic": "wmbusmeters/{name}",
+      "value_template": "{{ value_json.{attribute} }}",
+      "icon": "mdi:calendar-clock",
+      "device_class": "timestamp",
+      "enabled_by_default": false
+    }
+  },
+  "rssi_dbm": {
+    "component": "sensor",
+    "discovery_payload": {
+      "device": {
+        "identifiers": [
+          "wmbusmeters_{id}"
+        ],
+        "manufacturer": "Develco",
+        "model": "Electricity meter LINZ NETZ (driver: {driver})",
+        "name": "{name}",
+        "hw_version": "{id}"
+      },
+      "entity_category": "diagnostic",
+      "name": "rssi",
+      "unique_id": "wmbusmeters_{id}_{attribute}",
+      "state_topic": "wmbusmeters/{name}",
+      "value_template": "{{ value_json.{attribute} }}",
+      "icon": "mdi:signal",
+      "unit_of_measurement": "dBm",
+      "device_class": "signal_strength",
+      "state_class": "measurement",
+      "enabled_by_default": true
+    }
+  }
+}
