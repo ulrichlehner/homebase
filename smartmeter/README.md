@@ -175,12 +175,30 @@ add-on.
 
 Naming: `name` becomes the MQTT topic (`wmbusmeters/<name>`), the device name and the prefix of all
 entity names. A readable name such as `<Place> grid` works: Home Assistant shows
-"<Place> grid energy import" and turns it into the entity ID `sensor.<place>_grid_energy_import`. Keep
+"<Place> grid total energy consumption" and turns it into the entity ID
+`sensor.<place>_grid_total_energy_consumption`. Keep
 it unique per meter (two meters with the same name publish to the same topic and overwrite each
 other) and leave out the street and house number, because names show up in logs and screenshots.
 Scheme `<Place> <Role>`: `<Place> grid` for the grid meter, later `<Place> PV` for a PV inverter,
-with the municipality as the place. The discovery file names the entities `energy import`,
-`energy export`, `power import` and `power export`.
+with the municipality as the place. The entity names are those of the stock `amiplus` discovery file.
+
+### Differences from the stock `amiplus`
+
+The driver and the discovery file stay as close to the stock `amiplus` as possible, so they are easy
+to compare with upstream. Everything that differs:
+
+| Where | Change | Why |
+|---|---|---|
+| driver, both energy fields | `vif_scaling = None`, `force_scale = 1/1000` | ignore the wrong VIF exponent |
+| driver, both energy fields | `null_value = 0` | all-zero telegrams become `unknown` |
+| driver | `detect` is a dummy triplet | the real one removes the builtin `amiplus` |
+| driver | voltage, tariff and reactive fields left out | the meter does not send them |
+| discovery file | only the 7 matching entities | same reason |
+| discovery file | `value_template` of import and export is `{{ value_json.<field> }}` | the stock one falls back to the tariff sums, which fail on `null` |
+| discovery file | manufacturer and model texts say Develco and LINZ NETZ | the stock ones say Apator |
+
+Everything else, including entity names, icons, device classes and `unique_id`s, is copied from the
+stock file.
 
 **5. Check the add-on log:**
 
