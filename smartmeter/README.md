@@ -50,10 +50,10 @@ live power plus import/export counters, usable in the Energy dashboard. Scraping
     portal. Take it from the add-on log, from the telegram of the matching electricity meter.
   - Old readings from the CSV files may have to be merged into HA's history. Counters must line up
     with the live meter, or `total_increasing` breaks in the Energy dashboard.
-- **Wrong or zero energy values, sometimes** (found 2026-10-06): see
+- **Wrong or zero energy values, sometimes** (found 2026-10-06, understood 2026-10-12): see
   [Wrong energy values](#wrong-energy-values-and-the-custom-driver). Fix: custom driver
-  `drivers/amiplus_linznetz.xmq`, verified against all captured telegrams and running in the add-on
-  since 2026-10-06 evening; long-term behaviour in Home Assistant not yet confirmed.
+  `drivers/amiplus_linznetz.xmq` that only accepts the energy records from LN-666, verified
+  against all captured telegrams.
 - **Open:** compare the counters once against the meter display or the portal. Import looks
   suspiciously low and export is > 0. Find out whether the meter is new and whether there is a
   feed-in source.
@@ -85,45 +85,48 @@ Quirks learned along the way:
 
 ## Wrong energy values and the custom driver
 
-LN-666 specifies the energy counters in Wh (VIF `0x03`). On the real meter three variants show up
-(observed 2026-10-06), and only the first one matches the document:
+LN-666 specifies the energy counters in Wh: DIF/VIF `0E 03` for import, `0E 83 3C` for export.
+The real meter sends other records too, for minutes at a time:
 
-| Variant | import record | export record | What the builtin `amiplus` reports |
-|---|---|---|---|
-| spec | `0E 03` | `0E 83 3C` | correct |
-| wrong exponent | `0E 04` (10 Wh, inferred from a ×10 phase, not seen in a captured telegram) or `0E 07` (10⁴ Wh) | `0E 84 3C` / `0E 87 3C` | ×10 or ×10 000 too high |
-| all zero | `0E 00`, digits `000000000000` | `0E 80 3C`, digits zero | 0 kWh |
+| Record | Import | Export | Digits | What the builtin `amiplus` reports |
+|---|---|---|---|---|
+| spec | `0E 03` | `0E 83 3C` | Wh | correct |
+| VIF 7 | `0E 07` (10⁴ Wh) | `0E 87 3C` | **not** in 10⁴ Wh: seen as Wh (2026-10-06) and as tenths of Wh (2026-10-12) | ×10 000 or ×100 000 too high |
+| all zero | `0E 00` | `0E 80 3C` | `000000000000` | 0 kWh |
 
-- **Wrong exponent:** same BCD digits as in the spec variant, only the exponent differs. The
-  meter switches from one telegram to the next, check bytes stay OK and the digits keep counting
-  exactly, so it is not a radio or decoding error. Seen as three phases of about 26 minutes each,
-  in a 1023-telegram capture 85 telegrams used `0E07` and 938 used `0E03`.
-- **All zero:** seen afterwards for at least two minutes in a row, with a normal device clock,
-  access number and power values. Whether this is a third meter state or something else is not
-  known.
-- Power values (`0B 2B`, `0B AB 3C`) were never affected.
+- The VIF 7 phases lasted about 26 to 30 minutes each. Within a phase the digits keep counting,
+  but their unit is not the one the VIF says, and it differs between phases. Neither the VIF nor
+  a fixed factor gives the right value, so these records cannot be repaired, only ignored.
+- Three more phases have no logged telegrams, so their record is unknown: on 2026-10-06 the
+  builtin driver showed values 10× too high, and on 2026-10-09 and 2026-10-11 the earlier version
+  of this driver showed roughly 1/10 000 and 1/10 of the real counter. Presumably the same
+  pattern with yet other digit units; the strict match drops them as long as the VIF is not 3.
+- All zero: seen for single telegrams and for minutes, with normal device clock, access number and
+  power values.
+- Power values (`0B 2B`, `0B AB 3C`) were never affected. In 1721 logged telegrams all 1290
+  `0E 03` records were monotonic and plausible.
 
-wmbusmeters scales by VIF, as it should. In Home Assistant the first variant gives values 10× or
-10 000× too high, the second one a drop to 0 and back. A `total_increasing` sensor counts a drop as a
-reset and the return as consumption of the whole counter, so both variants add false energy to the
-Energy dashboard.
+In Home Assistant a `total_increasing` sensor counts a drop as a meter reset and the return as
+consumption of the whole counter, so every phase books tens or hundreds of kWh that never flowed.
 
 **Fix at the source:** `drivers/amiplus_linznetz.xmq`
 
-- reads the energy digits as Wh and ignores the VIF exponent (`vif_scaling = None` plus
-  `force_scale = 1/1000` to get kWh). Do not use `override_vif_unit = wh` here: it only exists
-  in wmbusmeters since 2026-09-25, and an older add-on image silently ignores it, which makes
-  Home Assistant show Wh as kWh (values 1000× too high, seen on 2026-10-07),
-- turns a counter value of 0 into `null` (`null_value = 0`), because a real counter is never 0;
-  in Home Assistant the sensor then goes `unknown` for those telegrams instead of 0. If your
-  meter legitimately exports 0 kWh, remove the `null_value` line from the export field,
+- the energy fields only match the records LN-666 specifies (`difvifkey = 0E03` and `0E833C`) and
+  scale them normally (`vif_scaling = Auto`). Telegrams with any other energy record carry no
+  energy value; power and date still come through. In Home Assistant the energy sensors show
+  `unknown` for those telegrams, and the counter continues when the meter returns to the spec,
 - keeps the field names of `amiplus` (`total_energy_consumption_kwh`,
-  `total_energy_production_kwh`), so entities keep their IDs; voltages and tariff counters are
-  left out, the meter does not send them,
+  `total_energy_production_kwh`); voltages and tariff counters are left out, the meter does not
+  send them,
 - uses a dummy `detect` triplet (`DEV,FE,02`) on purpose. With the real one (`DEV,01,02`)
   wmbusmeters removes the builtin `amiplus` as soon as the file is loaded, and a meter still
   configured as `amiplus` crashes in a restart loop (`No such driver amiplus`, exit status 5).
   The driver is therefore never auto-detected, you select it explicitly.
+
+Earlier versions read the digits as Wh whatever the VIF said (`vif_scaling = None`,
+`force_scale = 1/1000`, `null_value = 0`). That fixed the 2026-10-06 phases but turned the later
+ones into drops to 1/10 and 1/10 000. Avoid `override_vif_unit` in any case: it only exists in
+wmbusmeters since 2026-09-25, and an older add-on image silently ignores it.
 
 Tests:
 
@@ -131,11 +134,11 @@ Tests:
 smartmeter/tests/run.sh     # synthetic telegrams (tests/telegrams.txt), custom vs builtin amiplus
 ```
 
-All wrong-exponent variants give the same kWh with the custom driver, the zero variant gives `null`;
-builtin `amiplus` is ×10 / ×10 000 off or 0. Verified locally against every captured real
-telegram (not committed): all decode, import and export are monotonic, and builtin `amiplus`
-differs in exactly the wrong ones. The public LN-666 test vector gives 18.565 / 16.604 kWh with both
-drivers. To try it on a telegram with your key:
+The spec record gives the expected kWh, every other record gives no value, while the builtin
+`amiplus` reports the wrong ones. Verified locally against every captured real telegram (not
+committed): all `0E 03` records decode and are monotonic, all `0E 07` and `0E 00` records give no
+energy value. The public LN-666 test vector gives 18.565 / 16.604 kWh with both drivers. To try it
+on a telegram with your key:
 
 ```bash
 DRIVER=drivers/amiplus_linznetz.xmq ./wmbus-test.sh analyze [KEY] [HEX]
@@ -191,12 +194,11 @@ to compare with upstream. Everything that differs:
 
 | Where | Change | Why |
 |---|---|---|
-| driver, both energy fields | `vif_scaling = None`, `force_scale = 1/1000` | ignore the wrong VIF exponent |
-| driver, both energy fields | `null_value = 0` | all-zero telegrams become `unknown` |
+| driver, both energy fields | match `difvifkey = 0E03` / `0E833C` instead of `vif_range = AnyEnergyVIF` | only the records from LN-666 are trustworthy |
 | driver | `detect` is a dummy triplet | the real one removes the builtin `amiplus` |
 | driver | voltage, tariff and reactive fields left out | the meter does not send them |
 | discovery file | only the 7 matching entities | same reason |
-| discovery file | `value_template` of import and export is `{{ value_json.<field> }}` | the stock one falls back to the tariff sums, which fail on `null` |
+| discovery file | `value_template` of import and export is `{{ value_json.get('<field>') }}` | the stock one falls back to the tariff sums, which fail when the field is missing |
 | discovery file | manufacturer and model texts say Develco and LINZ NETZ | the stock ones say Apator |
 
 Everything else, including entity names, icons, device classes and `unique_id`s, is copied from the
@@ -216,8 +218,8 @@ the raw decrypted telegram, counters included.
 
 - import, export and powers show values again, entity IDs unchanged (no `_2` suffixes),
 - import and export are plausible against the meter display or the portal and only rise slowly,
-- during zero telegrams the energy sensors show `unknown` instead of 0 (HA ignores `unknown`
-  states in the statistics, to be confirmed in operation),
+- during telegrams with a non-spec energy record the energy sensors show `unknown` instead of a
+  wrong value; HA ignores `unknown` states in the statistics (seen in operation, no jumps),
 - the old voltage and tariff entities stay unavailable and can be deleted.
 
 **Fallback without the discovery file:** define the MQTT sensors by hand in `configuration.yaml`
@@ -234,6 +236,9 @@ name and ID.
 | restart loop, `No such driver amiplus … triggered a removal of the builtin driver`, exit status 5 | the driver declared `detect` = `DEV,01,02`, same as `amiplus` (fixed: dummy triplet) |
 | `File …/amiplus_linznetz.json not found`, then `Removing topic …` | no discovery file for the new driver (step 3) |
 | file under `/config/wmbusmeters` missing after an add-on update | add-on `/config` is ephemeral (step 2) |
+| energy values 1000× too high after switching the driver | `override_vif_unit` is ignored by older wmbusmeters builds |
+| hourly bars of 90 to 100 kWh, value briefly 1/10 or 1/10 000 of the counter | non-spec energy records read by an earlier driver version |
+| entity IDs still carry the old name after deleting and re-adding the device | HA restores entity IDs via the `unique_id`; rename them by hand in the entity settings |
 | the add-on log prints key, ID and meter name in clear text on every start | by design, never share or commit it |
 
 **After it is confirmed in operation:**
