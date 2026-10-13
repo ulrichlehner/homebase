@@ -147,7 +147,16 @@ DRIVER=drivers/amiplus_linznetz.xmq ./wmbus-test.sh analyze [KEY] [HEX]
 ## Install in Home Assistant (wmbusmeters add-on 3.0.0-RC1, HA OS)
 
 Tested on HA OS 18.3, Core 2026.9.4, add-on `wmbusmeters-ha-addon` 3.0.0-RC1 with the official
-Mosquitto broker. Order matters, steps 1 to 3 before step 4.
+Mosquitto broker. The add-on is configured in its own web UI (Open Web UI), not in the add-on
+settings.
+
+The add-on only publishes the readings to `wmbusmeters/<name>`. The Home Assistant sensors come
+from `configuration.yaml` (`ha/mqtt_sensors.yaml`), not from the add-on's MQTT discovery. The
+discovery needs a file `mqtt_discovery/<driver>.json`, which the add-on ships for its builtin
+drivers only, so a custom driver needs a hand-placed file. The add-on's test channel (3.0.0.216)
+replaces those files with payloads it generates from the driver when the first telegram arrives,
+so entity names, `unique_id`s and value templates may change with an add-on update. YAML sensors
+depend on neither mechanism, only on the topic and the field names of the driver.
 
 **1. Add the driver.** Add-on web UI → tab **Drivers** → add a driver:
 
@@ -155,28 +164,14 @@ Mosquitto broker. Order matters, steps 1 to 3 before step 4.
   and wmbusmeters only loads `*.xmq` files,
 - content: `drivers/amiplus_linznetz.xmq` from this repo, Save.
 
-The add-on copies `/data/drivers` to its `wmbusmeters.drivers.d` folder on every start.
+The add-on keeps drivers in its own `/data/drivers` and copies them to its config location on every
+start, so they survive updates. The config location itself (tab **Home**) can stay at its default
+`/homeassistant/wmbusmeters`; nothing is placed there by hand any more. The add-on rewrites its
+`etc/` folder on every start and migrates an old `/config/...` location by itself.
 
-**2. Move the config location into the HA configuration.** Tab **Home** →
-`wmbusmeters config location` → set `/homeassistant/wmbusmeters`, save, restart the add-on.
-This version mounts the HA configuration as `/homeassistant`. A location under `/config` is an
-empty folder inside the container; per the add-on's `run.sh`, files there are lost when the add-on
-is updated (a plain restart was not tested). The folder `/addon_configs/…_wmbusmeters` does not
-exist for this add-on either. The add-on only creates `etc/mqtt_discovery` once MQTT discovery is
-enabled (Home tab, MQTT) and it has started. Check on the HA host with `ls /config/wmbusmeters/etc`;
-if the folder is missing, create it with `mkdir -p /config/wmbusmeters/etc/mqtt_discovery`.
-
-**3. Add the MQTT discovery file.** The add-on creates the HA entities from
-`mqtt_discovery/<driver>.json`. For an unknown driver it logs
-`File …/mqtt_discovery/amiplus_linznetz.json not found` and **removes all sensors** of the meter.
-Copy `ha/mqtt_discovery/amiplus_linznetz.json` to
-`/config/wmbusmeters/etc/mqtt_discovery/amiplus_linznetz.json` on the HA host (Terminal & SSH,
-File editor, Samba). The add-on only copies missing files, it does not overwrite yours. The file
-keeps the `unique_id`s and device identifiers of `amiplus`, so entities and history stay.
-
-**4. Switch the meter.** Tab **Home** → Meters → `driver = amiplus_linznetz`, `id`, `key`, `name`.
-The `id` is the one from the add-on log, not the meter number from the portal. Save, restart the
-add-on.
+**2. Configure the meter.** Tab **Home** → Meters → `driver = amiplus_linznetz`, `id`, `key`, `name`.
+The `id` is the one from the add-on log, not the meter number from the portal. Leave **MQTT
+discovery** off. Save, restart the add-on.
 
 Naming: `name` becomes the MQTT topic (`wmbusmeters/<name>`), the device name and the prefix of all
 entity names. A readable name such as `<Place> grid` works: Home Assistant shows
@@ -187,90 +182,90 @@ other) and leave out the street and house number, because names show up in logs 
 Scheme `<Place> <Role>`: `<Place> grid` for the grid meter, later `<Place> PV` for a PV inverter,
 with the municipality as the place. The entity names are those of the stock `amiplus` discovery file.
 
+**3. Add the sensors to `configuration.yaml`.** Copy the block from `ha/mqtt_sensors.yaml` into
+`/config/configuration.yaml` (File editor or Terminal & SSH add-on) and replace `<NAME>` and
+`<METER-ID>`. If the file already has an `mqtt:` key, add the list items to its `sensor:` list.
+Then Developer tools → YAML → Check configuration, and reload **Manually configured MQTT
+entities** (or restart Home Assistant). The filled-in block contains the meter name and ID: keep it
+out of this repo.
+
+The template keeps the names, `unique_id`s and device identifiers the add-on's discovery used, so a
+switch from discovery keeps entity IDs and history (see below). Validated against the MQTT sensor
+schema of Home Assistant 2026.2.
+
+**4. Check the add-on log:**
+
+- no `No such driver`, no restart loop,
+- no `Add/update topic` lines (discovery is off),
+- ends with `Started auto rtlwmbus … listening on t1`.
+
+To see telegrams, set `logtelegrams` to `true` in the Home tab for a while. The log lines contain
+the raw decrypted telegram, counters included.
+
+**5. Check Home Assistant.** Settings → Devices & services → MQTT → your meter:
+
+- import, export and powers show values, entity IDs as expected (no `_2` suffixes),
+- import and export are plausible against the meter display or the portal and only rise slowly,
+- during telegrams with a non-spec energy record the energy sensors show `unknown` instead of a
+  wrong value; HA ignores `unknown` states in the statistics (seen in operation, no jumps).
+
+### Switching from the add-on's MQTT discovery
+
+For an install that still uses discovery (stock `amiplus`, or `amiplus_linznetz` with the discovery
+file from an earlier version of this folder). Order matters: if HA loads the YAML sensors while
+the discovered ones exist, it rejects them as duplicate `unique_id`s.
+
+1. Add the driver (step 1) and switch the meter to `amiplus_linznetz` (step 2) if not done yet.
+2. Paste the block from step 3 into `configuration.yaml`, but do not reload or restart HA yet.
+3. Add-on Home tab → MQTT → turn discovery off, save, restart the add-on. On every start the add-on
+   deletes the discovery topics it did not publish itself, so the log shows `Removing topic …` for
+   each sensor and HA removes the discovered entities.
+4. Reload **Manually configured MQTT entities** (or restart HA). The sensors come back with the same
+   `unique_id`s; HA restores their entity IDs, and the statistics continue because they are keyed
+   by the entity ID.
+5. Check step 5. If an entity ID got a `_2` suffix, delete the stale entity and rename the new one
+   in the entity settings. The old voltage and tariff entities of the stock driver stay
+   unavailable and can be deleted.
+6. Optional cleanup on the HA host: `/config/wmbusmeters/etc/mqtt_discovery/amiplus_linznetz.json`
+   is no longer used.
+
 ### Differences from the stock `amiplus`
 
-The driver and the discovery file stay as close to the stock `amiplus` as possible, so they are easy
-to compare with upstream. Everything that differs:
+The driver and the sensors stay as close to the stock `amiplus` as possible, so they are easy to
+compare with upstream. Everything that differs:
 
 | Where | Change | Why |
 |---|---|---|
 | driver, both energy fields | match `difvifkey = 0E03` / `0E833C` instead of `vif_range = AnyEnergyVIF` | only the records from LN-666 are trustworthy |
 | driver | `detect` is a dummy triplet | the real one removes the builtin `amiplus` |
 | driver | voltage, tariff and reactive fields left out | the meter does not send them |
-| discovery file | only the 7 matching entities | same reason |
-| discovery file | `value_template` of import and export is `{{ value_json.get('<field>') }}` | the stock one falls back to the tariff sums, which fail when the field is missing |
-| discovery file | manufacturer and model texts say Develco and LINZ NETZ | the stock ones say Apator |
+| sensors | YAML in `configuration.yaml` instead of the add-on's discovery file | independent of how the add-on finds discovery files |
+| sensors | only the 7 matching entities | same reason as the driver fields |
+| sensors | `value_template` of import and export is `{{ value_json.get('<field>') }}` | the stock one falls back to the tariff sums, which fail when the field is missing |
+| sensors | manufacturer and model texts say Develco and LINZ NETZ | the stock ones say Apator |
 
 Everything else, including entity names, icons, device classes and `unique_id`s, is copied from the
-stock file.
-
-**5. Check the add-on log:**
-
-- no `No such driver`, no restart loop,
-- `Add/update topic` for seven sensors (import, export, both powers, timestamp, device date,
-  rssi), no `Removing topic`,
-- ends with `Started auto rtlwmbus … listening on t1`.
-
-To see telegrams, set `logtelegrams` to `true` in the Home tab for a while. The log lines contain
-the raw decrypted telegram, counters included.
-
-**6. Check Home Assistant.** Settings → Devices & services → MQTT → your meter:
-
-- import, export and powers show values again, entity IDs unchanged (no `_2` suffixes),
-- import and export are plausible against the meter display or the portal and only rise slowly,
-- during telegrams with a non-spec energy record the energy sensors show `unknown` instead of a
-  wrong value; HA ignores `unknown` states in the statistics (seen in operation, no jumps),
-- the old voltage and tariff entities stay unavailable and can be deleted.
-
-**Fallback without the discovery file:** define the MQTT sensors by hand in `configuration.yaml`
-(`state_topic: wmbusmeters/<NAME>`, `value_template: "{{ value_json.<field> }}"`, import and export
-with `device_class: energy`, `state_class: total_increasing`, `unit_of_measurement: kWh`; powers
-with `device_class: power`, `state_class: measurement`, `kW`) and use the same `unique_id`s as in
-`ha/mqtt_discovery/amiplus_linznetz.json`. Keep that YAML out of the repo, it contains your meter
-name and ID.
+stock `amiplus` discovery file.
 
 **Pitfalls seen during the first install:**
 
 | Symptom | Cause |
 |---|---|
 | restart loop, `No such driver amiplus … triggered a removal of the builtin driver`, exit status 5 | the driver declared `detect` = `DEV,01,02`, same as `amiplus` (fixed: dummy triplet) |
-| `File …/amiplus_linznetz.json not found`, then `Removing topic …` | no discovery file for the new driver (step 3) |
-| file under `/config/wmbusmeters` missing after an add-on update | add-on `/config` is ephemeral (step 2) |
+| `File …/amiplus_linznetz.json not found`, then `Removing topic …` | discovery is on for a custom driver; turn it off and use the YAML sensors |
+| YAML sensors missing, log says the `unique_id` already exists | the discovered entities still exist; turn discovery off and restart the add-on first |
 | energy values 1000× too high after switching the driver | `override_vif_unit` is ignored by older wmbusmeters builds |
 | hourly bars of 90 to 100 kWh, value briefly 1/10 or 1/10 000 of the counter | non-spec energy records read by an earlier driver version |
 | entity IDs still carry the old name after deleting and re-adding the device | HA restores entity IDs via the `unique_id`; rename them by hand in the entity settings |
 | the add-on log prints key, ID and meter name in clear text on every start | by design, never share or commit it |
 
-**After it is confirmed in operation:**
+**After it is confirmed in operation:** fix the HA statistics of the affected hours (Developer
+tools → Statistics → adjust the sum), otherwise the Energy dashboard keeps the spikes.
 
-- fix the HA statistics of the affected hours (Developer tools → Statistics → adjust the sum),
-  otherwise the Energy dashboard keeps the spikes,
-- remove the template-sensor fallback, if you set one up,
+**Energy dashboard:** grid consumption = total energy consumption, return to grid = total energy
+production (only with a feed-in source), live power from the two power sensors.
 
-## Home Assistant integration
-
-Preferred: no custom code.
-
-1. **RTL-SDR on the HA host plus the wmbusmeters add-on** (needs Mosquitto). The HA host must be
-   within radio range of the meter cabinet. Add-on configuration, roughly (check the current add-on
-   docs for the exact option syntax):
-
-   ```
-   device=rtlwmbus
-   name=strom
-   driver=amiplus
-   id=<METER-ID>      # from the add-on log, see findings above
-   key=<KEY>
-   ```
-
-   Values go only into the HA configuration, never into the repo.
-
-2. **Sensors:** check whether the add-on's MQTT discovery covers `amiplus`. If not, create MQTT
-   sensors by hand: import and export with `device_class: energy` and `state_class: total_increasing`,
-   power with `device_class: power` and `state_class: measurement`.
-
-3. **Energy dashboard:** configure grid consumption and feed-in.
-
-Fallbacks if the HA host is out of range: an ESP32 plus SX1276/SX1262 as a remote receiver → MQTT →
-wmbusmeters bridge add-on, or the Smart-Meter-Adapter, variant MBUS (xDevelop, about 150 €, WLAN/MQTT).
-If HA runs as a container, run wmbusmeters as its own container next to it.
+**If the HA host is out of range:** an ESP32 plus SX1276/SX1262 as a remote receiver → MQTT →
+wmbusmeters bridge add-on, or the Smart-Meter-Adapter, variant MBUS (xDevelop, about 150 €,
+WLAN/MQTT). If HA runs as a container, run wmbusmeters as its own container next to it. The YAML
+sensors work unchanged as long as the readings arrive on `wmbusmeters/<name>`.

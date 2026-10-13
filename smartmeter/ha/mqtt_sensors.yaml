@@ -1,0 +1,97 @@
+# MQTT sensors for a LINZ NETZ smart meter read by the wmbusmeters add-on
+# with the custom driver amiplus_linznetz (see ../README.md).
+#
+# Paste into /config/configuration.yaml. If the file already has an `mqtt:`
+# key, add the list items below to its `sensor:` list instead.
+# Replace every placeholder before saving:
+#   <NAME>      the meter name from the add-on (Meters, name), e.g. "Linz grid"
+#   <METER-ID>  the eight-digit wireless M-Bus ID from the add-on log
+# Keep the filled-in file out of the repository.
+#
+# Names, unique_ids and device identifiers match what the add-on's MQTT
+# discovery created, so switching from discovery keeps entity IDs and history.
+# Import and export use value_json.get(): a telegram without an energy value
+# (non-spec record, dropped by the driver) gives `unknown`, not an error.
+
+mqtt:
+  sensor:
+    - name: "total energy consumption"
+      unique_id: "wmbusmeters_<METER-ID>_total_energy_consumption_kwh"
+      state_topic: "wmbusmeters/<NAME>"
+      value_template: "{{ value_json.get('total_energy_consumption_kwh') }}"
+      json_attributes_topic: "wmbusmeters/<NAME>"
+      icon: "mdi:transmission-tower-import"
+      unit_of_measurement: "kWh"
+      device_class: "energy"
+      state_class: "total_increasing"
+      device: &device
+        identifiers:
+          - "wmbusmeters_<METER-ID>"
+        name: "<NAME>"
+        manufacturer: "Develco"
+        model: "Electricity meter LINZ NETZ (driver: amiplus_linznetz)"
+        hw_version: "<METER-ID>"
+
+    - name: "total energy production"
+      unique_id: "wmbusmeters_<METER-ID>_total_energy_production_kwh"
+      state_topic: "wmbusmeters/<NAME>"
+      value_template: "{{ value_json.get('total_energy_production_kwh') }}"
+      json_attributes_topic: "wmbusmeters/<NAME>"
+      icon: "mdi:transmission-tower-export"
+      unit_of_measurement: "kWh"
+      device_class: "energy"
+      state_class: "total_increasing"
+      device: *device
+
+    - name: "current power consumption"
+      unique_id: "wmbusmeters_<METER-ID>_current_power_consumption_kw"
+      state_topic: "wmbusmeters/<NAME>"
+      value_template: "{{ value_json.current_power_consumption_kw }}"
+      json_attributes_topic: "wmbusmeters/<NAME>"
+      icon: "mdi:counter"
+      unit_of_measurement: "kW"
+      device_class: "power"
+      state_class: "measurement"
+      device: *device
+
+    - name: "current power production"
+      unique_id: "wmbusmeters_<METER-ID>_current_power_production_kw"
+      state_topic: "wmbusmeters/<NAME>"
+      value_template: "{{ value_json.current_power_production_kw }}"
+      json_attributes_topic: "wmbusmeters/<NAME>"
+      icon: "mdi:counter"
+      unit_of_measurement: "kW"
+      device_class: "power"
+      state_class: "measurement"
+      device: *device
+
+    - name: "rssi"
+      unique_id: "wmbusmeters_<METER-ID>_rssi_dbm"
+      state_topic: "wmbusmeters/<NAME>"
+      value_template: "{{ value_json.rssi_dbm }}"
+      entity_category: "diagnostic"
+      icon: "mdi:signal"
+      unit_of_measurement: "dBm"
+      device_class: "signal_strength"
+      state_class: "measurement"
+      device: *device
+
+    - name: "timestamp"
+      unique_id: "wmbusmeters_<METER-ID>_timestamp"
+      state_topic: "wmbusmeters/<NAME>"
+      value_template: "{{ value_json.timestamp }}"
+      entity_category: "diagnostic"
+      icon: "mdi:calendar-clock"
+      device_class: "timestamp"
+      enabled_by_default: false
+      device: *device
+
+    - name: "Device date and time"
+      unique_id: "wmbusmeters_<METER-ID>_device_date_time"
+      state_topic: "wmbusmeters/<NAME>"
+      value_template: "{{ value_json.device_date_time }}"
+      entity_category: "diagnostic"
+      icon: "mdi:calendar-clock"
+      device_class: "timestamp"
+      enabled_by_default: false
+      device: *device
