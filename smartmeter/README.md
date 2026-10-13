@@ -173,6 +173,9 @@ Copy `ha/mqtt_discovery/amiplus_linznetz.json` to
 `/config/wmbusmeters/etc/mqtt_discovery/amiplus_linznetz.json` on the HA host (Terminal & SSH,
 File editor, Samba). The add-on only copies missing files, it does not overwrite yours. The file
 keeps the `unique_id`s and device identifiers of `amiplus`, so entities and history stay.
+If an add-on update changes how it finds discovery files (its test channel 3.0.0.216 already
+builds the entities from the driver instead), the sensors may disappear or change after the
+update; then switch to **Fallback without the discovery file** below.
 
 **4. Switch the meter.** Tab **Home** → Meters → `driver = amiplus_linznetz`, `id`, `key`, `name`.
 The `id` is the one from the add-on log, not the meter number from the portal. Save, restart the
@@ -223,8 +226,8 @@ the raw decrypted telegram, counters included.
 - the old voltage and tariff entities stay unavailable and can be deleted.
 
 **Fallback without the discovery file:** define the MQTT sensors by hand in `configuration.yaml`
-(`state_topic: wmbusmeters/<NAME>`, `value_template: "{{ value_json.<field> }}"`, import and export
-with `device_class: energy`, `state_class: total_increasing`, `unit_of_measurement: kWh`; powers
+(`state_topic: wmbusmeters/<NAME>`, `value_template: "{{ value_json.<field> }}"`, for import and export
+`"{{ value_json.get('<field>') }}"` so a non-spec telegram gives `unknown`, with `device_class: energy`, `state_class: total_increasing`, `unit_of_measurement: kWh`; powers
 with `device_class: power`, `state_class: measurement`, `kW`) and use the same `unique_id`s as in
 `ha/mqtt_discovery/amiplus_linznetz.json`. Keep that YAML out of the repo, it contains your meter
 name and ID.
