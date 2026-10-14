@@ -117,24 +117,34 @@ Done when the backtest error is acceptable and the source files are unchanged.
 - [x] Payload: the minimal metadata (`source`, `statistic_id`, `name`, `unit_of_measurement`,
       `has_mean`, `has_sum`) is accepted, HA adds `mean_type` and `unit_class` itself
 - [x] The recorder imports asynchronously: read back only after polling (about 0.6 s)
-- [ ] Visual check in a statistics graph card (13.10. should show 9.77 kWh like the Energy tab)
-- [ ] Delete the test statistic (`./homebase ha-spike clear`), then revoke the token (the add-on
-      uses the Supervisor token)
+- [x] Visual check in a statistics graph card: 13.10. shows 9.77 kWh like the Energy tab, and
+      9.10./11.10. are plausible (about 11 and 10 kWh) where the RF statistics have the spikes
+- [x] Delete the test statistic (`./homebase ha-spike clear`); the token stays until step 8 for
+      read-only checks from the Mac (the add-on uses the Supervisor token)
 
 ### Step 4: Add-on skeleton
 
-- [ ] `repository.yaml` + add-on folder in this repo, reusing `databot/`
-- [ ] `config.yaml` with `homeassistant_api: true`, options: portal login (password field),
-      meter ID, RF entity, site name
-- [ ] Multi-arch image (at least `aarch64`) built by GitHub Actions
-- [ ] CSV storage in the add-on config folder (part of HA backups)
-- [ ] Portal fetch twice a day, import of `…_grid_energy_portal`
-- [ ] Login failure is its own state: HA notification, the add-on keeps running on RF
-- [x] Portal client: an expired session is retried with a fresh login (`SessionExpiredError`,
-      done in step 1's PR); `LoginError` stays for rejected credentials only
+- [x] `repository.yaml` + add-on folder `linznetz_energy/` in this repo, reusing `databot/`
+      (`linznetz.py`, `databot.py`, `fusion.py`, `ha.py`); main loop `databot/addon.py`
+- [x] `config.yaml` with `homeassistant_api: true` (websocket through the Supervisor, no token),
+      options: portal login (password field), meter ID, site name, portal interval; the time zone
+      comes from HA; the RF entity follows in step 6
+- [x] Image per architecture (`aarch64`, `amd64`) built by GitHub Actions
+      (`.github/workflows/addon-image.yml`), `ghcr.io/ulrichlehner/homebase-linznetz-energy-<arch>`
+- [x] CSV storage in the add-on config folder (`addon_config`, part of HA backups)
+- [x] Portal fetch every 12 hours, import of `…_grid_energy_portal` every hour (complete rebuild,
+      in chunks of 5000 rows)
+- [x] Login failure is its own state: HA notification, retry after the interval, the statistic is
+      still imported from the CSV files; the notification disappears after the next good login
+- [x] Portal client: an expired session is retried with a fresh login (`SessionExpiredError`)
 - [ ] Portal client: tests against recorded, anonymized portal responses of each step of the
       form flow, so layout changes of the portal show up in the tests
-- [ ] Installs from the repo URL on HA OS, survives a restart, no credentials in the logs
+- [x] Tested from the Mac with the add-on image against HA: 27337 hours (6626.673 kWh) imported
+      as `linznetz:<place>_grid_energy_portal`, portal login and the login-failure notification
+      (created and dismissed again) work
+- [ ] Image published and public on ghcr.io
+- [ ] Installs from the repo URL on HA OS (`https://github.com/ulrichlehner/homebase#fusion-disaggregate`),
+      survives a restart, no credentials in the logs
 
 ### Step 5: Load the history once
 
@@ -163,6 +173,7 @@ Done when the backtest error is acceptable and the source files are unchanged.
 
 ### Step 8: Docs and cleanup
 
+- [ ] Revoke the long-lived HA token used by `ha-spike` (profile > Security)
 - [ ] Add-on README with the prerequisites: quarter-hour analysis ("Viertelstundenauswertung")
       enabled in the portal, data arrives 1 to 2 days late (already in the homebase README)
 - [ ] Add-on README, homebase README, `smartmeter/` docs (guard sensor possibly unnecessary)
@@ -216,6 +227,8 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: step 3 done (visual check OK, test statistic deleted). Step 4 add-on written and
+  tested from the Mac against HA; next: publish the image and install it on HA.
 - 2026-10-14: step 3 run against HA 2026.10.1 (backup "Before HA Energy Add-on" taken first):
   import, read back and overwrite work; imports are asynchronous, the spike polls.
 - 2026-10-14: user keeps the recorder at `purge_keep_days: 10` (raw states), the add-on archives

@@ -1,0 +1,15 @@
+configuration:
+  username:
+    name: Portal username
+    description: Login of the LINZ NETZ service portal.
+  password:
+    name: Portal password
+  meter_id:
+    name: Metering point
+    description: The 33-character metering point number (Zählpunktnummer), starts with AT.
+  site:
+    name: Site
+    description: Short lowercase name of the place, used in the statistic IDs (linznetz:<site>_grid_energy_portal).
+  portal_hours:
+    name: Portal interval
+    description: Hours between two portal fetches. The portal shows a day one to two days later.

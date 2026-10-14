@@ -8,6 +8,7 @@ long-lived access token from the Mac). Only the few commands the project needs:
   recorder/get_statistics_metadata    find statistics by ID
   recorder/clear_statistics           delete statistics
   history/history_during_period       raw states of an entity (the RF counter)
+  call_service                        notifications
 """
 
 from __future__ import annotations
@@ -98,6 +99,9 @@ class HomeAssistant:
                 err = reply.get('error', {})
                 raise HomeAssistantError(f'{type_}: {err.get("code")}: {err.get("message")}')
             return reply.get('result')
+
+    def call_service(self, domain: str, service: str, data: Optional[dict] = None) -> Any:
+        return self.call('call_service', domain=domain, service=service, service_data=data or {})
 
     # -- Statistics ------------------------------------------------------------
 

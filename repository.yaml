@@ -1,0 +1,4 @@
+# Home Assistant add-on repository: Settings > Add-ons > Add-on store > Repositories
+name: homebase
+url: https://github.com/ulrichlehner/homebase
+maintainer: Ulrich Lehner
