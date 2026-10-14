@@ -132,9 +132,12 @@ automatically.
 ### Fusing portal, radio and reconstructed readings
 
 `./homebase fuse` writes `<meterId>_fused_1h.csv`, one row per hour with the best source
-available: portal (fully measured hour) before the radio (RF) readings of the meter in Home
-Assistant, before portal substitute values, before the reconstructed quarter hours. Columns:
-`start_local;start_utc;kwh;source;sum_kwh`, the running sum is computed in whole Wh. It prepares
+available. The radio (RF) readings of the meter in Home Assistant are the primary source; the
+portal verifies them and fills their gaps (fully measured hours first, then substitute values),
+the reconstructed quarter hours cover 2023. Columns:
+`start_local;start_utc;kwh;source;sum_kwh;portal_kwh;flag`: the running sum is computed in whole
+Wh, `portal_kwh` is the complete portal value of the hour (if any) and `flag` is `deviation` when
+an RF hour differs from it by more than 2 % (at least 20 Wh); the RF value is kept. It prepares
 the import into the Home Assistant Energy tab, see `docs/energy-fusion-plan.md`.
 
 RF readings come from a Home Assistant history download of the energy counter sensor (History,

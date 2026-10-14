@@ -4,12 +4,15 @@ into one hourly consumption series, and validates RF against the portal.
 
 Sources, best first, per UTC hour:
 
-  portal              all 4 quarter hours measured by LINZ NETZ
   rf                  the RF meter counter (wM-Bus via Home Assistant), cleaned
+  portal              all 4 quarter hours measured by LINZ NETZ
   portal_substitute   all 4 quarter hours present, but some are Ersatzwerte (estimates)
   reconstructed       the profile split of the old chart blocks (disaggregate.py)
   portal_partial      some quarter hours missing, the rest measured or substituted
 
+RF is the primary source: the portal verifies it and fills its gaps (missing or misread
+hours, and everything before RF readings exist). An RF hour whose complete portal value
+differs by more than the hourly tolerance keeps the RF value and is flagged `deviation`.
 An hour no source covers is left out (a gap), the running sum simply continues.
 All arithmetic is in integer Wh, so the running sum cannot drift.
 
@@ -56,9 +59,11 @@ DEFAULT_MAX_KW = 20.0                       # above any household connection
 DEFAULT_MAX_GAP = timedelta(minutes=60)
 DEFAULT_DAY_TOLERANCE = 0.02                # RF vs portal per day, share of the portal value
 DEFAULT_DAY_TOLERANCE_WH = 50               # ... but at least this much
+DEFAULT_HOUR_TOLERANCE = 0.02               # RF vs portal per hour, share of the portal value
+DEFAULT_HOUR_TOLERANCE_WH = 20              # ... but at least this much (RF and portal agree to ~1 Wh)
 
-SOURCES = ('portal', 'rf', 'portal_substitute', 'reconstructed', 'portal_partial')
-OUTPUT_HEADER = ['start_local', 'start_utc', 'kwh', 'source', 'sum_kwh']
+SOURCES = ('rf', 'portal', 'portal_substitute', 'reconstructed', 'portal_partial')
+OUTPUT_HEADER = ['start_local', 'start_utc', 'kwh', 'source', 'sum_kwh', 'portal_kwh', 'flag']
 
 
 def wh(kwh: float) -> int:
@@ -213,6 +218,13 @@ class Hour:
     wh: int
     source: str
     sum_wh: int
+    portal_wh: Optional[int] = None   # the complete portal value of the hour, if there is one
+    flag: str = ''                    # 'deviation': RF and portal differ beyond the tolerance
+
+
+def deviates(rf_wh: int, portal_wh: int, tolerance: float = DEFAULT_HOUR_TOLERANCE,
+             tolerance_wh: int = DEFAULT_HOUR_TOLERANCE_WH) -> bool:
+    return abs(rf_wh - portal_wh) > max(tolerance * portal_wh, tolerance_wh)
 
 
 def portal_hours(portal: dict) -> dict:
@@ -243,20 +255,23 @@ def fuse(portal: dict, rf: dict, reconstructed: dict) -> list:
     out = []
     total = 0
     for h in sorted(set(ph) | set(rf) | set(rh)):
-        value, source = None, None
         p = ph.get(h)
-        if p and p[1] == 4 and not p[2]:
-            value, source = p[0], 'portal'
-        elif h in rf:
+        complete = p[0] if p and p[1] == 4 else None
+        flag = ''
+        if h in rf:
             value, source = rf[h], 'rf'
-        elif p and p[1] == 4:
-            value, source = p[0], 'portal_substitute'
+            if complete is not None and not p[2] and deviates(value, complete):
+                flag = 'deviation'
+        elif complete is not None and not p[2]:
+            value, source = complete, 'portal'
+        elif complete is not None:
+            value, source = complete, 'portal_substitute'
         elif h in rh:
             value, source = rh[h], 'reconstructed'
-        elif p:
+        else:
             value, source = p[0], 'portal_partial'
         total += value
-        out.append(Hour(h, value, source, total))
+        out.append(Hour(h, value, source, total, complete, flag))
     return out
 
 
@@ -311,7 +326,8 @@ def write_fused(path: Path, hours: list, zone: ZoneInfo) -> None:
         writer.writerow(OUTPUT_HEADER)
         for h in hours:
             writer.writerow([h.start.astimezone(zone).isoformat(), h.start.strftime('%Y-%m-%dT%H:%M:%SZ'),
-                             f'{h.wh / 1000:.3f}', h.source, f'{h.sum_wh / 1000:.3f}'])
+                             f'{h.wh / 1000:.3f}', h.source, f'{h.sum_wh / 1000:.3f}',
+                             '' if h.portal_wh is None else f'{h.portal_wh / 1000:.3f}', h.flag])
     tmp.replace(path)
 
 
@@ -371,6 +387,12 @@ def main(argv=None) -> int:
     logger.info('Fused %d hours (%s), %d hour(s) without data, total %.3f kWh -> %s', len(hours),
                 ', '.join(f'{s} {counts[s]}' for s in SOURCES if counts[s]), span - len(hours),
                 hours[-1].sum_wh / 1000 if hours else 0, out)
+    flagged = [h for h in hours if h.flag]
+    if flagged:
+        logger.warning('%d RF hour(s) deviate from the portal beyond the tolerance (RF kept):', len(flagged))
+        for h in flagged[:20]:
+            logger.warning('  %s: RF %.3f kWh, portal %.3f kWh', h.start.astimezone(zone).isoformat(timespec='minutes'),
+                           h.wh / 1000, h.portal_wh / 1000)
     return 0
 
 

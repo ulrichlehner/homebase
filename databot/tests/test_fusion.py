@@ -94,15 +94,30 @@ def test_priorities():
     rf = {h[0]: 999, h[1]: 420, h[3]: 380}
     reconstructed = {h[5] + i * F.QUARTER: 50 for i in range(4)}
     fused = F.fuse(portal, rf, reconstructed)
-    assert [(x.start, x.wh, x.source) for x in fused] == [
-        (h[0], 400, 'portal'),
-        (h[1], 420, 'rf'),
-        (h[2], 400, 'portal_substitute'),
-        (h[3], 380, 'rf'),
-        (h[4], 300, 'portal_partial'),
-        (h[5], 200, 'reconstructed'),
+    # RF is primary: hour 0 keeps the RF value although the portal has a measured one
+    assert [(x.start, x.wh, x.source, x.portal_wh, x.flag) for x in fused] == [
+        (h[0], 999, 'rf', 400, 'deviation'),
+        (h[1], 420, 'rf', 400, ''),          # portal has substitutes only: no check
+        (h[2], 400, 'portal_substitute', 400, ''),
+        (h[3], 380, 'rf', None, ''),
+        (h[4], 300, 'portal_partial', None, ''),
+        (h[5], 200, 'reconstructed', None, ''),
     ]
-    assert [x.sum_wh for x in fused] == [400, 820, 1220, 1600, 1900, 2100]
+    assert [x.sum_wh for x in fused] == [999, 1419, 1819, 2199, 2499, 2699]
+
+
+def test_portal_fills_rf_gaps_and_close_values_are_not_flagged():
+    h = [T0 + i * F.HOUR for i in range(3)]
+    portal = {**quarters(h[0], 100), **quarters(h[1], 100), **quarters(h[2], 25)}
+    rf = {h[0]: 401, h[2]: 115}                              # h1 missing in RF
+    fused = F.fuse(portal, rf, {})
+    assert [(x.wh, x.source, x.flag) for x in fused] == [
+        (401, 'rf', ''),                                     # 1 Wh off: fine
+        (400, 'portal', ''),                                 # gap filled by the portal
+        (115, 'rf', ''),                                     # 15 Wh off on 100 Wh: below 20 Wh
+    ]
+    assert F.deviates(130, 100) and not F.deviates(119, 100)
+    assert F.deviates(2050, 2000) and not F.deviates(2040, 2000)   # 2 % of 2000 Wh = 40 Wh
 
 
 def test_gaps_are_left_out_and_the_sum_continues():
@@ -180,5 +195,7 @@ def test_main_writes_a_repeatable_file(tmp_path):
     first = out.read_bytes()
     assert F.main(args) == 0 and out.read_bytes() == first
     rows = list(csv.DictReader(out.open(), delimiter=';'))
-    assert [r['source'] for r in rows] == ['portal', 'portal', 'rf', 'rf']
+    assert [r['source'] for r in rows] == ['rf', 'rf', 'rf', 'rf']           # RF primary
+    assert [r['portal_kwh'] for r in rows] == ['0.600', '0.600', '', '']   # the portal verifies
+    assert [r['flag'] for r in rows] == [''] * 4
     assert [r['sum_kwh'] for r in rows] == ['0.600', '1.200', '1.800', '2.400']

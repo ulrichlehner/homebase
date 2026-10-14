@@ -183,9 +183,11 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
 
 - [ ] Hourly (a few minutes past the hour): read the RF counter history, rebuild and import
       `…_grid_energy_fused`
-- [ ] Priority in `fusion.py` changed to RF primary: RF valid > portal measured > portal
-      substitute > reconstructed > portal partial; deviating hours keep RF, are flagged in the
-      fused CSV and counted in the status entities
+- [x] Priority in `fusion.py` changed to RF primary: RF valid > portal measured > portal
+      substitute > reconstructed > portal partial; deviating hours (more than 2 %, at least 20 Wh
+      per hour) keep RF and are flagged in the fused CSV (`portal_kwh`, `flag`); dry run with the
+      RF history read from HA: 53 RF hours, none flagged
+- [ ] Deviating hours counted in the status entities and notified
 - [ ] Archive the RF readings (energy counter and power) in the add-on storage, part of every HA
       backup: the recorder purges raw states after `purge_keep_days` (default 10), long-term
       statistics stay. Optionally raise `purge_keep_days` in HA (the user's decision, bigger
