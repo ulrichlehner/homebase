@@ -135,7 +135,7 @@ RF readings come from a Home Assistant history download of the energy counter se
 pick the sensor and the period, "Download data"): `./homebase fuse --rf ~/Downloads/history.csv`.
 The counter is cleaned first: misread phases (wrong scale, near-zero values, spikes) break the
 plausible counter and are dropped, and an hour gets an RF value only if accepted readings at most
-30 minutes apart surround both of its ends. The run also compares RF with the portal per hour
+60 minutes apart surround both of its ends. The run also compares RF with the portal per hour
 and per day and warns about days that differ by more than 2 %.
 
 ### One file with everything

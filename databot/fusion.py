@@ -23,7 +23,7 @@ cleaned before use:
      order if they continue it plausibly; a misread phase (wrong scale, zeros) breaks
      that chain and is dropped,
   3. the counter at each full hour is interpolated between the accepted readings
-     around it, if they are at most `max_gap` apart; otherwise the hour has no RF value.
+     around it, if they are at most `max_gap` (60 minutes) apart; otherwise the hour has no RF value.
 
 Nothing is modified: the output is <meterId>_fused_1h.csv. The same inputs give the
 same file.
@@ -50,7 +50,10 @@ HOUR = timedelta(hours=1)
 QUARTER = timedelta(minutes=15)
 
 DEFAULT_MAX_KW = 20.0                       # above any household connection
-DEFAULT_MAX_GAP = timedelta(minutes=30)     # longest RF silence still interpolated
+# Longest RF silence still interpolated. The meter has phases of about 30 minutes in which
+# the driver discards the energy record; the counter on both sides is exact, a 60 minute
+# limit costs about 1 Wh per hour against the portal (2026-10 data).
+DEFAULT_MAX_GAP = timedelta(minutes=60)
 DEFAULT_DAY_TOLERANCE = 0.02                # RF vs portal per day, share of the portal value
 DEFAULT_DAY_TOLERANCE_WH = 50               # ... but at least this much
 

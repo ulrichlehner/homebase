@@ -86,7 +86,7 @@ Done when the backtest error is acceptable and the source files are unchanged.
 - [x] RF cleaning: cut the counter into segments where it falls or rises faster than `max_kw`
       (20 kW), trust the longest segment, chain the others that continue it plausibly, drop the
       rest (wrong scale, 0.008 kWh, spikes, a bad first reading); hourly values interpolated
-      between accepted readings at most 30 minutes apart, otherwise no RF value for that hour
+      between accepted readings at most 60 minutes apart, otherwise no RF value for that hour
 - [x] Portal hours count as measured only with all 4 quarter hours present
 - [x] Priority: portal measured > RF valid > portal substitute > reconstructed > portal partial;
       hours without any source are left out, the sum continues
@@ -95,9 +95,12 @@ Done when the backtest error is acceptable and the source files are unchanged.
       50 Wh), logged by `./homebase fuse --rf <history.csv>`
 - [x] Tests for every rule (synthetic data)
 - [x] Dry run without RF: 31631 hours (portal and reconstructed), no gaps
-- [ ] Dry run with a real RF history download of the energy counter since 2026-10-08 (includes
-      the misread phases of 9.10. and 11.10.; their raw states are purged around 19.10./21.10.
-      unless `purge_keep_days` is raised)
+- [x] Dry run with a real RF history download of the energy counter (12.10. 13:18 to 14.10.):
+      35 hours against the portal, mean 1 Wh per hour, +0.01 %, 13.10. complete and within the
+      tolerance; today's hours filled from RF
+- [ ] Dry run over the misread phases of 9.10. and 11.10. (the history download only starts at
+      12.10. 13:18; check whether HA still has older raw states, they are purged around
+      19.10./21.10. unless `purge_keep_days` is raised)
 - [x] Cross-check with the RF power sensor (integrated, 12.10. 13:18 to 14.10.): 35 complete
       hours -0.33 % against the portal, mean 3 Wh per hour, 13.10. 9.718 vs 9.772 kWh
 - [ ] Check whether the portal offers meter counter readings; if so, compare them with the RF
@@ -208,6 +211,12 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: fusion dry run with the real RF energy counter: it matches the portal to about 1 Wh
+  per hour (the portal values come from the same meter register). The counter has about 11
+  silences of 30 to 52 minutes per two days while power keeps arriving every 5 s: the phases in
+  which the driver discards the energy record. Interpolating across them costs nothing
+  measurable, so the default `max_gap` is now 60 minutes (30 left 3 hours empty and no complete
+  day to compare).
 - 2026-10-14: RF power sensor history (5 s readings) integrated and compared with the portal:
   -0.33 % over 35 hours, mean 3 Wh per hour; the small shortfall comes from receive gaps up to
   110 s. The receiver and the portal agree. The energy counter export is still needed for the
