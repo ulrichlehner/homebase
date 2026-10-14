@@ -1,0 +1,184 @@
+import csv
+import sys
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import fusion as F  # noqa: E402
+
+ZONE = ZoneInfo('Europe/Vienna')
+UTC = ZoneInfo('UTC')
+T0 = datetime(2026, 10, 5, 0, 0, tzinfo=UTC)
+COUNTER = 12_345_000   # synthetic counter start in Wh
+
+
+def counter(minutes: int, step_minutes: int = 1, watts: int = 600, start=T0, base=COUNTER) -> list:
+    """Synthetic RF readings: constant load, one reading every `step_minutes`."""
+    return [(start + timedelta(minutes=m), base + round(watts * m / 60))
+            for m in range(0, minutes + 1, step_minutes)]
+
+
+# -- RF cleaning ------------------------------------------------------------------
+
+def test_clean_counter_keeps_a_good_series():
+    samples = counter(180)
+    result = F.clean_counter(samples)
+    assert result.accepted == samples and result.rejected == 0
+    assert F.rf_hourly(result.accepted) == {T0: 600, T0 + F.HOUR: 600, T0 + 2 * F.HOUR: 600}
+
+
+def test_misread_phases_are_dropped_and_hours_stay_exact():
+    samples = counter(180)
+    bad = []
+    for t, v in samples:
+        m = (t - T0).total_seconds() / 60
+        if 20 <= m < 50:
+            v = v // 10              # a tenth of the real value (wrong unit)
+        elif 70 <= m < 75:
+            v = 8                    # 0.008 kWh
+        elif m == 100:
+            v = v * 1000             # one spike
+        bad.append((t, v))
+    result = F.clean_counter(bad)
+    assert result.rejected == 30 + 5 + 1
+    assert len(result.dropped_segments) == 3
+    # the counter on both sides of every phase is exact, so the hours are too
+    assert F.rf_hourly(result.accepted, max_gap=timedelta(minutes=40)) == \
+        {T0: 600, T0 + F.HOUR: 600, T0 + 2 * F.HOUR: 600}
+
+
+def test_a_long_misread_phase_leaves_a_gap():
+    samples = counter(180)
+    bad = [(t, v // 10 if 30 <= (t - T0).total_seconds() / 60 < 100 else v) for t, v in samples]
+    hours = F.rf_hourly(F.clean_counter(bad).accepted)   # 70 minutes without good readings
+    assert T0 not in hours and T0 + F.HOUR not in hours
+    assert hours == {T0 + 2 * F.HOUR: 600}
+
+
+def test_a_bad_first_reading_does_not_poison_the_series():
+    samples = counter(120)
+    samples[0] = (samples[0][0], 5)
+    result = F.clean_counter(samples)
+    assert result.rejected == 1
+    assert F.rf_hourly(result.accepted) == {T0 + F.HOUR: 600}   # the first hour starts too late
+
+
+def test_counter_never_runs_faster_than_max_kw():
+    samples = counter(60)
+    samples.append((T0 + timedelta(minutes=61), samples[-1][1] + 1000))   # 1 kWh in a minute = 60 kW
+    assert F.clean_counter(samples, max_kw=20).rejected == 1
+    assert F.clean_counter(samples, max_kw=100).rejected == 0
+
+
+def test_sparse_readings_are_interpolated():
+    samples = counter(120, step_minutes=7)   # no reading exactly on the hour
+    hours = F.rf_hourly(F.clean_counter(samples).accepted)
+    assert hours == {T0: 600}   # 120 is no multiple of 7: the second hour has no end reading
+
+
+# -- Fusion -------------------------------------------------------------------------
+
+def quarters(hour: datetime, wh_each: int, substitute=False, count=4) -> dict:
+    return {hour + i * F.QUARTER: (wh_each, substitute) for i in range(count)}
+
+
+def test_priorities():
+    h = [T0 + i * F.HOUR for i in range(6)]
+    portal = {}
+    portal.update(quarters(h[0], 100))                    # measured
+    portal.update(quarters(h[1], 100, substitute=True))   # substitutes, RF available
+    portal.update(quarters(h[2], 100, substitute=True))   # substitutes, no RF
+    portal.update(quarters(h[4], 100, count=3))           # partial
+    rf = {h[0]: 999, h[1]: 420, h[3]: 380}
+    reconstructed = {h[5] + i * F.QUARTER: 50 for i in range(4)}
+    fused = F.fuse(portal, rf, reconstructed)
+    assert [(x.start, x.wh, x.source) for x in fused] == [
+        (h[0], 400, 'portal'),
+        (h[1], 420, 'rf'),
+        (h[2], 400, 'portal_substitute'),
+        (h[3], 380, 'rf'),
+        (h[4], 300, 'portal_partial'),
+        (h[5], 200, 'reconstructed'),
+    ]
+    assert [x.sum_wh for x in fused] == [400, 820, 1220, 1600, 1900, 2100]
+
+
+def test_gaps_are_left_out_and_the_sum_continues():
+    portal = {**quarters(T0, 100), **quarters(T0 + 3 * F.HOUR, 100)}
+    fused = F.fuse(portal, {}, {})
+    assert [x.start for x in fused] == [T0, T0 + 3 * F.HOUR]
+    assert fused[-1].sum_wh == 800
+
+
+def test_reconstructed_hours_need_all_quarters():
+    assert F.reconstructed_hours({T0: 10, T0 + F.QUARTER: 10}) == {}
+
+
+def test_dst_autumn_day_has_25_distinct_hours():
+    start = datetime(2026, 10, 25, 0, 0, tzinfo=ZONE).astimezone(UTC)
+    portal = {}
+    for i in range(25):
+        portal.update(quarters(start + i * F.HOUR, 100))
+    fused = F.fuse(portal, {}, {})
+    assert len(fused) == 25 and fused[-1].sum_wh == 25 * 400
+
+
+# -- Validation -----------------------------------------------------------------------
+
+def test_validation_per_hour_and_day():
+    day = datetime(2026, 10, 5, tzinfo=ZONE).astimezone(UTC)
+    portal, rf = {}, {}
+    for i in range(24):
+        h = day + i * F.HOUR
+        portal.update(quarters(h, 100))
+        rf[h] = 400 + (10 if i % 2 else -10)
+    v = F.validate(portal, rf, ZONE)
+    assert v.hours == 24 and v.mean_abs_wh == 10
+    assert v.days == [(date(2026, 10, 5), 9600, 9600)] and v.bad_days == []
+    rf[day] += 500
+    assert F.validate(portal, rf, ZONE).bad_days == [(date(2026, 10, 5), 9600, 10100)]
+
+
+def test_incomplete_days_are_not_compared():
+    portal = quarters(T0, 100)
+    v = F.validate(portal, {T0: 400}, ZONE)
+    assert v.hours == 1 and v.days == []
+
+
+# -- Files ------------------------------------------------------------------------------
+
+def test_read_rf_history_skips_unavailable(tmp_path):
+    path = tmp_path / 'history.csv'
+    path.write_text(
+        'entity_id,state,last_changed\n'
+        'sensor.place_grid_total_energy_consumption_kwh,12345.000,2026-10-05T00:00:00.000Z\n'
+        'sensor.place_grid_total_energy_consumption_kwh,unavailable,2026-10-05T00:01:00.000Z\n'
+        'sensor.place_grid_total_energy_consumption_kwh,12345.010,2026-10-05T00:02:00.000Z\n'
+    )
+    assert F.read_rf_history(path) == [(T0, 12_345_000), (T0 + timedelta(minutes=2), 12_345_010)]
+
+
+def test_main_writes_a_repeatable_file(tmp_path):
+    meter = 'AT0000000000000000000000000000000'
+    with (tmp_path / f'{meter}_readings.csv').open('w', newline='') as fh:
+        w = csv.writer(fh, delimiter=';')
+        w.writerow(['start_local', 'start_utc', 'kwh', 'kw', 'substitute'])
+        for i in range(8):
+            q = T0 + i * F.QUARTER
+            w.writerow([q.astimezone(ZONE).isoformat(), q.strftime('%Y-%m-%dT%H:%M:%SZ'), '0.150', '0.600', 'false'])
+    history = tmp_path / 'history.csv'
+    with history.open('w', newline='') as fh:
+        w = csv.writer(fh)
+        w.writerow(['entity_id', 'state', 'last_changed'])
+        for t, v in counter(240):
+            w.writerow(['sensor.place_grid_energy', f'{v / 1000:.3f}', t.isoformat()])
+    args = ['--dir', str(tmp_path), '--meter', meter, '--rf', str(history)]
+    assert F.main(args) == 0
+    out = tmp_path / f'{meter}_fused_1h.csv'
+    first = out.read_bytes()
+    assert F.main(args) == 0 and out.read_bytes() == first
+    rows = list(csv.DictReader(out.open(), delimiter=';'))
+    assert [r['source'] for r in rows] == ['portal', 'portal', 'rf', 'rf']
+    assert [r['sum_kwh'] for r in rows] == ['0.600', '1.200', '1.800', '2.400']

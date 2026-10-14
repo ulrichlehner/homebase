@@ -44,6 +44,7 @@ wrapper rebuilds the image automatically whenever the sources in `databot/` chan
 ./homebase check          # report incomplete days in the readings CSV
 ./homebase reconstruct    # reconstruct 6h values from archived chart PNGs (see below)
 ./homebase disaggregate   # split the reconstructed 6h values into quarter hours (see below)
+./homebase fuse           # one hourly series from portal, RF and reconstruction (see below)
 ./homebase test           # run the unit tests
 ```
 
@@ -121,6 +122,21 @@ automatically.
   hourly error is about 31 to 32 % of the consumption, against 36 % for a plain uniform split:
   single hours are dominated by random appliance use, the profile gives a believable daily shape,
   not the real peaks. `./homebase disaggregate --backtest` only reports, it writes nothing.
+
+### Fusing portal, radio and reconstructed readings
+
+`./homebase fuse` writes `<meterId>_fused_1h.csv`, one row per hour with the best source
+available: portal (fully measured hour) before the radio (RF) readings of the meter in Home
+Assistant, before portal substitute values, before the reconstructed quarter hours. Columns:
+`start_local;start_utc;kwh;source;sum_kwh`, the running sum is computed in whole Wh. It prepares
+the import into the Home Assistant Energy tab, see `docs/energy-fusion-plan.md`.
+
+RF readings come from a Home Assistant history download of the energy counter sensor (History,
+pick the sensor and the period, "Download data"): `./homebase fuse --rf ~/Downloads/history.csv`.
+The counter is cleaned first: misread phases (wrong scale, near-zero values, spikes) break the
+plausible counter and are dropped, and an hour gets an RF value only if accepted readings at most
+30 minutes apart surround both of its ends. The run also compares RF with the portal per hour
+and per day and warns about days that differ by more than 2 %.
 
 ### One file with everything
 

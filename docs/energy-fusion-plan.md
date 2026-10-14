@@ -79,22 +79,31 @@ Done when the backtest error is acceptable and the source files are unchanged.
 
 ### Step 2: Fusion logic (pure Python, no HA)
 
-- [ ] `fusion.py`: hourly series per source in, fused hourly series out (value, source per hour,
-      running sum)
-- [ ] Portal hours count only with all 4 quarter hours present
-- [ ] RF hour valid only if plausible: not negative, below a ceiling, not spanning a gap
-- [ ] Priority: portal measured > RF valid > portal substitute > reconstructed
-- [ ] Running sums in integer Wh, no float drift over 30k hours
-- [ ] Check whether the portal offers meter counter readings; if so, compare them with the RF counter
-- [ ] Validation: RF vs portal per hour and per day, implausible RF hours stay empty until the
-      portal fills them
-- [ ] Tests for every rule, dry run with the CSV files plus an RF export from HA
+- [x] `fusion.py`: portal quarter hours, RF counter and reconstructed quarter hours in, fused
+      hourly series out (value, source per hour, running sum), `<meterId>_fused_1h.csv`
+- [x] RF from the raw counter history (HA history download), not from HA's hourly statistics:
+      those already contain the spikes of misread telegrams
+- [x] RF cleaning: cut the counter into segments where it falls or rises faster than `max_kw`
+      (20 kW), trust the longest segment, chain the others that continue it plausibly, drop the
+      rest (wrong scale, 0.008 kWh, spikes, a bad first reading); hourly values interpolated
+      between accepted readings at most 30 minutes apart, otherwise no RF value for that hour
+- [x] Portal hours count as measured only with all 4 quarter hours present
+- [x] Priority: portal measured > RF valid > portal substitute > reconstructed > portal partial;
+      hours without any source are left out, the sum continues
+- [x] Running sums in integer Wh, no float drift
+- [x] Validation: RF vs portal per hour and per complete local day (tolerance 2 %, at least
+      50 Wh), logged by `./homebase fuse --rf <history.csv>`
+- [x] Tests for every rule (synthetic data)
+- [x] Dry run without RF: 31631 hours (portal and reconstructed), no gaps
+- [ ] Dry run with a real RF history download from HA (needs the export, see the log)
+- [ ] Check whether the portal offers meter counter readings; if so, compare them with the RF
+      counter (optional, the hourly validation already covers the drift)
 
 ### Step 3: HA import spike (script from the Mac, test data only)
 
 - [ ] Script against the HA websocket with a long-lived token from `.env`: import one week as
-      `linznetz:test_grid` (`recorder/import_statistics`), read RF statistics back
-      (`recorder/statistics_during_period`)
+      `linznetz:test_grid` (`recorder/import_statistics`), read the RF counter history back
+      (`history/history_during_period`, raw states, see step 2)
 - [ ] Check in a statistics graph card (the Energy tab stays untouched)
 - [ ] Confirm the payload format of the installed HA version, re-import overwrites, deletion via
       Developer tools > Statistics works
@@ -123,8 +132,10 @@ Done when the backtest error is acceptable and the source files are unchanged.
 
 ### Step 6: Fusion live, running alongside the current setup
 
-- [ ] Hourly (a few minutes past the hour): read RF statistics, rebuild and import
+- [ ] Hourly (a few minutes past the hour): read the RF counter history, rebuild and import
       `…_grid_energy_fused`
+- [ ] Archive the RF readings in the add-on storage: HA purges raw states after 10 days by
+      default, the fused series must not lose RF hours the portal never filled
 - [ ] Deviation sensor over MQTT, notification above a threshold
 - [ ] The portal delivers 1 to 2 days late: RF covers that span, the deviation check waits for it
 - [ ] About 2 weeks in parallel while the Energy tab still uses the RF sensor, compare daily
@@ -191,6 +202,9 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: step 2 implemented and tested (49 tests). Decision: RF comes from the raw counter
+  history, not from HA's statistics, because the statistics already contain the misread spikes.
+  Open: a dry run with a real HA history download of the RF energy sensor.
 - 2026-10-14: step 1 done. Real run: 716 blocks (674.78 kWh) split into 17180 quarter hours, all
   complete blocks reproduced exactly, portal rows of the unified file unchanged. Backtest with the
   final profile: 32.3 % (test season 2024) and 30.9 % (2025) against 36.4 % uniform. Also fixed in
