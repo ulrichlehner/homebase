@@ -24,9 +24,12 @@ Every hour in the fused series takes the best source available:
 | Period / case                                   | Source                                        |
 | ----------------------------------------------- | --------------------------------------------- |
 | March to August 2023                            | 6h chart blocks split by a typical profile    |
-| September 2023 to the last portal day           | portal, measured quarter hours                |
-| portal hour with a substitute value (Ersatzwert) | RF if valid, else the portal estimate         |
-| after the last portal day up to now             | RF, until the portal replaces it              |
+| September 2023 until RF readings exist          | portal, measured quarter hours                |
+| hours with a valid RF reading                   | RF (primary, decided 2026-10-14)              |
+| RF missing or invalid (gap, misread phase)      | portal, once it delivers (1 to 2 days later)  |
+
+RF is the primary source; the portal verifies it and fills its gaps. An hour where RF and the
+portal deviate beyond the tolerance keeps the RF value, is flagged, and raises a notification.
 
 The fused series is rebuilt completely on every run (about 30k hourly rows), so a late portal
 value or a corrected rule fixes the past automatically. Data quality per hour stays in the CSV
@@ -180,6 +183,9 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
 
 - [ ] Hourly (a few minutes past the hour): read the RF counter history, rebuild and import
       `…_grid_energy_fused`
+- [ ] Priority in `fusion.py` changed to RF primary: RF valid > portal measured > portal
+      substitute > reconstructed > portal partial; deviating hours keep RF, are flagged in the
+      fused CSV and counted in the status entities
 - [ ] Archive the RF readings (energy counter and power) in the add-on storage, part of every HA
       backup: the recorder purges raw states after `purge_keep_days` (default 10), long-term
       statistics stay. Optionally raise `purge_keep_days` in HA (the user's decision, bigger
@@ -257,10 +263,11 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: decisions: RF is the primary source (portal verifies and fills gaps, deviations
+  are flagged and notified, RF stays); no custom upload UI, the import folder stays (native HA
+  only); the first-download notifications are enough until the status entities of step 6.
 - 2026-10-14: design rule: native HA only, no custom UI (Ingress); notifications for the first
-  download added. Open decision: RF as the primary source (user's view), portal to verify and fill
-  gaps.
-- 2026-10-14: initial version 0.1.0 instead of 1.0.0 (the add-on is not complete); old 0.1.0/0.1.1
+  download added. - 2026-10-14: initial version 0.1.0 instead of 1.0.0 (the add-on is not complete); old 0.1.0/0.1.1
   images from early branch builds exist on ghcr, so 0.1.0 is rebuilt once after the merge
   (`addon-image.yml` with `force`).
 - 2026-10-14: step 5 done ahead of the rest (in PR #13, so the first install starts with the full
