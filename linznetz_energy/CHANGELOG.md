@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.2](https://github.com/ulrichlehner/homebase/compare/v0.2.1...v0.2.2) (2026-10-14)
+
+
+### Bug Fixes
+
+* add-on page scrolls in the Home Assistant app on iOS ([162f649](https://github.com/ulrichlehner/homebase/commit/162f649040f6efd7d3287d997478ce542a6c058b))
+* add-on page scrolls in the Home Assistant app on iOS ([3c38ca4](https://github.com/ulrichlehner/homebase/commit/3c38ca43c1aedb7d9bdfa48f02d82e408b34054e))
+
 ## [0.2.1](https://github.com/ulrichlehner/homebase/compare/v0.2.0...v0.2.1) (2026-10-14)
 
 
