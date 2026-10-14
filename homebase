@@ -8,7 +8,8 @@
 #   ./homebase render [args]       render the current chart from the CSV; `--archive` adds finished weeks
 #   ./homebase render --all        re-render ALL weekly charts (originals are kept in original_charts/)
 #   ./homebase reconstruct         reconstruct 6h values from the chart PNGs in DATA_DIR (+ unified file)
-#   ./homebase merge               rewrite the unified <meterId>_all.csv from the two files above
+#   ./homebase disaggregate        split the reconstructed 6h blocks into quarter hours (+ unified file)
+#   ./homebase merge               rewrite the unified <meterId>_all.csv from the files above
 #   ./homebase check               report incomplete days in the readings CSV
 #   ./homebase up | down | logs    run the cron container in the background (csv + render every 30 min)
 #   ./homebase databot <args>      any databot command, e.g. `databot csv --overlap 30`
@@ -79,7 +80,7 @@ run_standalone() {
     "$IMAGE" "$@"
 }
 
-usage() { sed -n '3,21p' "$0"; }
+usage() { sed -n '3,22p' "$0"; }
 
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
@@ -88,6 +89,14 @@ case "$cmd" in
   csv)
     ensure_image
     run_standalone python3 /app/databot.py csv "$@"
+    ;;
+  disaggregate)
+    ensure_image
+    # profile from the readings, input <meterId>_reconstructed_6h.csv, output <meterId>_reconstructed_15min.csv
+    run_standalone python3 /app/disaggregate.py \
+      --dir /app/export --meter "$METER_ID" --tz "${TZ_VALUE:-Europe/Vienna}" "$@"
+    # refresh the unified file, unless only the backtest ran
+    case " $* " in *" --backtest "*) ;; *) run_standalone python3 /app/databot.py merge ;; esac
     ;;
   merge)
     ensure_image

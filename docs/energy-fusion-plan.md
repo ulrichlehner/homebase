@@ -59,15 +59,17 @@ one PR per step. Nothing touches the live HA setup before step 7.
 
 ### Step 1: Split the 6h chart blocks into quarter hours (databot, offline)
 
-- [ ] `disaggregate.py`: typical profile per quarter hour of the day, by month and day type
+- [x] `disaggregate.py`: typical profile per quarter hour of the day, by month and day type
       (workday, weekend or Austrian public holiday), from a fixed window of measured portal data
-- [ ] Each 6h block is split by the profile weights of its quarter hours, the block total stays
+- [x] Each 6h block is split by the profile weights of its quarter hours, the block total stays
       exact (rounding with largest remainder), output `<meterId>_reconstructed_15min.csv` with
       `method=profile` and a note naming the profile
-- [ ] Backtest: measured days summed into 6h blocks, split again, compared with the real hourly
+- [x] Backtest: measured days summed into 6h blocks, split again, compared with the real hourly
       values; reports the error next to a plain uniform split
 - [ ] `merge` uses the 15-minute file instead of the 6h blocks when it exists
-- [ ] `./homebase disaggregate`, tests with synthetic data (block sums exact, byte-identical
+- [ ] Decide the profile variant (see the backtest results in the log)
+- [x] `./homebase disaggregate` (`--backtest` only reports, writes nothing)
+- [ ] Tests with synthetic data (block sums exact, byte-identical
       output on a second run, DST switch days), README
 
 Done when the backtest error is acceptable and the source files are unchanged.
@@ -104,6 +106,11 @@ Done when the backtest error is acceptable and the source files are unchanged.
 - [ ] CSV storage in the add-on config folder (part of HA backups)
 - [ ] Portal fetch twice a day, import of `…_grid_energy_portal`
 - [ ] Login failure is its own state: HA notification, the add-on keeps running on RF
+- [ ] Portal client: an expired session is retried with a fresh login (today `_ajax` raises
+      `LoginError('session expired')` and `fetch_csv` gives up as if the password were wrong);
+      `LoginError` stays for rejected credentials only
+- [ ] Portal client: tests against recorded, anonymized portal responses of each step of the
+      form flow, so layout changes of the portal show up in the tests
 - [ ] Installs from the repo URL on HA OS, survives a restart, no credentials in the logs
 
 ### Step 5: Load the history once
@@ -129,6 +136,8 @@ Done when the backtest error is acceptable and the source files are unchanged.
 
 ### Step 8: Docs and cleanup
 
+- [ ] Add-on README with the prerequisites: quarter-hour analysis ("Viertelstundenauswertung")
+      enabled in the portal, data arrives 1 to 2 days late
 - [ ] Add-on README, homebase README, `smartmeter/` docs (guard sensor possibly unnecessary)
 - [ ] Decide whether the Docker databot keeps writing the CSV archive outside HA
 
@@ -180,6 +189,24 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: backtest of step 1 on real data (hourly error as share of the consumption, profile
+  from 2023-09 to 2026-08 without the test season). All profile variants land at 31 to 33 %,
+  the uniform split at about 36 %. The variants differ by less than the noise between the two
+  test seasons; median "season x day type" is best or tied best in both (32.3 % and 30.9 %).
+  Conclusion: a profile improves the hourly shape only modestly, single hours are dominated by
+  random appliance use. Daily and 6h totals stay exact either way.
+
+  | Variant                   | test Mar-Aug 2024 | test Mar-Aug 2025 |
+  | ------------------------- | ----------------- | ----------------- |
+  | uniform split             | 36.4 %            | not run           |
+  | mean, month x day type    | 33.1 %            | 31.8 %            |
+  | mean, day type only       | 32.5 %            | 30.9 %            |
+  | median, month x day type  | 32.4 %            | 31.1 %            |
+  | median, season x day type | 32.3 %            | 30.9 %            |
+  | mean, month x weekday     | 34.9 %            | 32.9 %            |
+
+- 2026-10-14: portal clients of the related projects compared with `linznetz.py`; learnings
+  added to steps 4 and 8.
 - 2026-10-14: related projects reviewed, learnings added to steps 2, 4 and 6.
 - 2026-10-14: plan written, step 0 done except the backup, step 1 started (branch
   `fusion-disaggregate`).
