@@ -48,8 +48,9 @@ can be added later.
 
 ## Steps and progress
 
-Each step ends with something that can be checked before the next one starts. One branch and
-one PR per step. Nothing touches the live HA setup before step 7.
+Each step ends with something that can be checked before the next one starts. All steps live in
+one branch (`fusion-disaggregate`) and one PR (#13), merged once at the end, no intermediate
+merges. Nothing touches the live HA setup before step 7.
 
 ### Step 0: Prerequisites
 
