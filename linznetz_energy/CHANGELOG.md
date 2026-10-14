@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.0](https://github.com/ulrichlehner/homebase/compare/v0.1.1...v0.2.0) (2026-10-14)
+
+
+### Features
+
+* add-on texts in the language of Home Assistant, clearer upload ([86084d5](https://github.com/ulrichlehner/homebase/commit/86084d5c5bfd42478ccd21bcd5803133cd25447c))
+* add-on texts in the language of Home Assistant, clearer upload ([fa7b6a2](https://github.com/ulrichlehner/homebase/commit/fa7b6a21bb8f4d56cb18fc5eb9ffdb265903e49f))
+
 ## [0.1.1](https://github.com/ulrichlehner/homebase/compare/v0.1.0...v0.1.1) (2026-10-14)
 
 
