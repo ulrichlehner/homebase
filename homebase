@@ -7,8 +7,12 @@
 #   ./homebase csv                 update the readings CSV in DATA_DIR from the portal (+ unified file)
 #   ./homebase render [args]       render the current chart from the CSV; `--archive` adds finished weeks
 #   ./homebase render --all        re-render ALL weekly charts (originals are kept in original_charts/)
-#   ./homebase reconstruct         reconstruct 6h values from the chart PNGs in DATA_DIR (+ unified file)
-#   ./homebase merge               rewrite the unified <meterId>_all.csv from the two files above
+#   ./homebase reconstruct         reconstruct 6h values from the chart PNGs in DATA_DIR (+ split, unified file)
+#   ./homebase disaggregate        split the reconstructed 6h blocks into quarter hours (+ unified file)
+#   ./homebase fuse [--rf FILE]    fuse portal, RF (HA history CSV) and reconstruction into hours
+#   ./homebase ha-spike CMD        HA statistics import test (info | import | clear), needs HA_URL/HA_TOKEN
+#   ./homebase assets [--check]    render the add-on icon/logo PNGs from linznetz_energy/assets/*.svg
+#   ./homebase merge               rewrite the unified <meterId>_all.csv from the files above
 #   ./homebase check               report incomplete days in the readings CSV
 #   ./homebase up | down | logs    run the cron container in the background (csv + render every 30 min)
 #   ./homebase databot <args>      any databot command, e.g. `databot csv --overlap 30`
@@ -25,7 +29,8 @@ set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 
 IMAGE="ghcr.io/ulrichlehner/homebase-databot:main"
-SRC_DIR="./databot"
+# the image holds the shared library (lib/) and the command line tools (databot/)
+SRC_DIRS=(./lib ./databot)
 ENV_FILE="./.env"
 
 die() { echo "error: $*" >&2; exit 1; }
@@ -47,8 +52,9 @@ DATA_DIR="$(cd "$DATA_DIR" && pwd)"
 
 source_hash() {
   # hash of every file that goes into the image
-  find "$SRC_DIR" -type f \( -name '*.py' -o -name '*.sh' -o -name 'requirements*.txt' -o -name Dockerfile \) \
-    -not -path '*/tests/*' -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | cut -d' ' -f1
+  find "${SRC_DIRS[@]}" -type f \( -name '*.py' -o -name '*.sh' -o -name 'requirements*.txt' -o -name Dockerfile \
+    -o -name pyproject.toml \) -not -path '*/tests/*' -not -path '*.egg-info*' -print0 \
+    | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | cut -d' ' -f1
 }
 
 image_hash() {
@@ -57,7 +63,7 @@ image_hash() {
 
 build() {
   echo ">> building image $IMAGE"
-  docker build --label "homebase.source=$(source_hash)" -t "$IMAGE" "$SRC_DIR"
+  docker build --label "homebase.source=$(source_hash)" -t "$IMAGE" -f databot/Dockerfile .
 }
 
 ensure_image() {
@@ -79,7 +85,7 @@ run_standalone() {
     "$IMAGE" "$@"
 }
 
-usage() { sed -n '3,21p' "$0"; }
+usage() { sed -n '3,25p' "$0"; }
 
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
@@ -88,6 +94,48 @@ case "$cmd" in
   csv)
     ensure_image
     run_standalone python3 /app/databot.py csv "$@"
+    ;;
+  disaggregate)
+    ensure_image
+    # profile from the readings, input <meterId>_reconstructed_6h.csv, output <meterId>_reconstructed_15min.csv
+    run_standalone python3 /app/databot.py disaggregate "$@"
+    # refresh the unified file, unless only the backtest ran
+    case " $* " in *" --backtest "*) ;; *) run_standalone python3 /app/databot.py merge ;; esac
+    ;;
+  fuse)
+    ensure_image
+    # an RF history file outside DATA_DIR is mounted read-only into the container
+    extra=() args=()
+    while [ $# -gt 0 ]; do
+      if [ "$1" = "--rf" ] && [ $# -gt 1 ]; then
+        [ -f "$2" ] || die "RF history file $2 not found"
+        extra=(-v "$(cd "$(dirname "$2")" && pwd)/$(basename "$2"):/app/rf.csv:ro")
+        args+=(--rf /app/rf.csv); shift 2
+      else
+        args+=("$1"); shift
+      fi
+    done
+    tty_flags="-i"; [ -t 0 ] && [ -t 1 ] && tty_flags="-it"
+    docker run --rm $tty_flags --env-file "$ENV_FILE" -e EXPORT_DIR=/app/export -v "$DATA_DIR:/app/export" \
+      ${extra[@]+"${extra[@]}"} "$IMAGE" python3 /app/databot.py fuse ${args[@]+"${args[@]}"}
+    ;;
+  ha-spike)
+    ensure_image
+    # containers cannot resolve mDNS names (homeassistant.local): resolve on the host
+    ha_host="$( (env_value HA_URL || true) | sed -E 's#^[a-z]+://##; s#[:/].*$##')"
+    host_flags=()
+    if [[ "$ha_host" == *.local ]]; then
+      ha_ip="$(dscacheutil -q host -a name "$ha_host" 2>/dev/null | awk '/^ip_address/ {print $2; exit}')"
+      [ -n "$ha_ip" ] || die "cannot resolve $ha_host"
+      host_flags=(--add-host "$ha_host:$ha_ip")
+    fi
+    docker run --rm -i --env-file "$ENV_FILE" -e EXPORT_DIR=/app/export -v "$DATA_DIR:/app/export" \
+      ${host_flags[@]+"${host_flags[@]}"} "$IMAGE" python3 /app/ha_spike.py "$@"
+    ;;
+  assets)
+    # own small image (cairo + DejaVu), independent of the databot image
+    docker build -q -t homebase-assets linznetz_energy/assets >/dev/null
+    docker run --rm -v "$PWD/linznetz_energy:/addon" --entrypoint python3 homebase-assets /addon/assets/render.py "$@"
     ;;
   merge)
     ensure_image
@@ -99,7 +147,8 @@ case "$cmd" in
     run_standalone python3 /app/reconstruct.py \
       --charts /app/export --meter "$METER_ID" --tz "${TZ_VALUE:-Europe/Vienna}" \
       --readings "/app/export/${METER_ID}_readings.csv" "$@"
-    # refresh the unified file
+    # refresh the quarter-hour split, then the unified file
+    run_standalone python3 /app/databot.py disaggregate
     run_standalone python3 /app/databot.py merge
     ;;
   up)
@@ -126,7 +175,9 @@ case "$cmd" in
     ;;
   test)
     ensure_image
-    docker run --rm -v "$PWD/$SRC_DIR:/app" "$IMAGE" sh -c 'pip install -q pytest >/dev/null && python3 -m pytest -q tests'
+    # the sources are mounted, so the tests run against the working tree (pytest.ini sets the paths)
+    docker run --rm -v "$PWD:/src" -w /src "$IMAGE" sh -c \
+      'pip install -q pytest >/dev/null && python3 -m pytest -q -p no:cacheprovider'
     ;;
   build)
     build

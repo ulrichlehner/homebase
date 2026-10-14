@@ -1,0 +1,6 @@
+# Home Assistant add-on repository: Settings > Add-ons > Add-on store > Repositories
+# Only name, url and maintainer are supported here; icon, logo, docs and changelog of an
+# add-on live in its folder (linznetz_energy/).
+name: homebase
+url: https://github.com/ulrichlehner/homebase
+maintainer: Ulrich Lehner <me@ulrichlehner.com>

@@ -1,0 +1,31 @@
+# Checks that the add-on images (linznetz_energy/icon.png, logo.png) match their SVG sources in
+# linznetz_energy/assets/. Fails when an SVG changed without `./homebase assets`.
+
+name: Check the add-on images
+
+on:
+  push:
+    paths:
+      - 'linznetz_energy/assets/**'
+      - 'linznetz_energy/*.png'
+      - '.github/workflows/addon-assets.yml'
+  pull_request:
+    paths:
+      - 'linznetz_energy/assets/**'
+      - 'linznetz_energy/*.png'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build the renderer
+        run: docker build -t homebase-assets linznetz_energy/assets
+
+      - name: Compare the PNGs with their SVG sources
+        run: docker run --rm -v "$PWD/linznetz_energy:/addon" --entrypoint python3 homebase-assets /addon/assets/render.py --check

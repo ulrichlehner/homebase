@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Add-on logo: the icon (embedded from icon.svg) and the name. The text colours read on light
+     and dark backgrounds. Source of logo.png, rendered by `./homebase assets`. -->
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="250" height="100" viewBox="0 0 250 100">
+  <image x="8" y="8" width="84" height="84" xlink:href="icon.svg"/>
+  <g font-family="DejaVu Sans" font-weight="bold" font-size="22">
+    <text x="102" y="43" fill="#607D8B">LINZ NETZ</text>
+    <text x="102" y="73" fill="#03A9F4">energy</text>
+  </g>
+</svg>

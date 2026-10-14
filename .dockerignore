@@ -1,0 +1,11 @@
+# Build context is the repository root (databot/Dockerfile, linznetz_energy/Dockerfile):
+# never send secrets or data to the Docker daemon.
+.env
+.env.*
+data/
+.git/
+**/__pycache__/
+**/*.egg-info/
+**/.pytest_cache/
+**/.venv/
+smartmeter/
