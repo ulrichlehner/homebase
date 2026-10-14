@@ -3,7 +3,7 @@
 
 Every hour, a few minutes past the full hour:
 
-  1. fetch new readings from the LINZ NETZ portal, at most every `portal_hours` hours
+  1. fetch new readings from the LINZ NETZ portal, at most every `fetch_interval_hours` hours
      (the portal shows a day one to two days later), into the CSV files in the add-on
      config folder (part of every HA backup),
   2. rebuild the hourly statistic `linznetz:<site>_grid_energy_portal` from the CSV files
@@ -52,7 +52,7 @@ class Options:
     password: str
     meter_id: str
     site: str
-    portal_hours: int = 12
+    fetch_interval_hours: int = 12
 
     @property
     def portal_statistic(self) -> str:
@@ -72,7 +72,7 @@ def load_options(path: Path) -> Options:
     if not site.replace('_', '').isalnum():
         raise SystemExit('Option site may only contain letters, digits and _')
     return Options(raw['username'], raw['password'], raw['meter_id'].strip(), site,
-                   int(raw.get('portal_hours') or 12))
+                   int(raw.get('fetch_interval_hours') or 12))
 
 
 # -- State ----------------------------------------------------------------------
@@ -149,7 +149,7 @@ def notify(hass, notification_id: str, title: str, message: Optional[str]) -> No
 
 def run_once(hass, options: Options, store: Path, tz: str, now: datetime) -> None:
     state = read_state(store)
-    if portal_due(state, now, options.portal_hours):
+    if portal_due(state, now, options.fetch_interval_hours):
         try:
             fetch_portal(options, store, tz)
             state['portal_ok'] = now.isoformat()
@@ -157,10 +157,10 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime) -> Non
             notify(hass, LOGIN_NOTIFICATION, '', None)
         except LoginError as err:
             state['portal_login_failed'] = now.isoformat()
-            logger.error('LINZ NETZ login failed: %s. Next attempt in %d hours.', err, options.portal_hours)
+            logger.error('LINZ NETZ login failed: %s. Next attempt in %d hours.', err, options.fetch_interval_hours)
             notify(hass, LOGIN_NOTIFICATION, 'LINZ NETZ login failed',
                    f'The LINZ NETZ energy add-on could not log in to the portal ({err}). Check username and '
-                   f'password in the add-on configuration. Next attempt in {options.portal_hours} hours.')
+                   f'password in the add-on configuration. Next attempt in {options.fetch_interval_hours} hours.')
         except LinzNetzError as err:
             logger.warning('Portal fetch failed, retrying next hour: %s', err)
         write_state(store, state)

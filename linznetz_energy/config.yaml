@@ -1,5 +1,5 @@
 name: LINZ NETZ energy
-version: "0.1.0"
+version: "0.1.1"
 slug: linznetz_energy
 description: LINZ NETZ portal readings as long-term statistics for the Energy dashboard
 url: https://github.com/ulrichlehner/homebase/tree/main/linznetz_energy
@@ -23,10 +23,10 @@ options:
   password: ""
   meter_id: ""
   site: ""
-  portal_hours: 12
+  fetch_interval_hours: 12
 schema:
   username: str
   password: password
   meter_id: match(^AT[0-9A-Z]{31}$)
   site: match(^[a-z0-9_]+$)
-  portal_hours: int(6,48)
+  fetch_interval_hours: int(6,48)

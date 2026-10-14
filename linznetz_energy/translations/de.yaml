@@ -1,0 +1,15 @@
+configuration:
+  username:
+    name: Portal-Benutzername
+    description: Login für das LINZ NETZ Serviceportal.
+  password:
+    name: Portal-Passwort
+  meter_id:
+    name: Zählpunkt
+    description: Die 33-stellige Zählpunktnummer, beginnt mit AT.
+  site:
+    name: Standort
+    description: Kurzer Name des Orts in Kleinbuchstaben, Teil der Statistik-IDs (linznetz:<standort>_grid_energy_portal).
+  fetch_interval_hours:
+    name: Abrufintervall Portal (Stunden)
+    description: Wie oft neue Werte vom Portal geholt werden. Das Portal zeigt einen Tag erst ein bis zwei Tage später, 12 Stunden reichen.

@@ -46,7 +46,7 @@ def test_load_options(tmp_path):
     path = tmp_path / 'options.json'
     path.write_text(json.dumps({'username': 'u', 'password': 'p', 'meter_id': f' {METER} ', 'site': 'Place_1'}))
     o = addon.load_options(path)
-    assert o.meter_id == METER and o.site == 'place_1' and o.portal_hours == 12
+    assert o.meter_id == METER and o.site == 'place_1' and o.fetch_interval_hours == 12
     assert o.portal_statistic == 'linznetz:place_1_grid_energy_portal'
     assert o.title == 'Place 1'
     path.write_text(json.dumps({'username': 'u', 'password': '', 'meter_id': METER, 'site': 'x'}))

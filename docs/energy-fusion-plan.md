@@ -127,7 +127,8 @@ Done when the backtest error is acceptable and the source files are unchanged.
 - [x] `repository.yaml` + add-on folder `linznetz_energy/` in this repo, reusing `databot/`
       (`linznetz.py`, `databot.py`, `fusion.py`, `ha.py`); main loop `databot/addon.py`
 - [x] `config.yaml` with `homeassistant_api: true` (websocket through the Supervisor, no token),
-      options: portal login (password field), meter ID, site name, portal interval; the time zone
+      options: portal login (password field), meter ID, site name, `fetch_interval_hours`
+      (English and German translations); the time zone
       comes from HA; the RF entity follows in step 6
 - [x] Image per architecture (`aarch64`, `amd64`) built by GitHub Actions
       (`.github/workflows/addon-image.yml`), `ghcr.io/ulrichlehner/homebase-linznetz-energy-<arch>`
