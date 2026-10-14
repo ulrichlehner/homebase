@@ -50,7 +50,7 @@ jobs:
       - name: Decide the tags
         id: tags
         run: |
-          version="$(sed -nE 's/^version: *"?([^"]+)"?/\1/p' linznetz_energy/config.yaml)"
+          version="$(sed -nE 's/^version: *"?([^" #]+)"?.*/\1/p' linznetz_energy/config.yaml)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           if [ "$GITHUB_REF_NAME" != "main" ]; then
             echo "tags=$IMAGE:dev" >> "$GITHUB_OUTPUT"

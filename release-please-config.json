@@ -9,9 +9,8 @@
       "changelog-path": "linznetz_energy/CHANGELOG.md",
       "extra-files": [
         {
-          "type": "yaml",
-          "path": "linznetz_energy/config.yaml",
-          "jsonpath": "$.version"
+          "type": "generic",
+          "path": "linznetz_energy/config.yaml"
         }
       ],
       "bump-minor-pre-major": true,

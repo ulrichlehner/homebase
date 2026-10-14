@@ -1,6 +1,6 @@
 name: LINZ NETZ energy
-# set by release-please from the conventional commits, see README "Releases"
-version: "0.1.0"
+# set by release-please from the conventional commits (only this line), see README "Releases"
+version: "0.1.0" # x-release-please-version
 slug: linznetz_energy
 description: LINZ NETZ portal readings as long-term statistics for the Energy dashboard
 url: https://github.com/ulrichlehner/homebase/tree/main/linznetz_energy
