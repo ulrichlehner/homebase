@@ -59,18 +59,20 @@ one PR per step. Nothing touches the live HA setup before step 7.
 
 ### Step 1: Split the 6h chart blocks into quarter hours (databot, offline)
 
-- [x] `disaggregate.py`: typical profile per quarter hour of the day, by month and day type
-      (workday, weekend or Austrian public holiday), from a fixed window of measured portal data
+- [x] `disaggregate.py`: typical profile per quarter hour of the day (median per season and day
+      type: workday, or weekend and Austrian public holiday), from a fixed window of measured
+      portal data (2023-09-01 to 2026-08-31)
 - [x] Each 6h block is split by the profile weights of its quarter hours, the block total stays
       exact (rounding with largest remainder), output `<meterId>_reconstructed_15min.csv` with
       `method=profile` and a note naming the profile
 - [x] Backtest: measured days summed into 6h blocks, split again, compared with the real hourly
       values; reports the error next to a plain uniform split
-- [ ] `merge` uses the 15-minute file instead of the 6h blocks when it exists
-- [ ] Decide the profile variant (see the backtest results in the log)
+- [x] `merge` uses the 15-minute file instead of the 6h blocks when it exists; `reconstruct`
+      runs `disaggregate` before `merge`, `merge` warns when the split is older than the blocks
+- [x] Decide the profile variant: median, season x day type (see the log)
 - [x] `./homebase disaggregate` (`--backtest` only reports, writes nothing)
-- [ ] Tests with synthetic data (block sums exact, byte-identical
-      output on a second run, DST switch days), README
+- [x] Tests with synthetic data (block sums exact, byte-identical output on a second run, inputs
+      untouched, DST switch days, holidays, backtest, unified file), README
 
 Done when the backtest error is acceptable and the source files are unchanged.
 
@@ -106,9 +108,8 @@ Done when the backtest error is acceptable and the source files are unchanged.
 - [ ] CSV storage in the add-on config folder (part of HA backups)
 - [ ] Portal fetch twice a day, import of `…_grid_energy_portal`
 - [ ] Login failure is its own state: HA notification, the add-on keeps running on RF
-- [ ] Portal client: an expired session is retried with a fresh login (today `_ajax` raises
-      `LoginError('session expired')` and `fetch_csv` gives up as if the password were wrong);
-      `LoginError` stays for rejected credentials only
+- [x] Portal client: an expired session is retried with a fresh login (`SessionExpiredError`,
+      done in step 1's PR); `LoginError` stays for rejected credentials only
 - [ ] Portal client: tests against recorded, anonymized portal responses of each step of the
       form flow, so layout changes of the portal show up in the tests
 - [ ] Installs from the repo URL on HA OS, survives a restart, no credentials in the logs
@@ -137,7 +138,7 @@ Done when the backtest error is acceptable and the source files are unchanged.
 ### Step 8: Docs and cleanup
 
 - [ ] Add-on README with the prerequisites: quarter-hour analysis ("Viertelstundenauswertung")
-      enabled in the portal, data arrives 1 to 2 days late
+      enabled in the portal, data arrives 1 to 2 days late (already in the homebase README)
 - [ ] Add-on README, homebase README, `smartmeter/` docs (guard sensor possibly unnecessary)
 - [ ] Decide whether the Docker databot keeps writing the CSV archive outside HA
 
@@ -189,6 +190,11 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: step 1 done. Real run: 716 blocks (674.78 kWh) split into 17180 quarter hours, all
+  complete blocks reproduced exactly, portal rows of the unified file unchanged. Backtest with the
+  final profile: 32.3 % (test season 2024) and 30.9 % (2025) against 36.4 % uniform. Also fixed in
+  this branch: an expired portal session is retried with a fresh login instead of failing like
+  rejected credentials.
 - 2026-10-14: backtest of step 1 on real data (hourly error as share of the consumption, profile
   from 2023-09 to 2026-08 without the test season). All profile variants land at 31 to 33 %,
   the uniform split at about 36 %. The variants differ by less than the noise between the two

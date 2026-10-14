@@ -7,7 +7,7 @@
 #   ./homebase csv                 update the readings CSV in DATA_DIR from the portal (+ unified file)
 #   ./homebase render [args]       render the current chart from the CSV; `--archive` adds finished weeks
 #   ./homebase render --all        re-render ALL weekly charts (originals are kept in original_charts/)
-#   ./homebase reconstruct         reconstruct 6h values from the chart PNGs in DATA_DIR (+ unified file)
+#   ./homebase reconstruct         reconstruct 6h values from the chart PNGs in DATA_DIR (+ split, unified file)
 #   ./homebase disaggregate        split the reconstructed 6h blocks into quarter hours (+ unified file)
 #   ./homebase merge               rewrite the unified <meterId>_all.csv from the files above
 #   ./homebase check               report incomplete days in the readings CSV
@@ -108,7 +108,8 @@ case "$cmd" in
     run_standalone python3 /app/reconstruct.py \
       --charts /app/export --meter "$METER_ID" --tz "${TZ_VALUE:-Europe/Vienna}" \
       --readings "/app/export/${METER_ID}_readings.csv" "$@"
-    # refresh the unified file
+    # refresh the quarter-hour split, then the unified file
+    run_standalone python3 /app/disaggregate.py --dir /app/export --meter "$METER_ID" --tz "${TZ_VALUE:-Europe/Vienna}"
     run_standalone python3 /app/databot.py merge
     ;;
   up)

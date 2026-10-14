@@ -48,6 +48,10 @@ class LoginError(LinzNetzError):
     """Credentials were rejected or the SSO flow changed."""
 
 
+class SessionExpiredError(LinzNetzError):
+    """The SSO session ended mid-flow; a retry logs in again."""
+
+
 class ParseError(LinzNetzError):
     """The portal HTML did not look like expected (layout change?)."""
 
@@ -294,7 +298,7 @@ class LinzNetz:
         r = self._session.post(CONSUMPTION_URL, data=data, headers=headers, timeout=self.timeout)
         r.raise_for_status()
         if 'login-actions/authenticate' in r.text:
-            raise LoginError('session expired')
+            raise SessionExpiredError('session expired')
         return r.text
 
     # -- Form flow ------------------------------------------------------------
@@ -409,7 +413,8 @@ class LinzNetz:
                   unit: str = 'KWH') -> bytes:
         """Downloads the raw CSV export for the inclusive date range.
 
-        Transient errors (network, session, layout hiccups) are retried;
+        Transient errors (network, expired session, layout hiccups) are retried with a
+        fresh login;
         :class:`NoDataError` and :class:`LoginError` are raised immediately.
         """
         if date_to < date_from:
@@ -421,7 +426,7 @@ class LinzNetz:
                 return self._fetch_once(date_from, date_to, granularity, unit)
             except (NoDataError, LoginError):
                 raise
-            except (requests.RequestException, ParseError) as err:
+            except (requests.RequestException, SessionExpiredError, ParseError) as err:
                 if attempt > self.retries:
                     raise LinzNetzError(f'giving up after {attempt} attempts: {err}') from err
                 logger.warning('Fetch %s - %s failed (%s), retrying in %.0fs',

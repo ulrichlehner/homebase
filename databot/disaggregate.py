@@ -5,9 +5,9 @@ The chart reconstruction (reconstruct.py) only knows 6-hour sums. Home Assistant
 keeps hourly statistics, and the blocks run from 00:15 to 06:15 and so on, so they
 do not even line up with full hours. This script
 
-  1. builds a typical load profile from measured portal readings: the mean kWh of
-     each quarter hour of the day, separately per calendar month and day type
-     (workday or weekend/Austrian public holiday), from a fixed window,
+  1. builds a typical load profile from measured portal readings: the median kWh
+     of each quarter hour of the day, separately per meteorological season and day
+     type (workday or weekend/Austrian public holiday), from a fixed window,
   2. splits every 6-hour block into its quarter hours, weighted by the profile
      value of each quarter hour; the block total stays exact (the rounding to
      Wh uses the largest remainder),
@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import csv
 import logging
+import statistics
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
@@ -39,10 +40,10 @@ UTC = ZoneInfo('UTC')
 QUARTER = timedelta(minutes=15)
 SLOTS_PER_DAY = 96
 
-# Default profile window: the first two full years of portal data. Fixed on purpose,
+# Default profile window: the first three full years of portal data. Fixed on purpose,
 # new readings must not change the estimates of 2023.
 DEFAULT_PROFILE_FROM = date(2023, 9, 1)
-DEFAULT_PROFILE_TO = date(2025, 8, 31)
+DEFAULT_PROFILE_TO = date(2026, 8, 31)
 # Default backtest period: the same season as the reconstructed history (March to
 # August), one year later; it is left out of the profile while testing.
 DEFAULT_BACKTEST_FROM = date(2024, 3, 1)
@@ -94,8 +95,17 @@ def slot_of(t: datetime) -> int:
     return t.hour * 4 + t.minute // 15
 
 
+SEASONS = ('winter', 'spring', 'summer', 'autumn')  # meteorological: Dec-Feb, Mar-May, ...
+
+
+def season(d: date) -> str:
+    return SEASONS[d.month % 12 // 3]
+
+
 def profile_key(t: datetime) -> tuple:
-    return t.month, day_type(t.date())
+    """(season, day type) of a local time. Median per season and day type won the
+    backtest against mean and month-based variants (see docs/energy-fusion-plan.md)."""
+    return season(t.date()), day_type(t.date())
 
 
 # -- Data ---------------------------------------------------------------------
@@ -150,31 +160,27 @@ def quarters(start: datetime, end: datetime) -> list:
 
 def build_profile(readings: dict, zone: ZoneInfo, date_from: date, date_to: date,
                   exclude: Optional[tuple] = None) -> dict:
-    """{(month, day type): [mean kWh per slot]} from the readings whose local day is in
-    [date_from, date_to], without the days in the optional `exclude` range (inclusive)."""
-    sums: dict = defaultdict(lambda: [0.0] * SLOTS_PER_DAY)
-    counts: dict = defaultdict(lambda: [0] * SLOTS_PER_DAY)
+    """{(season, day type): [median kWh per slot]} from the readings whose local day is
+    in [date_from, date_to], without the days in the optional `exclude` range (inclusive)."""
+    values: dict = defaultdict(lambda: [[] for _ in range(SLOTS_PER_DAY)])
     for u, kwh in readings.items():
         t = u.astimezone(zone)
         d = t.date()
         if not date_from <= d <= date_to or (exclude and exclude[0] <= d <= exclude[1]):
             continue
-        key, s = profile_key(t), slot_of(t)
-        sums[key][s] += kwh
-        counts[key][s] += 1
-    return {key: [sums[key][s] / counts[key][s] if counts[key][s] else 0.0 for s in range(SLOTS_PER_DAY)]
-            for key in sorted(sums)}
+        values[profile_key(t)][slot_of(t)].append(kwh)
+    return {key: [statistics.median(v) if v else 0.0 for v in values[key]] for key in sorted(values)}
 
 
 def weight(profile: dict, t: datetime) -> float:
     """Profile weight of one local quarter hour; falls back to the other day type and
-    then to the neighbouring months if the window has no data for this key."""
-    month, dtype = profile_key(t)
+    then to the neighbouring seasons if the window has no data for this key."""
+    name, dtype = profile_key(t)
     other = 'workday' if dtype == 'weekend' else 'weekend'
-    for delta in (0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, 6):
-        m = (month - 1 + delta) % 12 + 1
+    i = SEASONS.index(name)
+    for delta in (0, -1, 1, 2):
         for kind in (dtype, other):
-            values = profile.get((m, kind))
+            values = profile.get((SEASONS[(i + delta) % 4], kind))
             if values and any(values):
                 return values[slot_of(t)]
     return 1.0
@@ -217,9 +223,9 @@ def disaggregate(blocks: list, profile: dict, zone: ZoneInfo, window: tuple) -> 
         block_start = b.start.astimezone(zone).isoformat()
         for q, kwh in split_block(b, zone, profile):
             t = q.astimezone(zone)
-            month, dtype = profile_key(t)
+            name, dtype = profile_key(t)
             note = (f'share of the 6h block {block_start} ({b.kwh:.2f} kWh {b.method}) '
-                    f'by the {dtype} profile of month {month:02d} from portal readings '
+                    f'by the {name} {dtype} median profile from portal readings '
                     f'{window[0].isoformat()} to {window[1].isoformat()}')
             rows.append([t.isoformat(), (q + QUARTER).astimezone(zone).isoformat(), f'{kwh:.3f}',
                          b.source, 'profile', note])

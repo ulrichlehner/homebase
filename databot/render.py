@@ -1,6 +1,6 @@
 """Renders the weekly consumption chart from the CSV data.
 
-Data source: <EXPORT_DIR>/<meterId>_all.csv (reconstructed 6h blocks followed by
+Data source: <EXPORT_DIR>/<meterId>_all.csv (reconstructed history followed by
 the measured quarter hours, written by `databot csv` / `databot merge`), falling
 back to <meterId>_readings.csv. No database involved.
 """

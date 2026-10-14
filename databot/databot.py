@@ -7,7 +7,7 @@ Commands:
             portal: first run downloads everything, later runs re-load a few days of overlap
             (the portal corrects values retroactively), re-fetch incomplete days, extend
             backwards if the portal has older data, then rewrite the unified file
-  merge     write <meterId>_all.csv (reconstructed 6h blocks + measured quarter hours)
+  merge     write <meterId>_all.csv (reconstructed history + measured quarter hours)
   check     report days with missing quarter-hour intervals in the readings file
 
 Raw portal exports are archived under <EXPORT_DIR>/csv/.
@@ -287,15 +287,27 @@ UNIFIED_HEADER = ['start_local', 'end_local', 'kwh', 'kw', 'source', 'method', '
 
 
 def write_unified(config: Config, rows: dict, path: Path) -> int:
-    """Writes one file with everything: the reconstructed 6-hour blocks (if a
-    reconstruction exists) followed by all measured quarter-hour readings. Every row
-    says where its value comes from. A reconstructed block overlapping the first
-    measured reading is trimmed so nothing is counted twice."""
+    """Writes one file with everything: the reconstructed history (if a reconstruction
+    exists) followed by all measured quarter-hour readings. Every row says where its
+    value comes from. The reconstructed quarter hours of `disaggregate` are preferred
+    over the 6-hour blocks; reconstructed rows from the first measured reading on are
+    dropped, a 6-hour block overlapping it is trimmed, so nothing is counted twice."""
     zone = ZoneInfo(config.tz)
     out = []
     measured_start = datetime.fromtimestamp(min(rows), zone) if rows else None
     reconstructed = config.export_dir / f'{config.meter_id}_reconstructed_6h.csv'
-    if reconstructed.exists():
+    quarters = config.export_dir / f'{config.meter_id}_reconstructed_15min.csv'
+    if quarters.exists():
+        if reconstructed.exists() and reconstructed.stat().st_mtime > quarters.stat().st_mtime:
+            logger.warning('%s is newer than %s, run `disaggregate` to refresh the quarter hours',
+                           reconstructed.name, quarters.name)
+        with quarters.open(newline='') as fh:
+            for r in csv.DictReader(fh, delimiter=';'):
+                if measured_start and datetime.fromisoformat(r['start_local']) >= measured_start:
+                    continue
+                out.append([r['start_local'], r['end_local'], r['kwh'], '', r['source'], r['method'],
+                            'quarter hour split from a 6h chart block / ' + r['note']])
+    elif reconstructed.exists():
         with reconstructed.open(newline='') as fh:
             for r in csv.DictReader(fh, delimiter=';'):
                 start, end = datetime.fromisoformat(r['start_local']), datetime.fromisoformat(r['end_local'])

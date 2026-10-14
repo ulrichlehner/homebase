@@ -16,6 +16,7 @@ Everything lives in one data folder (`DATA_DIR`, see below):
 | -------------------------------- | ----------------------------------------------------------------------- |
 | `<meterId>_readings.csv`         | every measured quarter hour: local + UTC start, kWh, kW, substitute flag |
 | `<meterId>_reconstructed_6h.csv` | 6-hour values reconstructed from old chart PNGs (optional, see below)   |
+| `<meterId>_reconstructed_15min.csv` | the 6-hour values split into quarter hours by a typical profile        |
 | `<meterId>_all.csv`              | both combined into one contiguous timeline with `source`/`method`/`note` |
 | `csv/`                           | the raw portal exports, exactly as downloaded                            |
 | `*.png`, `archive/`              | the rendered weekly charts (you may move old ones into `archive/`)       |
@@ -24,6 +25,9 @@ Everything lives in one data folder (`DATA_DIR`, see below):
 `databot csv` keeps the readings file current and rewrites the unified file; `render.py` draws the
 charts from the unified file. The cron jobs in the container run both every 30 minutes and archive the
 chart of the finished week on Mondays.
+
+Prerequisite: the quarter-hour analysis ("Viertelstundenauswertung") must be enabled for the meter
+in the portal. The portal shows the values of a day one to two days later.
 
 ## Run
 
@@ -39,6 +43,7 @@ wrapper rebuilds the image automatically whenever the sources in `databot/` chan
 ./homebase down           # stop it
 ./homebase check          # report incomplete days in the readings CSV
 ./homebase reconstruct    # reconstruct 6h values from archived chart PNGs (see below)
+./homebase disaggregate   # split the reconstructed 6h values into quarter hours (see below)
 ./homebase test           # run the unit tests
 ```
 
@@ -95,14 +100,38 @@ day for the period before the portal readings start. It is clearly marked as rec
 The script validates itself against the real readings where charts and portal data overlap (from
 September 2023 on) and logs the agreement.
 
+### Splitting the 6-hour values into quarter hours
+
+Home Assistant keeps hourly statistics, and the reconstructed blocks run from 00:15 to 06:15 and so
+on, so they do not even line up with full hours. `./homebase disaggregate` splits every block into
+its quarter hours and writes `<meterId>_reconstructed_15min.csv`; `reconstruct` runs it
+automatically.
+
+- The weights come from a typical profile of the household: the median kWh of each quarter hour of
+  the day per meteorological season and day type (workday, or weekend and Austrian public
+  holiday), taken from the measured portal readings of a fixed window (2023-09-01 to 2026-08-31,
+  `--profile-from` / `--profile-to`). The window is fixed so new readings never change the
+  estimates; the same inputs give a byte-identical file.
+- Every block keeps its exact total (rounded to Wh with the largest remainder), so the 6-hour and
+  daily sums are exactly the reconstructed ones. Only the shape inside a block is estimated.
+- Rows keep `source=chart_ocr`, get `method=profile`, and the note names the block and the profile.
+- Each run first backtests the method: measured days from a test season (default March to August
+  2024, `--backtest-from` / `--backtest-to`, left out of the profile) are summed into the same
+  blocks, split again and compared with the real hourly values. With the default profile the
+  hourly error is about 31 to 32 % of the consumption, against 36 % for a plain uniform split:
+  single hours are dominated by random appliance use, the profile gives a believable daily shape,
+  not the real peaks. `./homebase disaggregate --backtest` only reports, it writes nothing.
+
 ### One file with everything
 
 `<DATA_DIR>/<meterId>_all.csv` is written after every `csv` and `reconstruct` run (or with
-`./homebase merge`). It contains the reconstructed 6-hour blocks followed by every measured quarter
-hour, contiguous and without double counting (the last reconstructed block is trimmed to the first
-measured reading). Columns: `start_local;end_local;kwh;kw;source;method;note`, where `source` is
-`chart_ocr` or `portal`, `method` is `label`, `manual`, `sum`, `height`, `measured` or `substitute`,
-and `note` explains it in words. All files are semicolon-separated and contain no commas.
+`./homebase merge`). It contains the reconstructed history followed by every measured quarter hour,
+contiguous and without double counting. The reconstructed quarter hours are used when
+`<meterId>_reconstructed_15min.csv` exists (rows from the first measured reading on are dropped),
+otherwise the 6-hour blocks (the last one is trimmed to the first measured reading). Columns:
+`start_local;end_local;kwh;kw;source;method;note`, where `source` is `chart_ocr` or `portal`,
+`method` is `label`, `manual`, `sum`, `height`, `profile`, `measured` or `substitute`, and `note`
+explains it in words. All files are semicolon-separated and contain no commas.
 
 Labels the OCR cannot verify (typically small bars whose label overlaps the printed daily total) can
 be read by a human and recorded in `<DATA_DIR>/<meterId>_reconstructed_corrections.csv`
