@@ -1,4 +1,4 @@
-# LINZ NETZ energy
+# LINZ NETZ Energy
 
 LINZ NETZ portal readings as long-term statistics for the Home Assistant Energy dashboard.
 
@@ -11,3 +11,6 @@ LINZ NETZ portal readings as long-term statistics for the Home Assistant Energy 
 
 Next: fusion with the live wM-Bus readings of the meter, so the Energy dashboard shows the
 portal history and the current hour in one series. See the Documentation tab.
+
+> Not affiliated with LINZ NETZ GmbH. The add-on uses the public LINZ NETZ customer portal with your own
+> login, the same way you would in the browser.

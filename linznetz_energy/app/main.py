@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Main loop of the Home Assistant add-on "LINZ NETZ energy".
+"""Main loop of the Home Assistant add-on "LINZ NETZ Energy".
 
 Every hour, a few minutes past the full hour:
 
@@ -37,6 +37,7 @@ import re
 import shutil
 import sys
 import threading
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -61,7 +62,7 @@ IMPORT_NOTIFICATION = 'linznetz_energy_import'
 DOWNLOAD_NOTIFICATION = 'linznetz_energy_download'
 SETUP_NOTIFICATION = 'linznetz_energy_setup'
 METERING_POINT = re.compile(r'^AT[0-9A-Z]{31}$')
-DEFAULT_SITE = 'home'
+DEFAULT_SITE = 'Home'
 IMPORT_DIR = 'import'
 
 
@@ -73,22 +74,23 @@ class Options:
     portal_username: str
     portal_password: str
     metering_point: str          # the 33-character Zählpunktnummer (not the meter number)
-    site: str
+    site: str                    # the name of the place as entered, e.g. "Zweitwohnsitz Linz"
     fetch_interval_hours: int = 12
+
+    @property
+    def site_id(self) -> str:
+        """The site in the statistic IDs: "Zweitwohnsitz Linz" -> zweitwohnsitz_linz."""
+        return site_id(self.site)
 
     @property
     def consumption_statistic(self) -> str:
         """The statistic for the Energy dashboard: the best source per hour."""
-        return f'{STATISTIC_DOMAIN}:{self.site}_grid_consumption'
+        return f'{STATISTIC_DOMAIN}:{self.site_id}_grid_consumption'
 
     @property
     def portal_statistic(self) -> str:
         """The portal readings only, to check the consumption statistic."""
-        return f'{STATISTIC_DOMAIN}:{self.site}_grid_consumption_portal'
-
-    @property
-    def title(self) -> str:
-        return self.site.replace('_', ' ').capitalize()
+        return f'{STATISTIC_DOMAIN}:{self.site_id}_grid_consumption_portal'
 
 
 def normalize_metering_point(value: str) -> str:
@@ -99,8 +101,18 @@ def normalize_metering_point(value: str) -> str:
 
 
 def normalize_site(value: str) -> str:
-    """Lowercase, spaces and dashes become _; empty means the default."""
-    return re.sub(r'[\s\-]+', '_', (value or '').strip().lower()) or DEFAULT_SITE
+    """The name of the place as entered, without surrounding spaces; empty means the default."""
+    return re.sub(r'\s+', ' ', (value or '').strip()) or DEFAULT_SITE
+
+
+def site_id(name: str) -> str:
+    """The name in a form for IDs: lowercase ASCII letters, digits and _; umlauts written out
+    (ä -> ae, ß -> ss), accents dropped, everything else becomes _."""
+    text = name.lower()
+    for a, b in (('ä', 'ae'), ('ö', 'oe'), ('ü', 'ue'), ('ß', 'ss')):
+        text = text.replace(a, b)
+    text = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode()
+    return re.sub(r'[^a-z0-9]+', '_', text).strip('_')
 
 
 def load_options(path: Path) -> tuple:
@@ -125,7 +137,7 @@ def load_options(path: Path) -> tuple:
         problems.append(('problem.metering_point_length', {'count': len(metering_point)}))
     elif not METERING_POINT.match(metering_point):
         problems.append(('problem.metering_point_prefix', {}))
-    if not re.fullmatch(r'[a-z0-9_]+', site):
+    if not site_id(site):
         problems.append(('problem.site', {}))
     if problems:
         return None, problems
@@ -349,9 +361,9 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
     web.write_status(store, phase='statistics', detail='', data=data_status(store, options.metering_point, zone))
     written = {}
     for key, statistic_id, name, hours in (
-            ('portal', options.portal_statistic, f'{options.title} grid consumption (portal)',
+            ('portal', options.portal_statistic, t(lang, 'stat.portal', site=options.site),
              portal_hours(store, options.metering_point)),
-            ('consumption', options.consumption_statistic, f'{options.title} grid consumption',
+            ('consumption', options.consumption_statistic, t(lang, 'stat.consumption', site=options.site),
              fused_hours(store, options.metering_point))):
         if hours:
             stats = to_stats(hours)
@@ -405,7 +417,7 @@ def connect() -> HomeAssistant:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description='LINZ NETZ energy add-on')
+    parser = argparse.ArgumentParser(description='LINZ NETZ Energy add-on')
     parser.add_argument('--once', action='store_true', help='run one cycle and exit')
     parser.add_argument('-d', '--debug', action='store_true')
     args = parser.parse_args(argv)
@@ -426,7 +438,8 @@ def main(argv=None) -> int:
             return 1
         # HA restarts the add-on when the configuration is saved; until then only the page runs
         threading.Event().wait()
-    logger.info('Site %s, metering point ...%s, data in %s', options.site, options.metering_point[-4:], store)
+    logger.info('Site %s (%s), metering point ...%s, data in %s', options.site, options.site_id,
+                options.metering_point[-4:], store)
     # the page shows the full metering point (it is the user's own HA); the log only the last digits
     web.write_status(store, site=options.site, metering_point=options.metering_point, phase='starting',
                      detail='', setup=[])

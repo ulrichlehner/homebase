@@ -207,7 +207,7 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
       backup: the recorder purges raw states after `purge_keep_days` (default 10), long-term
       statistics stay. Optionally raise `purge_keep_days` in HA (the user's decision, bigger
       database)
-- [ ] Status entities over MQTT discovery (device "LINZ NETZ energy <site>"): last portal fetch,
+- [ ] Status entities over MQTT discovery (device "LINZ NETZ Energy <site>"): last portal fetch,
       portal data until, fused data from/until, RF deviation; notification above a threshold
 - [ ] The portal delivers 1 to 2 days late: RF covers that span, the deviation check waits for it
 - [ ] About 2 weeks in parallel while the Energy tab still uses the RF sensor, compare daily

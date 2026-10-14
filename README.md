@@ -1,5 +1,8 @@
 # Homebase
 
+> Not affiliated with LINZ NETZ GmbH. The tools and the Home Assistant add-on use the public LINZ NETZ
+> customer portal with your own login, the same way you would in the browser.
+
 Home energy monitoring: fetches quarter-hour smart meter readings from the
 [LINZ NETZ service portal](https://www.linznetz.at/portal/de/home/online_services/serviceportal)
 into CSV files and renders weekly consumption charts.

@@ -16,7 +16,7 @@ NOW = datetime(2026, 10, 14, 12, 7, tzinfo=UTC)
 
 
 def options(**kw):
-    return addon.Options(**{'portal_username': 'u', 'portal_password': 'secret-pw', 'metering_point': METER, 'site': 'place', **kw})
+    return addon.Options(**{'portal_username': 'u', 'portal_password': 'secret-pw', 'metering_point': METER, 'site': 'Place', **kw})
 
 
 class FakeHass:
@@ -61,10 +61,9 @@ def test_load_options(tmp_path):
                                 'site': 'Place_1'}))
     o, problems = addon.load_options(path)
     assert problems == []
-    assert o.metering_point == METER and o.site == 'place_1' and o.fetch_interval_hours == 12
+    assert o.metering_point == METER and o.site == 'Place_1' and o.site_id == 'place_1' and o.fetch_interval_hours == 12
     assert o.portal_statistic == 'linznetz_energy:place_1_grid_consumption_portal'
     assert o.consumption_statistic == 'linznetz_energy:place_1_grid_consumption'
-    assert o.title == 'Place 1'
 
 
 def test_metering_point_and_site_are_normalized(tmp_path):
@@ -73,9 +72,11 @@ def test_metering_point_and_site_are_normalized(tmp_path):
     path.write_text(json.dumps({'portal_username': 'u', 'portal_password': 'p', 'metering_point': spaced,
                                 'site': ' Second Home '}))
     o, problems = addon.load_options(path)
-    assert problems == [] and o.metering_point == 'AT0031' + '0' * 27 and o.site == 'second_home'
+    assert problems == [] and o.metering_point == 'AT0031' + '0' * 27
+    assert o.site == 'Second Home' and o.site_id == 'second_home'
     path.write_text(json.dumps({'portal_username': 'u', 'portal_password': 'p', 'metering_point': METER}))
-    assert addon.load_options(path)[0].site == 'home'                   # the default
+    assert addon.load_options(path)[0].site == 'Home'                   # the default
+    assert addon.load_options(path)[0].consumption_statistic == 'linznetz_energy:home_grid_consumption'
     pasted = '\u200b' + METER[:10] + '\u00a0' + METER[10:] + ' \n'   # zero-width, no-break space, line break
     assert addon.normalize_metering_point(pasted) == METER
 
@@ -100,14 +101,14 @@ def test_setup_notification_lists_the_problems_and_goes_away(tmp_path, monkeypat
     addon.announce_setup(tmp_path, [('problem.password', {})])
     created = hass.services[-1]
     assert created[1] == 'create' and created[2]['notification_id'] == addon.SETUP_NOTIFICATION
-    assert created[2]['title'] == 'LINZ NETZ energy: setup needed'
+    assert created[2]['title'] == 'LINZ NETZ Energy: setup needed'
     assert '- The portal password is missing.' in created[2]['message'] and 'Configuration' in created[2]['message']
     assert addon.web.read_status(tmp_path)['phase'] == 'setup'
     # in the language of Home Assistant
     hass.language = 'de-AT'
     addon.announce_setup(tmp_path, [('problem.password', {})])
     created = hass.services[-1]
-    assert created[2]['title'] == 'LINZ NETZ energy: Einrichtung nötig'
+    assert created[2]['title'] == 'LINZ NETZ Energy: Einrichtung nötig'
     assert '- Das Portal-Passwort fehlt.' in created[2]['message'] and 'Tab Konfiguration' in created[2]['message']
     addon.announce_setup(tmp_path, [])
     assert hass.services[-1] == ('persistent_notification', 'dismiss', {'notification_id': addon.SETUP_NOTIFICATION})
@@ -142,13 +143,15 @@ def test_run_once_imports_the_portal_statistic_in_chunks(tmp_path, monkeypatch):
     metadata = hass.imports[0][0]
     assert metadata['source'] == 'linznetz_energy' and metadata['name'] == 'Place grid consumption (portal)'
     assert hass.imports[3][0]['name'] == 'Place grid consumption'
+    addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW + timedelta(minutes=1), 'de')
+    assert {m['name'] for m, _ in hass.imports[-6:]} == {'Place Netzbezug', 'Place Netzbezug (Portal)'}
     last = hass.imports[-1][1][-1]
     assert last['sum'] == pytest.approx(4.8) and last['start'].minute == 0
     assert ('persistent_notification', 'dismiss', {'notification_id': addon.LOGIN_NOTIFICATION}) in hass.services
     assert 'portal_ok' in addon.read_state(tmp_path)
     # the next hour: no portal fetch, the statistic is imported again
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW + timedelta(hours=1))
-    assert len(fetched) == 1 and len(hass.imports) == 12
+    assert len(fetched) == 1 and len(hass.imports) == 18   # three runs, 6 import calls each
 
 
 def test_rejected_login_notifies_and_keeps_going(tmp_path, monkeypatch, caplog):
@@ -239,7 +242,7 @@ def test_first_download_is_announced_and_reported(tmp_path, monkeypatch):
     hass = FakeHass()
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW)
     msgs = [s[2] for s in hass.services if s[1] == 'create' and s[2]['notification_id'] == addon.DOWNLOAD_NOTIFICATION]
-    assert [m['title'] for m in msgs] == ['LINZ NETZ energy: first download', 'LINZ NETZ energy: first download done']
+    assert [m['title'] for m in msgs] == ['LINZ NETZ Energy: first download', 'LINZ NETZ Energy: first download done']
     assert msgs[1]['message'].startswith('12 quarter-hour readings from 01.10.2026 to 01.10.2026 02:45')
     # later fetches are not announced
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW + timedelta(hours=13))
@@ -253,4 +256,19 @@ def test_failed_first_download_is_reported(tmp_path, monkeypatch):
     hass = FakeHass()
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW)
     titles = [s[2]['title'] for s in hass.services if s[1] == 'create']
-    assert titles == ['LINZ NETZ energy: first download', 'LINZ NETZ energy: first download failed']
+    assert titles == ['LINZ NETZ Energy: first download', 'LINZ NETZ Energy: first download failed']
+
+
+@pytest.mark.parametrize('name,expected', [
+    ('Lakeside', 'lakeside'), ('lakeside', 'lakeside'),            # existing lowercase IDs stay the same
+    ('Zweitwohnsitz Linz', 'zweitwohnsitz_linz'), ('Haus am Fluss-Ufer', 'haus_am_fluss_ufer'),
+    ('Süßes Häuschen', 'suesses_haeuschen'), ('Café Élise', 'cafe_elise'), ('  Home  ', 'home'),
+])
+def test_site_id(name, expected):
+    assert addon.site_id(name) == expected
+
+
+def test_site_without_letters_is_a_problem(tmp_path):
+    path = tmp_path / 'options.json'
+    path.write_text(json.dumps({'portal_username': 'u', 'portal_password': 'p', 'metering_point': METER, 'site': '***'}))
+    assert addon.load_options(path)[1] == [('problem.site', {})]
