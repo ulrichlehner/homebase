@@ -92,7 +92,9 @@ STYLE = """
 * { box-sizing: border-box; }
 body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--text);
        font: 16px/1.55 Roboto, "Noto Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-main { max-width: 880px; margin: 0 auto; display: grid; gap: 20px; }
+main { max-width: 880px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+/* long unbreakable values (metering point, statistic IDs, file names) wrap instead of widening the page */
+main, code, td, li { overflow-wrap: anywhere; }
 .card { background: var(--card); border-radius: 12px; border: 1px solid var(--divider); padding: 20px 24px; }
 h1 { font-size: 28px; font-weight: 400; margin: 0; }
 h2 { font-size: 20px; font-weight: 500; margin: 0 0 14px; }
@@ -106,6 +108,7 @@ tr:last-child td, tr:last-child th { border-bottom: 0; }
 .ok { background: var(--ok); } .warn { background: var(--warn); } .err { background: var(--err); }
 .run { background: var(--primary); }
 .setup { border-left: 4px solid var(--warn); }
+.setup p { margin: 12px 0 0; }
 .files { margin: 0 0 18px; padding: 0; list-style: none; display: grid; gap: 8px; }
 .files li { display: grid; gap: 2px; }
 .drop { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; cursor: pointer;
@@ -121,8 +124,22 @@ button { display: block; width: 100%; margin-top: 14px; background: var(--primar
 button:disabled { opacity: .45; cursor: default; }
 ul { margin: 0; padding-left: 20px; }
 code { font-size: 14px; }
-@media (max-width: 600px) { th { width: auto; } td, th { display: block; padding: 4px 0; } tr { display: block; padding: 8px 0;
-  border-bottom: 1px solid var(--divider); } td, th { border: 0; } }
+/* phones: less padding, label above value instead of two table columns */
+@media (max-width: 600px) {
+  body { padding: 16px 12px; font-size: 15px; }
+  main { gap: 14px; }
+  .card { padding: 16px; border-radius: 10px; }
+  h1 { font-size: 24px; }
+  h2 { font-size: 18px; margin-bottom: 10px; }
+  table, tbody, tr, th, td { display: block; width: 100%; }
+  tr { padding: 10px 0; border-bottom: 1px solid var(--divider); }
+  tr:last-child { border-bottom: 0; padding-bottom: 0; }
+  th, td { border: 0; padding: 0; }
+  th { font-size: 14px; margin-bottom: 2px; }
+  .drop { padding: 22px 12px; }
+  .drop strong { font-size: 17px; }
+  button { padding: 14px 16px; }
+}
 """
 
 

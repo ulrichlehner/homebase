@@ -108,3 +108,11 @@ def test_upload_area_is_prominent():
     page = W.render_page({})
     assert 'class="drop"' in page and 'id="upload" disabled' in page    # enabled once files are chosen
     assert '"{count} file(s) selected"' in page                          # template for the script
+
+
+def test_page_fits_small_screens():
+    page = W.render_page({})
+    assert 'name="viewport" content="width=device-width, initial-scale=1"' in page
+    assert 'grid-template-columns: minmax(0, 1fr)' in page        # long values cannot widen the page
+    assert 'overflow-wrap: anywhere' in page
+    assert '@media (max-width: 600px)' in page                    # stacked label/value on phones
