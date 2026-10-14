@@ -173,8 +173,8 @@ to change how many days are requested from the portal per request, and `-d` for 
 The Home Assistant add-on in `linznetz_energy/` is versioned with [release-please](https://github.com/googleapis/release-please)
 from [conventional commits](https://www.conventionalcommits.org/): `fix:` gives a patch, `feat:` a minor
 and `feat!:` or a `BREAKING CHANGE:` footer a major release; `docs:`, `chore:`, `test:` and `refactor:`
-give none. It starts at 0.1.0 while the add-on is incomplete; before 1.0.0 a breaking change only
-gives a minor release, and 1.0.0 is set deliberately once the fused statistic drives the Energy tab. On every push to `main` release-please opens or updates a release PR with the next version
+give none. It started at 0.1.0 and reached 1.0.0 once the add-on covered the whole plan (live radio readings,
+portal, history, the Energy dashboard). On every push to `main` release-please opens or updates a release PR with the next version
 in `linznetz_energy/config.yaml` and the new entries in `linznetz_energy/CHANGELOG.md`. Merging it
 creates the tag and the GitHub release, and the image workflow builds the images of that version.
 Version images are never overwritten: HA offers the update as soon as the release PR is merged and

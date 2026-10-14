@@ -216,25 +216,23 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
 
 ### Step 7: Switch the Energy tab
 
-- [ ] HA backup, then change the grid source to `…_grid_consumption` (reversible, the old
-      statistics stay)
-- [ ] Optional: `…_grid_power_fused` for the power chart
-- [ ] Energy tab shows March 2023 to now, daily totals match the portal
+- [x] Prepared in the add-on: a card "Energy dashboard" on the add-on page reads the dashboard
+      configuration (`energy/get_prefs`, read only) and shows whether "<Site> grid consumption" is
+      the grid source, otherwise the steps (and the warning about counting twice when both stay);
+      DOCS.md "Switching the Energy dashboard". The add-on never changes the dashboard itself.
+- [ ] After about 2 weeks in parallel: HA backup, change the grid source to `…_grid_consumption`
+      (reversible, the old statistics stay), check the daily totals against the portal
+- Dropped: a fused power statistic for the power chart (not needed for the Energy tab)
 
 ### Step 8: Docs and cleanup
 
-- [ ] Revoke the long-lived HA token used by `ha-spike` (profile > Security)
-- [x] After the first release (v0.1.0): remove `release-as` from `release-please-config.json`,
-      otherwise every release PR stays at 0.1.0
-- [ ] Release 1.0.0 deliberately (`release-as: 1.0.0`) once the Energy tab uses the fused statistic
-- [ ] Remove `stage: experimental` from `linznetz_energy/config.yaml` once the Energy tab uses
-      the fused statistic
-- [ ] Add-on README with the prerequisites: quarter-hour analysis ("Viertelstundenauswertung")
-      enabled in the portal, data arrives 1 to 2 days late (already in the homebase README)
-- [ ] Add-on README, homebase README, `smartmeter/` docs (guard sensor possibly unnecessary)
-- [x] Decide whether the Docker databot keeps writing the CSV archive outside HA: no, the add-on does
-      the regular fetching; the cron container, docker-compose and the published tool image are removed,
-      the `./homebase` commands stay for manual use
+- [ ] Revoke the long-lived HA token used by `ha-spike` (profile > Security), the user's task
+- [x] After the first release (v0.1.0): remove `release-as` from `release-please-config.json`
+- [x] Remove `stage: experimental` and release 1.0.0 (`release-as: 1.0.0`, with step 6 and 7)
+- [ ] After v1.0.0: remove `release-as` again
+- [x] Add-on README and DOCS, homebase README, `smartmeter/` docs (pointer to the add-on; a guard
+      sensor in HA against the misread spikes is not needed)
+- [x] Decide whether the Docker databot keeps writing the CSV archive outside HA: no, cron removed
 
 ## Related projects and what we take from them
 
@@ -284,6 +282,8 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: step 7 prepared (Energy dashboard card, docs) and step 8 done in the same PR as
+  step 6 (#23); the add-on becomes 1.0.0. The switch of the Energy tab stays the user's click.
 - 2026-10-14: step 6 implemented (RF archive and fusion, deviation notification, MQTT status entities).
   The live test found a cleaning bug: a repeated counter value with a later timestamp cut off the
   rest of the evening; repeated values now count from their first occurrence.
