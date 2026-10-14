@@ -8,9 +8,12 @@ reconstructed day (March 2023) up to the current hour:
 3. RF readings validated against the portal.
 
 Constraints: runs inside Home Assistant OS as a normal add-on from a custom add-on repository
-(no HACS, no custom integration, HA not exposed to the internet). As native to HA as possible: no
-custom web UI (no Ingress); feedback through notifications, status through regular entities (MQTT
-discovery), files through the add-on config folder (Samba or File editor add-on). Every derived file is
+(no HACS, no custom integration, HA not exposed to the internet). As native to HA as possible:
+feedback through notifications, status for automations through regular entities (MQTT discovery).
+HA has no native file upload for add-ons (the configuration tab has no file field, the media upload
+only takes images, audio and video), so the add-on has one small page through Ingress, HA's own
+mechanism for add-on pages (HA login, opens inside HA, HA look): status and history upload. The
+user does not want Samba as the way in. Every derived file is
 non-destructive and repeatable: inputs are never modified, the same inputs give the same output.
 
 ## Design in short
@@ -177,7 +180,12 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
 - [x] Tested end to end with the add-on image against HA: 109348 readings and 17180
       reconstructed quarter hours imported; `…_portal` 27337 hours from 2023-09-01 (6626.673
       kWh), `…_fused` 31631 hours from 2023-03-06 (7301.395 kWh)
-- [ ] On the installed add-on: copy both files into `import/` before the first start
+- [x] Add-on page (Ingress, "Open Web UI"): status (state, runs, portal login, data ranges, both
+      statistics with sources and deviating hours, last import) and the history upload, which
+      imports right away; only reachable through the Ingress proxy; light and dark mode; tested
+      locally against HA: first download, then upload added exactly 2880 readings (September
+      2023) and the reconstruction
+- [ ] On the installed add-on: upload both files on the add-on page
 
 ### Step 6: Fusion live, running alongside the current setup
 
@@ -265,9 +273,11 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: the user does not want Samba: history upload and status on an add-on page through
+  Ingress (the configuration tab cannot take files).
 - 2026-10-14: decisions: RF is the primary source (portal verifies and fills gaps, deviations
-  are flagged and notified, RF stays); no custom upload UI, the import folder stays (native HA
-  only); the first-download notifications are enough until the status entities of step 6.
+  are flagged and notified, RF stays); the first-download notifications are enough until the
+  status entities of step 6.
 - 2026-10-14: design rule: native HA only, no custom UI (Ingress); notifications for the first
   download added. - 2026-10-14: initial version 0.1.0 instead of 1.0.0 (the add-on is not complete); old 0.1.0/0.1.1
   images from early branch builds exist on ghcr, so 0.1.0 is rebuilt once after the merge

@@ -34,13 +34,14 @@ import logging
 import os
 import shutil
 import sys
-import time
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
 
+import addon_web
 import databot
 import disaggregate
 import fusion
@@ -178,20 +179,54 @@ def to_stats(hours: list) -> list:
     return [{'start': h.start, 'sum': h.sum_wh / 1000, 'state': h.sum_wh / 1000} for h in hours]
 
 
-def portal_statistics(store: Path, meter_id: str) -> list:
-    """[{'start', 'sum', 'state'}] of every hour the portal has, running sum in kWh."""
+def portal_hours(store: Path, meter_id: str) -> list:
+    """Every hour the portal has (fusion.Hour), running sum in Wh."""
     path = store / f'{meter_id}_readings.csv'
     if not path.exists():
         return []
-    return to_stats(fusion.fuse(fusion.read_portal(path), {}, {}))
+    return fusion.fuse(fusion.read_portal(path), {}, {})
 
 
-def fused_statistics(store: Path, meter_id: str) -> list:
+def fused_hours(store: Path, meter_id: str) -> list:
     """The best source per hour: portal readings, then the reconstructed history."""
     path = store / f'{meter_id}_readings.csv'
     portal = fusion.read_portal(path) if path.exists() else {}
     reconstructed = fusion.read_reconstructed(store / f'{meter_id}_reconstructed_15min.csv')
-    return to_stats(fusion.fuse(portal, {}, reconstructed))
+    return fusion.fuse(portal, {}, reconstructed)
+
+
+def portal_statistics(store: Path, meter_id: str) -> list:
+    """[{'start', 'sum', 'state'}] of every hour the portal has, running sum in kWh."""
+    return to_stats(portal_hours(store, meter_id))
+
+
+def fused_statistics(store: Path, meter_id: str) -> list:
+    return to_stats(fused_hours(store, meter_id))
+
+
+def _range(times: list, zone: ZoneInfo, unit_fmt: str = '%d.%m.%Y %H:%M') -> Optional[dict]:
+    if not times:
+        return None
+    return {'count': len(times), 'from': min(times).astimezone(zone).strftime(unit_fmt),
+            'to': max(times).astimezone(zone).strftime(unit_fmt)}
+
+
+def data_status(store: Path, meter_id: str, zone: ZoneInfo) -> dict:
+    readings = databot.read_csv_file(store / f'{meter_id}_readings.csv')
+    reconstructed = fusion.read_reconstructed(store / f'{meter_id}_reconstructed_15min.csv')
+    return {'readings': _range([datetime.fromtimestamp(t, UTC) for t in readings], zone),
+            'reconstructed': _range(list(reconstructed), zone)}
+
+
+def statistic_status(statistic_id: str, hours: list, zone: ZoneInfo) -> dict:
+    sources: dict = {}
+    for h in hours:
+        sources[h.source] = sources.get(h.source, 0) + 1
+    return {'id': statistic_id, 'hours': len(hours),
+            'from': hours[0].start.astimezone(zone).strftime('%d.%m.%Y'),
+            'to': hours[-1].start.astimezone(zone).strftime('%d.%m.%Y %H:%M'),
+            'kwh': hours[-1].sum_wh / 1000, 'sources': sources,
+            'flagged': sum(1 for h in hours if h.flag)}
 
 
 def import_statistic(hass, statistic_id: str, name: str, stats: list) -> None:
@@ -220,14 +255,21 @@ def notify(hass, notification_id: str, title: str, message: Optional[str]) -> No
 
 
 def run_once(hass, options: Options, store: Path, tz: str, now: datetime) -> None:
+    zone = ZoneInfo(tz)
+    if any((store / IMPORT_DIR).glob('*.csv')):
+        addon_web.write_status(store, phase='importing', detail='older history')
     imported = import_history(store, options.meter_id)
     if imported:
+        addon_web.write_status(store, last_import={'at': now.isoformat(), 'lines': imported})
         notify(hass, IMPORT_NOTIFICATION, 'LINZ NETZ energy: history imported',
                '\n'.join(f'- {line}' for line in imported))
+    addon_web.write_status(store, import_pending=False)
     state = read_state(store)
     if portal_due(state, now, options.fetch_interval_hours):
         readings = store / f'{options.meter_id}_readings.csv'
         first_download = not readings.exists()
+        addon_web.write_status(store, phase='downloading',
+                               detail='first download, about a minute' if first_download else 'new readings')
         if first_download:
             notify(hass, DOWNLOAD_NOTIFICATION, 'LINZ NETZ energy: first download',
                    'Downloading everything the LINZ NETZ portal still has (about three years). '
@@ -261,14 +303,21 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime) -> Non
                 notify(hass, DOWNLOAD_NOTIFICATION, 'LINZ NETZ energy: first download failed',
                        f'The portal did not answer as expected ({err}). The add-on tries again next hour.')
         write_state(store, state)
+        addon_web.write_status(store, portal={'ok': state.get('portal_ok'),
+                                              'login_failed': state.get('portal_login_failed')})
 
-    for statistic_id, label, stats in (
-            (options.portal_statistic, 'portal', portal_statistics(store, options.meter_id)),
-            (options.fused_statistic, 'fused', fused_statistics(store, options.meter_id))):
-        if stats:
-            import_statistic(hass, statistic_id, f'{options.title} grid energy ({label})', stats)
+    addon_web.write_status(store, phase='statistics', detail='', data=data_status(store, options.meter_id, zone))
+    written = {}
+    for key, statistic_id, hours in (
+            ('portal', options.portal_statistic, portal_hours(store, options.meter_id)),
+            ('fused', options.fused_statistic, fused_hours(store, options.meter_id))):
+        if hours:
+            stats = to_stats(hours)
+            import_statistic(hass, statistic_id, f'{options.title} grid energy ({key})', stats)
             logger.info('Imported %s: %d hours %s to %s, %.3f kWh', statistic_id, len(stats),
                         stats[0]['start'].isoformat(), stats[-1]['start'].isoformat(), stats[-1]['sum'])
+            written[key] = statistic_status(statistic_id, hours, zone)
+    addon_web.write_status(store, phase='idle', detail='', statistics=written, last_run=now.isoformat())
 
 
 def connect() -> HomeAssistant:
@@ -292,10 +341,15 @@ def main(argv=None) -> int:
 
     options = load_options(Path(os.environ.get('ADDON_OPTIONS', '/data/options.json')))
     store = Path(os.environ.get('ADDON_STORE', '/config'))
-    (store / IMPORT_DIR).mkdir(parents=True, exist_ok=True)   # visible over Samba from the start
+    (store / IMPORT_DIR).mkdir(parents=True, exist_ok=True)
     logger.info('Site %s, meter ...%s, data in %s', options.site, options.meter_id[-4:], store)
+    addon_web.write_status(store, site=options.site, meter_suffix=options.meter_id[-4:], phase='starting', detail='')
 
+    wake = threading.Event()   # set by an upload on the add-on page: run right away
+    if not args.once:
+        addon_web.start(store, wake)
     while True:
+        wake.clear()
         try:
             hass = connect()
             try:
@@ -305,11 +359,14 @@ def main(argv=None) -> int:
                 hass.close()
         except HomeAssistantError as err:
             logger.error('Home Assistant: %s', err)
+            addon_web.write_status(store, phase='error', detail=f'Home Assistant: {err}')
         if args.once:
             return 0
-        wake = next_run(datetime.now(UTC))
-        logger.debug('Next run at %s', wake.isoformat())
-        time.sleep(max(1.0, (wake - datetime.now(UTC)).total_seconds()))
+        at = next_run(datetime.now(UTC))
+        addon_web.write_status(store, next_run=at.isoformat())
+        logger.debug('Next run at %s', at.isoformat())
+        if wake.wait(max(1.0, (at - datetime.now(UTC)).total_seconds())):
+            logger.info('Woken up by an upload')
 
 
 if __name__ == '__main__':

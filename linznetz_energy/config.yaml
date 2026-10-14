@@ -18,6 +18,11 @@ boot: auto
 image: ghcr.io/ulrichlehner/homebase-linznetz-energy-{arch}
 # websocket access to the HA core through the Supervisor (statistics, notifications)
 homeassistant_api: true
+# the add-on page (status and history upload) behind "Open Web UI", optionally in the sidebar
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:transmission-tower
+panel_title: LINZ NETZ energy
 map:
   # the add-on's own config folder (/addon_configs/<id>_linznetz_energy): CSV files, the
   # import/ folder for older history, part of backups

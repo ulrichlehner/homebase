@@ -14,6 +14,6 @@ COPY linznetz_energy/requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY databot/linznetz.py databot/databot.py databot/disaggregate.py databot/fusion.py databot/ha.py \
-     databot/addon.py /app/
+     databot/addon.py databot/addon_web.py /app/
 
 CMD [ "python3", "/app/addon.py" ]

@@ -41,30 +41,35 @@ Every hour, a few minutes past the full hour, the add-on
 
 Pick a statistic in a statistics graph card, or in the Energy dashboard as grid consumption.
 
+## The add-on page
+
+**Open Web UI** on the add-on page (or the sidebar entry, if you switch on "Show in sidebar") opens
+the add-on's page inside Home Assistant. It shows
+
+- what the add-on does right now (first download, import, writing statistics), refreshing itself
+  while something runs, plus the last and next run and the portal login,
+- the data it has: portal readings and reconstructed history with their ranges,
+- both statistics with their range, total and sources (and deviating hours, once the live
+  readings are part of the fused statistic),
+- the result of the last import.
+
 ## Bringing older history
 
-The portal keeps only about 36 months. If you have older data from the homebase tools, the add-on
-can take it over:
+The portal keeps only about 36 months. If you have older data from the homebase tools, upload it on
+the add-on page under **Import older history** (the names start with your metering point number):
 
-1. Open the add-on configuration folder, for example with the Samba add-on: share
-   `addon_configs`, folder `<id>_linznetz_energy`. It contains an `import` folder (created on the
-   first start).
-2. Copy any of these files into `import/` (the names start with your metering point number):
-   - `<meterId>_readings.csv`: older portal readings. They are merged row by row; readings the
-     add-on already has win, so the file can overlap with the portal.
-   - `<meterId>_reconstructed_15min.csv`: the reconstructed history from `./homebase
-     disaggregate`. It replaces an earlier one and becomes part of the fused statistic.
-3. Wait for the next full hour (or restart the add-on). A notification lists what was imported;
-   the files move to `import/done/`, files that could not be imported to `import/failed/` (the log
-   says why). Importing the same file again changes nothing.
+- `<meterId>_readings.csv`: older portal readings. They are merged row by row; readings the add-on
+  already has win, so the file can overlap with the portal.
+- `<meterId>_reconstructed_15min.csv`: the reconstructed history from `./homebase disaggregate`. It
+  replaces an earlier one and becomes part of the fused statistic.
 
-Copy the files before the first start to have the full history in the very first import.
+The add-on imports the files right away, the page and a notification list what was imported.
+Importing the same file again changes nothing. Files that cannot be imported (another metering
+point, an unexpected header, another file) are listed with the reason.
 
-The first download is announced with a notification, which is replaced by the result (number of
-readings and their range) when it is done.
-
-If the portal rejects the login, a notification appears in Home Assistant and the add-on tries
-again after `fetch_interval_hours`; the notification disappears after the next successful login.
+Alternatively, copy the files into the `import` folder of the add-on configuration folder (for
+example with the Samba add-on); they are picked up on the next full hour. Processed files move to
+`import/done/`, rejected ones to `import/failed/`.
 
 ## Data
 
