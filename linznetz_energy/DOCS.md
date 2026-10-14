@@ -11,14 +11,22 @@ writes them into Home Assistant as a long-term statistic for the Energy dashboar
 - A LINZ NETZ portal account with the quarter-hour analysis ("Viertelstundenauswertung") enabled
   for the meter. The portal shows the values of a day one to two days later.
 
+## First start
+
+Install the add-on, fill in the **Configuration** tab (portal username, portal password and the
+metering point; everything else has defaults), save and start it. If you start it before that, it
+starts anyway and tells you what is missing: on its page (**Open Web UI**), in a notification and
+in the log. Saving the configuration makes Home Assistant restart the add-on, and the first download
+begins.
+
 ## Configuration
 
 | Option                 | Meaning                                                                    |
 | ---------------------- | -------------------------------------------------------------------------- |
 | `portal_username`      | portal login                                                               |
 | `portal_password`      | portal password                                                            |
-| `metering_point`       | the 33-character metering point number (Zählpunktnummer, not the meter number), starts with `AT` |
-| `site`                 | short lowercase name of the place, part of the statistic ID                |
+| `metering_point`       | the metering point number (Zählpunktnummer, not the meter number), 33 characters starting with `AT`; spaces, dots and lowercase letters are fine |
+| `site`                 | short name of the place, part of the statistic ID (default `home`)          |
 | `fetch_interval_hours` | hours between two portal fetches (default 12, 6 to 48)                     |
 
 The portal shows a day only one to two days later, so fetching more often brings nothing new;

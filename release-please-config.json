@@ -7,12 +7,10 @@
       "package-name": "linznetz_energy",
       "include-component-in-tag": false,
       "changelog-path": "linznetz_energy/CHANGELOG.md",
-      "release-as": "0.1.0",
       "extra-files": [
         {
-          "type": "yaml",
-          "path": "linznetz_energy/config.yaml",
-          "jsonpath": "$.version"
+          "type": "generic",
+          "path": "linznetz_energy/config.yaml"
         }
       ],
       "bump-minor-pre-major": true,

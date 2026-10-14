@@ -51,15 +51,51 @@ def write_reconstructed(folder: Path, start: datetime, hours: int, name=None):
 
 def test_load_options(tmp_path):
     path = tmp_path / 'options.json'
-    path.write_text(json.dumps({'portal_username': 'u', 'portal_password': 'p', 'metering_point': f' {METER} ', 'site': 'Place_1'}))
-    o = addon.load_options(path)
+    path.write_text(json.dumps({'portal_username': 'u', 'portal_password': 'p', 'metering_point': f' {METER} ',
+                                'site': 'Place_1'}))
+    o, problems = addon.load_options(path)
+    assert problems == []
     assert o.metering_point == METER and o.site == 'place_1' and o.fetch_interval_hours == 12
     assert o.portal_statistic == 'linznetz_energy:place_1_grid_consumption_portal'
     assert o.consumption_statistic == 'linznetz_energy:place_1_grid_consumption'
     assert o.title == 'Place 1'
-    path.write_text(json.dumps({'portal_username': 'u', 'portal_password': '', 'metering_point': METER, 'site': 'x'}))
-    with pytest.raises(SystemExit, match='portal_password'):
-        addon.load_options(path)
+
+
+def test_metering_point_and_site_are_normalized(tmp_path):
+    path = tmp_path / 'options.json'
+    spaced = 'at 0031 0000.0000-0000 0000 0000 0000 000'    # 33 characters without separators
+    path.write_text(json.dumps({'portal_username': 'u', 'portal_password': 'p', 'metering_point': spaced,
+                                'site': ' Second Home '}))
+    o, problems = addon.load_options(path)
+    assert problems == [] and o.metering_point == 'AT0031' + '0' * 27 and o.site == 'second_home'
+    path.write_text(json.dumps({'portal_username': 'u', 'portal_password': 'p', 'metering_point': METER}))
+    assert addon.load_options(path)[0].site == 'home'                   # the default
+
+
+def test_an_empty_configuration_is_explained(tmp_path):
+    path = tmp_path / 'options.json'
+    path.write_text(json.dumps({'portal_username': '', 'portal_password': '', 'metering_point': '', 'site': 'home'}))
+    o, problems = addon.load_options(path)
+    assert o is None and len(problems) == 3
+    assert problems[0].startswith('Portal username: missing') and problems[1] == 'Portal password: missing.'
+    assert problems[2].startswith('Metering point: missing')
+    path.write_text(json.dumps({'portal_username': 'u', 'portal_password': 'p', 'metering_point': 'AT00310000'}))
+    assert addon.load_options(path)[1] == ['Metering point: 10 characters after removing spaces, expected 33 '
+                                           'starting with AT (the Zählpunktnummer, not the meter number).']
+    assert addon.load_options(tmp_path / 'missing.json')[0] is None    # no options file at all
+
+
+def test_setup_notification_lists_the_problems_and_goes_away(tmp_path, monkeypatch):
+    hass = FakeHass()
+    hass.close = lambda: None
+    monkeypatch.setattr(addon, 'connect', lambda: hass)
+    addon.announce_setup(tmp_path, ['Portal password: missing.'])
+    created = hass.services[-1]
+    assert created[1] == 'create' and created[2]['notification_id'] == addon.SETUP_NOTIFICATION
+    assert '- Portal password: missing.' in created[2]['message'] and 'Configuration' in created[2]['message']
+    assert addon.web.read_status(tmp_path)['phase'] == 'setup'
+    addon.announce_setup(tmp_path, [])
+    assert hass.services[-1] == ('persistent_notification', 'dismiss', {'notification_id': addon.SETUP_NOTIFICATION})
 
 
 def test_portal_due():

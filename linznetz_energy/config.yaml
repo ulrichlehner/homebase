@@ -1,33 +1,44 @@
 name: LINZ NETZ energy
-version: 0.1.0
+# set by release-please from the conventional commits (only this line), see README "Releases"
+version: "0.1.0" # x-release-please-version
 slug: linznetz_energy
 description: LINZ NETZ portal readings as long-term statistics for the Energy dashboard
 url: https://github.com/ulrichlehner/homebase/tree/main/linznetz_energy
+# experimental until the fused statistic replaces the RF sensor in the Energy dashboard
 stage: experimental
-homeassistant: 2026.10.0
+# oldest version the statistics import was tested with
+homeassistant: "2026.10.0"
 arch:
   - aarch64
   - amd64
 init: false
 startup: application
 boot: auto
+# prebuilt by .github/workflows/addon-image.yml
 image: ghcr.io/ulrichlehner/homebase-linznetz-energy-{arch}
+# websocket access to the HA core through the Supervisor (statistics, notifications)
 homeassistant_api: true
+# the add-on page (status and history upload) behind "Open Web UI", optionally in the sidebar
 ingress: true
 ingress_port: 8099
 panel_icon: mdi:transmission-tower
 panel_title: LINZ NETZ energy
 map:
+  # the add-on's own config folder (/addon_configs/<id>_linznetz_energy): CSV files, the
+  # import/ folder for older history, part of backups
   - addon_config:rw
+# The schema only checks types: the add-on starts with an empty configuration too, then
+# explains on its page, in a notification and in the log what is missing (spaces and
+# lowercase in the metering point are fine, it normalizes them).
 options:
-  portal_username: ''
-  portal_password: ''
-  metering_point: ''
-  site: ''
+  portal_username: ""
+  portal_password: ""
+  metering_point: ""
+  site: home
   fetch_interval_hours: 12
 schema:
-  portal_username: str
-  portal_password: password
-  metering_point: match(^AT[0-9A-Z]{31}$)
-  site: match(^[a-z0-9_]+$)
+  portal_username: str?
+  portal_password: password?
+  metering_point: str?
+  site: str?
   fetch_interval_hours: int(6,48)
