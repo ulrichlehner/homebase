@@ -234,6 +234,23 @@ def render_page(status: dict, message=None) -> str:
         bad = (f' <span class="pill warn">{len(c["bad_days"])} × &gt; 2 %</span>' if c.get('bad_days') else '')
         return line + bad
 
+    energy = status.get('energy')
+    energy_html = ''
+    if 'energy' in status:
+        name = t(lang, 'stat.consumption', site=status.get('site', ''))
+        if not energy:
+            body = f'<p class="muted">{html.escape(t(lang, "page.energy_unknown"))}</p>'
+        elif energy.get('uses_consumption'):
+            others = [g for g in energy['grid_from'] if g != energy['consumption_statistic']]
+            body = f'<p><span class="pill ok">ok</span> {html.escape(t(lang, "page.energy_ok", name=name))}</p>'
+            if others:
+                body += (f'<p><span class="pill warn">!</span> '
+                         f'{html.escape(t(lang, "page.energy_double", others=", ".join(others)))}</p>')
+        else:
+            current = ', '.join(energy['grid_from']) or t(lang, 'page.energy_none')
+            body = f'<p>{html.escape(t(lang, "page.energy_switch", name=name, current=current))}</p>'
+        energy_html = f'<div class="card"><h2>{t(lang, "page.energy")}</h2>{body}</div>'
+
     last_import = status.get('last_import') or {}
     import_lines = ''.join(f'<li>{html.escape(_text(lang, line))}</li>' for line in last_import.get('lines', []))
     import_html = (f'<p class="muted">{_fmt_time(last_import.get("at"), lang)}</p><ul>{import_lines}</ul>'
@@ -270,6 +287,7 @@ def render_page(status: dict, message=None) -> str:
         (t(lang, 'page.stat_consumption'), stat_row('consumption')),
         (t(lang, 'page.stat_portal'), stat_row('portal')),
     ])}</table></div>
+{energy_html}
 <div class="card"><h2>{t(lang, 'page.import_title')}</h2>
 <p>{t(lang, 'page.import_lead')}</p>
 <ul class="files">

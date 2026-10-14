@@ -75,6 +75,20 @@ the add-on
   hourly values for good. Home Assistant's recorder drops raw states after 10 days by default; the
   archive is independent of that.
 
+## Switching the Energy dashboard
+
+The statistic "<Site> grid consumption" ("<Site> Netzbezug") is meant for the Energy dashboard: the
+whole history, the radio readings live, gaps filled by the portal. The add-on never changes the
+dashboard itself; its page shows what the dashboard uses now and what to do:
+
+1. Make a backup (Settings > System > Backups).
+2. Open Settings > Dashboards > Energy. Under **grid consumption** add "<Site> grid consumption"
+   and remove the sensor used so far (for example the radio counter); keeping both counts the
+   consumption twice.
+3. Check a few days in the Energy dashboard against your bill or the portal.
+
+This can be undone at any time: the old statistics of the sensor stay, switch back the same way.
+
 ## Status entities
 
 If an MQTT broker is set up in Home Assistant (for example the Mosquitto add-on), the add-on creates

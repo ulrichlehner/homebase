@@ -122,3 +122,18 @@ def test_page_scrolls_inside_the_ios_app_frame():
     page = W.render_page({})
     assert 'html { height: 100%; overflow: hidden; }' in page
     assert 'overflow-y: auto; -webkit-overflow-scrolling: touch' in page
+
+
+
+def test_energy_card_explains_the_switch_and_double_counting():
+    base = {'language': 'de', 'site': 'Lakeside'}
+    switch = W.render_page({**base, 'energy': {'grid_from': ['sensor.lakeside_grid_total_energy_consumption'],
+                                               'consumption_statistic': 'linznetz_energy:lakeside_grid_consumption',
+                                               'uses_consumption': False}})
+    assert '<h2>Energie-Dashboard</h2>' in switch and '„Lakeside Netzbezug“ hinzufügen' in switch
+    assert 'sensor.lakeside_grid_total_energy_consumption entfernen' in switch
+    double = W.render_page({**base, 'energy': {'grid_from': ['linznetz_energy:lakeside_grid_consumption', 'sensor.x'],
+                                               'consumption_statistic': 'linznetz_energy:lakeside_grid_consumption',
+                                               'uses_consumption': True}})
+    assert 'Nutzt „Lakeside Netzbezug“ als Netzbezug.' in double and 'doppelt gezählt' in double
+    assert '<h2>Energie-Dashboard</h2>' not in W.render_page(base)   # no card before the first run

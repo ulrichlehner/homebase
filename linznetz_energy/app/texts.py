@@ -64,6 +64,15 @@ TEXTS = {
         'page.rf_check': 'Radio vs portal',
         'page.rf_check_line': 'last complete day {day}: {percent} %; {hours} deviating hours in 7 days',
         'page.rf_check_none': 'no day with both complete yet',
+        'page.energy': 'Energy dashboard',
+        'page.energy_ok': 'Uses "{name}" as grid consumption.',
+        'page.energy_double': 'It also uses {others}: please remove it there, otherwise the consumption is counted twice.',
+        'page.energy_switch': 'To use "{name}" (the full history, radio readings live, gaps filled by the portal): '
+                              'make a backup, then open Settings > Dashboards > Energy, add "{name}" under grid '
+                              'consumption and remove {current}. This can be undone at any time; the old '
+                              'statistics stay.',
+        'page.energy_none': 'nothing yet',
+        'page.energy_unknown': 'The configuration of the Energy dashboard could not be read.',
         'page.not_configured': 'Not configured yet',
         'page.site': 'Site {site} · metering point {metering_point}',
         'source.rf': 'radio (RF)',
@@ -176,6 +185,15 @@ TEXTS = {
         'page.rf_check': 'Funk vs. Portal',
         'page.rf_check_line': 'letzter vollständiger Tag {day}: {percent} %; {hours} abweichende Stunden in 7 Tagen',
         'page.rf_check_none': 'noch kein Tag, den beide vollständig haben',
+        'page.energy': 'Energie-Dashboard',
+        'page.energy_ok': 'Nutzt „{name}“ als Netzbezug.',
+        'page.energy_double': 'Es nutzt zusätzlich {others}: bitte dort entfernen, sonst wird der Verbrauch doppelt gezählt.',
+        'page.energy_switch': 'Um „{name}“ zu nutzen (der ganze Verlauf, Funkwerte live, Lücken vom Portal gefüllt): '
+                              'Backup machen, dann Einstellungen > Dashboards > Energie öffnen, unter Netzbezug '
+                              '„{name}“ hinzufügen und {current} entfernen. Das lässt sich jederzeit rückgängig '
+                              'machen; die alten Statistiken bleiben.',
+        'page.energy_none': 'noch nichts',
+        'page.energy_unknown': 'Die Einstellungen des Energie-Dashboards ließen sich nicht lesen.',
         'page.not_configured': 'Noch nicht eingerichtet',
         'page.site': 'Standort {site} · Zählpunkt {metering_point}',
         'source.rf': 'Funk (RF)',

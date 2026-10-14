@@ -430,7 +430,32 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
                         stats[0]['start'].isoformat(), stats[-1]['start'].isoformat(), stats[-1]['sum'])
             written[key] = statistic_status(statistic_id, hours, zone)
     web.write_status(store, phase='idle', detail='', statistics=written, last_run=now.isoformat())
+    web.write_status(store, energy=energy_status(hass, options))
     publish_status(options, store, lang, state, check, zone)
+
+
+def energy_status(hass, options: Options) -> Optional[dict]:
+    """What the Energy dashboard uses as grid consumption (read only, `energy/get_prefs`), for the
+    card on the add-on page that explains the switch (step 7). None if it cannot be read."""
+    try:
+        prefs = hass.call('energy/get_prefs') or {}
+    except HomeAssistantError:
+        return None
+    grid_from = []
+
+    def collect(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == 'stat_energy_from' and isinstance(value, str):
+                    grid_from.append(value)
+                else:
+                    collect(value)
+        elif isinstance(node, list):
+            for item in node:
+                collect(item)
+    collect([s for s in prefs.get('energy_sources', []) if s.get('type') == 'grid'])
+    return {'grid_from': grid_from, 'consumption_statistic': options.consumption_statistic,
+            'uses_consumption': options.consumption_statistic in grid_from}
 
 
 def publish_status(options: Options, store: Path, lang: str, state: dict, check: Optional[dict],

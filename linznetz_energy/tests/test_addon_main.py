@@ -31,10 +31,15 @@ class FakeHass:
         self.services.append((domain, service, data))
 
     def call(self, type_, **payload):
+        if type_ == 'energy/get_prefs':
+            return self.energy_prefs
         assert type_ == 'get_config'
         return {'language': self.language, 'time_zone': 'Europe/Vienna'}
 
     language = 'en'
+    energy_prefs = {'energy_sources': [{'type': 'grid', 'flow_from': [
+        {'stat_energy_from': 'sensor.place_grid_total_energy_consumption'}], 'flow_to': []},
+        {'type': 'solar', 'stat_energy_from': 'sensor.pv'}]}
 
 
 def write_readings(store: Path, hours: int, start=None, kwh='0.100', name=None):
@@ -357,3 +362,16 @@ def test_mqtt_messages():
     assert problem['device_class'] == 'problem' and problem['entity_category'] == 'diagnostic'
     state = json.loads(msgs['linznetz_energy/lakeside/state'])
     assert state['rf_deviation'] == 0.4 and state['last_portal_fetch'] is None
+
+
+
+# -- Step 7: the Energy dashboard -------------------------------------------------------------------
+
+def test_energy_status_reads_the_grid_sources():
+    hass = FakeHass()
+    status = addon.energy_status(hass, options())
+    assert status == {'grid_from': ['sensor.place_grid_total_energy_consumption'],   # solar is ignored
+                      'consumption_statistic': 'linznetz_energy:place_grid_consumption', 'uses_consumption': False}
+    hass.energy_prefs = {'energy_sources': [{'type': 'grid', 'flow_from': [
+        {'stat_energy_from': 'linznetz_energy:place_grid_consumption'}]}]}
+    assert addon.energy_status(hass, options())['uses_consumption'] is True
