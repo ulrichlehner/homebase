@@ -1,6 +1,7 @@
 # LINZ NETZ Energy
 
-LINZ NETZ portal readings as long-term statistics for the Home Assistant Energy dashboard.
+The consumption of your LINZ NETZ smart meter for the Home Assistant Energy dashboard: live from the
+meter's radio, completed and checked with the LINZ NETZ portal, with the whole history.
 
 - Fetches the quarter-hour readings of your smart meter from the LINZ NETZ service portal.
 - Takes the live radio (wM-Bus) readings of the meter as the primary source and fills their gaps
