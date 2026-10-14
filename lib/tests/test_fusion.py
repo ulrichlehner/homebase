@@ -38,7 +38,7 @@ def test_misread_phases_are_dropped_and_hours_stay_exact():
             v = v * 1000             # one spike
         bad.append((t, v))
     result = F.clean_counter(bad)
-    assert result.rejected == 30 + 5 + 1
+    assert result.rejected == 30 + 1 + 1   # the five identical 0.008 kWh readings count once
     assert len(result.dropped_segments) == 3
     # the counter on both sides of every phase is exact, so the hours are too
     assert F.rf_hourly(result.accepted, max_gap=timedelta(minutes=40)) == \
@@ -169,3 +169,16 @@ def test_read_rf_history_skips_unavailable(tmp_path):
         'sensor.place_grid_total_energy_consumption_kwh,12345.010,2026-10-05T00:02:00.000Z\n'
     )
     assert F.read_rf_history(path) == [(T0, 12_345_000), (T0 + timedelta(minutes=2), 12_345_010)]
+
+
+def test_a_repeated_value_does_not_break_the_counter():
+    """Real case (2026-10-14 20:00): the meter repeated the value of 19:58:56 at 20:00:58, the
+    next real value came 14 s later 135 Wh higher. Seen from the repeat that is 35 kW, seen
+    from the first occurrence 3.6 kW: the series must go on."""
+    samples = counter(119)                                    # 600 W until 01:59
+    last_t, last_v = samples[-1]
+    samples.append((last_t + timedelta(seconds=122), last_v))             # repeat 2 min later
+    samples += [(last_t + timedelta(seconds=136 + 60 * i), last_v + 135 + 10 * i) for i in range(70)]
+    result = F.clean_counter(samples)
+    assert result.rejected == 0 and result.dropped_segments == []   # the repeat is merged, nothing rejected
+    assert T0 + F.HOUR * 2 in F.rf_hourly(result.accepted)          # the hour after it has a value

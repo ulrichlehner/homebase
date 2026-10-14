@@ -19,7 +19,8 @@ RF input is the raw counter (kWh total, as the HA history shows it), not HA's ho
 statistics: those already contain the spikes of misread telegrams. The counter is
 cleaned before use:
 
-  1. readings are cut into segments wherever the counter falls or rises faster than
+  1. repeated values count from their first occurrence (a repeat carries no news), then
+     readings are cut into segments wherever the counter falls or rises faster than
      the connection allows (`max_kw`),
   2. the longest segment is trusted, the other segments are chained to it in time
      order if they continue it plausibly; a misread phase (wrong scale, zeros) breaks
@@ -149,9 +150,21 @@ class RfCleaning:
     dropped_segments: list = field(default_factory=list)   # (first time, last time, readings)
 
 
+def first_occurrences(samples: list) -> list:
+    """Drops readings that repeat the previous value: the counter reached that value at its
+    first occurrence. A repeat with a later timestamp (the meter sending the same value again)
+    would otherwise make the next real step look impossibly fast."""
+    out: list = []
+    for t, v in samples:
+        if not out or v != out[-1][1]:
+            out.append((t, v))
+    return out
+
+
 def clean_counter(samples: list, max_kw: float = DEFAULT_MAX_KW) -> RfCleaning:
     """Keeps the readings that form one plausible counter, see the module docstring."""
     result = RfCleaning()
+    samples = first_occurrences(sorted(samples))
     segs = segments(samples, max_kw)
     if not segs:
         return result
