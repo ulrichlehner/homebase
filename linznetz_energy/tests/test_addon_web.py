@@ -116,3 +116,9 @@ def test_page_fits_small_screens():
     assert 'grid-template-columns: minmax(0, 1fr)' in page        # long values cannot widen the page
     assert 'overflow-wrap: anywhere' in page
     assert '@media (max-width: 600px)' in page                    # stacked label/value on phones
+
+
+def test_page_scrolls_inside_the_ios_app_frame():
+    page = W.render_page({})
+    assert 'html { height: 100%; overflow: hidden; }' in page
+    assert 'overflow-y: auto; -webkit-overflow-scrolling: touch' in page
