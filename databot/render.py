@@ -282,7 +282,8 @@ def render(date=datetime.now(), filename='current.png', title_suffix='', targets
 
 
 def chart_dirs():
-    """Folders that may hold weekly charts: the data folder and its `archive` subfolder."""
+    """Folders that may hold weekly charts: the data folder (where all charts are kept and new
+    ones are written) and an optional `archive` subfolder of older setups."""
     return [Path(base_path), Path(base_path) / 'archive']
 
 

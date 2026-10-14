@@ -19,8 +19,8 @@ Everything lives in one data folder (`DATA_DIR`, see below):
 | `<meterId>_reconstructed_15min.csv` | the 6-hour values split into quarter hours by a typical profile        |
 | `<meterId>_all.csv`              | both combined into one contiguous timeline with `source`/`method`/`note` |
 | `csv/`                           | the raw portal exports, exactly as downloaded                            |
-| `*.png`, `archive/`              | the rendered weekly charts (you may move old ones into `archive/`)       |
-| `original_charts/`               | the charts as they were before `render --all` replaced them             |
+| `*.png`                          | the rendered weekly charts and `current.png`, all at the top level       |
+| `original_charts/`               | backup: the charts as they were before `render --all` replaced them; never delete it |
 
 `databot csv` keeps the readings file current and rewrites the unified file; `render.py` draws the
 charts from the unified file. The cron jobs in the container run both every 30 minutes and archive the
@@ -82,17 +82,18 @@ exports of every run are kept in `<DATA_DIR>/csv/`.
 
 `./homebase render --all` re-renders **every** weekly chart from the first week with data to the last
 finished week, plus `current.png`, e.g. after the renderer changed or after gaps in the data were
-filled. It takes about a minute. Charts are replaced where they are, at the top level of `DATA_DIR`
-and/or in `DATA_DIR/archive/`; weeks without a chart are created at the top level. Before a chart is
-replaced for the first time, the original is kept under `DATA_DIR/original_charts/` (same relative
-path) and is never overwritten again. Those originals are the input of the reconstruction below, so
-keep the folder; `reconstruct` reads it in preference to the re-rendered charts.
+filled. It takes about a minute. All charts live at the top level of `DATA_DIR` (an `archive/`
+subfolder is still recognized, but not needed). Before a chart is replaced for the first time, the
+original is kept under `DATA_DIR/original_charts/` (same file name) and is never overwritten again.
+`original_charts/` is the backup of the old charts and the input of the reconstruction below: never
+delete it; `reconstruct` reads it in preference to the re-rendered charts. Files in it whose name has
+a suffix (for example `_rendered-2026-09-25`) are kept but ignored.
 
 ### Reconstructing lost history from the chart PNGs
 
 The portal only keeps about 36 months. Readings before 2023-09-01 were only in the original InfluxDB,
 which was lost, but the weekly charts it rendered survive. `./homebase reconstruct` reads every
-chart PNG in `DATA_DIR` (subfolders such as `archive/` included, or `original_charts/` once it exists) and writes `<meterId>_reconstructed_6h.csv` with the four 6-hour sums per
+chart PNG in `DATA_DIR` (or `original_charts/` once it exists) and writes `<meterId>_reconstructed_6h.csv` with the four 6-hour sums per
 day for the period before the portal readings start. It is clearly marked as reconstructed:
 
 - `source` is always `chart_ocr`, `method` says how the value was obtained (`label`: printed value
