@@ -48,6 +48,7 @@ from homebase.hass import HomeAssistant, HomeAssistantError
 from homebase.portal import LinzNetzError, LoginError
 
 import web
+from texts import t
 
 logger = logging.getLogger('addon')
 
@@ -91,9 +92,10 @@ class Options:
 
 
 def normalize_metering_point(value: str) -> str:
-    """As printed on bills and in the portal: spaces, dots and dashes are dropped,
-    lowercase letters raised."""
-    return re.sub(r'[\s.\-]', '', value or '').upper()
+    """Keeps only letters and digits, raised to uppercase: spaces, dots and dashes as printed on
+    bills and in the portal go, and so do invisible characters that come along when the number
+    is copied from a PDF or a web page (non-breaking or zero-width spaces, line breaks)."""
+    return re.sub(r'[^0-9A-Za-z]', '', value or '').upper()
 
 
 def normalize_site(value: str) -> str:
@@ -102,8 +104,8 @@ def normalize_site(value: str) -> str:
 
 
 def load_options(path: Path) -> tuple:
-    """(Options, []) when the configuration is complete, else (None, problems): one line per
-    problem in plain words, for the log, the notification and the add-on page."""
+    """(Options, []) when the configuration is complete, else (None, problems): one (text key,
+    values) per problem, shown in the language of HA on the page and in the notification."""
     try:
         raw = json.loads(path.read_text())
     except (FileNotFoundError, ValueError):
@@ -114,17 +116,17 @@ def load_options(path: Path) -> tuple:
     metering_point = normalize_metering_point(raw.get('metering_point', ''))
     site = normalize_site(raw.get('site', ''))
     if not username:
-        problems.append('Portal username: missing (the login of the LINZ NETZ service portal).')
+        problems.append(('problem.username', {}))
     if not password:
-        problems.append('Portal password: missing.')
+        problems.append(('problem.password', {}))
     if not metering_point:
-        problems.append('Metering point: missing (the Zählpunktnummer, 33 characters, starts with AT; '
-                        'spaces are fine).')
+        problems.append(('problem.metering_point', {}))
+    elif len(metering_point) != 33:
+        problems.append(('problem.metering_point_length', {'count': len(metering_point)}))
     elif not METERING_POINT.match(metering_point):
-        problems.append(f'Metering point: {len(metering_point)} characters after removing spaces, expected 33 '
-                        f'starting with AT (the Zählpunktnummer, not the meter number).')
+        problems.append(('problem.metering_point_prefix', {}))
     if not re.fullmatch(r'[a-z0-9_]+', site):
-        problems.append('Site: only letters, digits and _ (it becomes part of the statistic ID).')
+        problems.append(('problem.site', {}))
     if problems:
         return None, problems
     return Options(username, password, metering_point, site, int(raw.get('fetch_interval_hours') or 12)), []
@@ -167,8 +169,8 @@ def fetch_portal(options: Options, store: Path, tz: str) -> None:
 
 
 def import_history(store: Path, metering_point: str) -> list:
-    """Takes over the history files in <store>/import/ and returns what was done, one line
-    per file. Readings are merged row by row (rows the add-on already has win, they are the
+    """Takes over the history files in <store>/import/ and returns what was done, one (text
+    key, values) per file. Readings are merged row by row (rows the add-on already has win, they are the
     newer portal values); the reconstructed quarter hours replace the previous ones. Files
     of another meter or with an unexpected header go to import/failed/."""
     folder = store / IMPORT_DIR
@@ -177,37 +179,45 @@ def import_history(store: Path, metering_point: str) -> list:
     for f in files:
         try:
             if not f.name.startswith(metering_point + '_'):
-                raise ValueError(f'belongs to another metering point, expected {metering_point[:6]}...{metering_point[-4:]}_*.csv')
+                raise ValueError('import.other_meter')
             if f.name.endswith('_readings.csv'):
                 target = store / f'{metering_point}_readings.csv'
                 try:
                     incoming = readings.read_csv_file(f)
-                except SystemExit as err:   # read_csv_file reports a wrong header this way
-                    raise ValueError(str(err)) from None
+                except SystemExit:   # read_csv_file reports a wrong header this way
+                    raise ValueError('import.bad_header') from None
                 existing = readings.read_csv_file(target)
                 added = {k: v for k, v in incoming.items() if k not in existing}
                 readings.write_csv_file(target, {**existing, **added})
-                done.append(f'{f.name}: {len(added)} of {len(incoming)} readings added')
+                done.append(('import.readings', {'file': f.name, 'added': len(added), 'total': len(incoming)}))
             elif f.name.endswith('_reconstructed_15min.csv'):
                 with f.open(newline='') as fh:
                     header = next(csv.reader(fh, delimiter=';'), None)
                     rows = sum(1 for _ in fh)
                 if header != disaggregate.OUTPUT_HEADER:
-                    raise ValueError(f'unexpected header {header}')
+                    raise ValueError('import.bad_header')
                 shutil.copyfile(f, store / f.name)
-                done.append(f'{f.name}: {rows} reconstructed quarter hours taken over')
+                done.append(('import.reconstructed', {'file': f.name, 'rows': rows}))
             else:
-                raise ValueError('only <meterId>_readings.csv and <meterId>_reconstructed_15min.csv are imported')
+                raise ValueError('import.unknown_file')
             dest = folder / 'done'
         except ValueError as err:
-            logger.warning('Import of %s failed: %s', f.name, err)
-            done.append(f'{f.name}: NOT imported ({err})')
+            logger.warning('Import of %s failed: %s', f.name, t('en', str(err)))
+            done.append(('import.failed', {'file': f.name, 'reason_key': str(err)}))
             dest = folder / 'failed'
         dest.mkdir(exist_ok=True)
         f.replace(dest / f.name)
-    for line in done:
-        logger.info('Import: %s', line)
+    for key, values in done:
+        logger.info('Import: %s', render('en', key, values))
     return done
+
+
+def render(lang: str, key: str, values: dict) -> str:
+    """A (text key, values) pair as text; an import failure carries its reason as a key."""
+    values = dict(values)
+    if 'reason_key' in values:
+        values['reason'] = t(lang, values.pop('reason_key'))
+    return t(lang, key, **values)
 
 
 def to_stats(hours: list) -> list:
@@ -289,53 +299,49 @@ def notify(hass, notification_id: str, title: str, message: Optional[str]) -> No
         logger.warning('Could not update the HA notification: %s', err)
 
 
-def run_once(hass, options: Options, store: Path, tz: str, now: datetime) -> None:
+def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: str = 'en') -> None:
     zone = ZoneInfo(tz)
+    web.write_status(store, language=lang)
     if any((store / IMPORT_DIR).glob('*.csv')):
-        web.write_status(store, phase='importing', detail='older history')
+        web.write_status(store, phase='importing', detail='detail.older_history')
     imported = import_history(store, options.metering_point)
     if imported:
-        web.write_status(store, last_import={'at': now.isoformat(), 'lines': imported})
-        notify(hass, IMPORT_NOTIFICATION, 'LINZ NETZ energy: history imported',
-               '\n'.join(f'- {line}' for line in imported))
+        web.write_status(store, last_import={'at': now.isoformat(), 'lines': [list(i) for i in imported]})
+        notify(hass, IMPORT_NOTIFICATION, t(lang, 'import.title'),
+               '\n'.join(f'- {render(lang, key, values)}' for key, values in imported))
     web.write_status(store, import_pending=False)
     state = read_state(store)
     if portal_due(state, now, options.fetch_interval_hours):
         readings_file = readings.readings_path(store, options.metering_point)
         first_download = not readings_file.exists()
         web.write_status(store, phase='downloading',
-                         detail='first download, about a minute' if first_download else 'new readings')
+                         detail='detail.first_download' if first_download else 'detail.new_readings')
         if first_download:
-            notify(hass, DOWNLOAD_NOTIFICATION, 'LINZ NETZ energy: first download',
-                   'Downloading everything the LINZ NETZ portal still has (about three years). '
-                   'This takes about a minute; the log of the add-on shows the progress.')
+            notify(hass, DOWNLOAD_NOTIFICATION, t(lang, 'download.title'), t(lang, 'download.text'))
         try:
             fetch_portal(options, store, tz)
             if first_download:
                 rows = readings.read_csv_file(readings_file)
                 if rows:
                     first, last = (datetime.fromtimestamp(t, zone) for t in (min(rows), max(rows)))
-                    notify(hass, DOWNLOAD_NOTIFICATION, 'LINZ NETZ energy: first download done',
-                           f'{len(rows)} quarter-hour readings from {first:%d.%m.%Y} to {last:%d.%m.%Y %H:%M}. '
-                           f'Older history can be uploaded on the add-on page (Open Web UI, "Import older history").')
+                    notify(hass, DOWNLOAD_NOTIFICATION, t(lang, 'download_done.title'),
+                           t(lang, 'download_done.text', count=len(rows), first=f'{first:%d.%m.%Y}',
+                             last=f'{last:%d.%m.%Y %H:%M}'))
                 else:
-                    notify(hass, DOWNLOAD_NOTIFICATION, 'LINZ NETZ energy: no data',
-                           'The portal has no readings for this metering point. Is the quarter-hour analysis '
-                           '("Viertelstundenauswertung") enabled in the portal?')
+                    notify(hass, DOWNLOAD_NOTIFICATION, t(lang, 'no_data.title'), t(lang, 'no_data.text'))
             state['portal_ok'] = now.isoformat()
             state.pop('portal_login_failed', None)
             notify(hass, LOGIN_NOTIFICATION, '', None)
         except LoginError as err:
             state['portal_login_failed'] = now.isoformat()
             logger.error('LINZ NETZ login failed: %s. Next attempt in %d hours.', err, options.fetch_interval_hours)
-            notify(hass, LOGIN_NOTIFICATION, 'LINZ NETZ login failed',
-                   f'The LINZ NETZ energy add-on could not log in to the portal ({err}). Check username and '
-                   f'password in the add-on configuration. Next attempt in {options.fetch_interval_hours} hours.')
+            notify(hass, LOGIN_NOTIFICATION, t(lang, 'login_failed.title'),
+                   t(lang, 'login_failed.text', hours=options.fetch_interval_hours))
         except LinzNetzError as err:
             logger.warning('Portal fetch failed, retrying next hour: %s', err)
             if first_download:
-                notify(hass, DOWNLOAD_NOTIFICATION, 'LINZ NETZ energy: first download failed',
-                       f'The portal did not answer as expected ({err}). The add-on tries again next hour.')
+                notify(hass, DOWNLOAD_NOTIFICATION, t(lang, 'download_failed.title'),
+                       t(lang, 'download_failed.text', error=err))
         write_state(store, state)
         web.write_status(store, portal={'ok': state.get('portal_ok'),
                                         'login_failed': state.get('portal_login_failed')})
@@ -361,24 +367,31 @@ def announce_setup(store: Path, problems: list) -> None:
     notification; dismisses that notification once the configuration is complete."""
     if problems:
         logger.warning('The add-on is not configured yet:')
-        for line in problems:
-            logger.warning('  %s', line)
-        logger.warning('Fill in the Configuration tab of the add-on and save; Home Assistant restarts it.')
-        web.write_status(store, phase='setup', detail='', setup=problems)
+        for key, values in problems:
+            logger.warning('  %s', t('en', key, **values))
+        logger.warning(t('en', 'setup.howto'))
+        web.write_status(store, phase='setup', detail='', setup=[list(p) for p in problems])
     try:
         hass = connect()
     except (HomeAssistantError, SystemExit) as err:
         logger.warning('Could not reach Home Assistant for the setup notification: %s', err)
         return
     try:
-        notify(hass, SETUP_NOTIFICATION, 'LINZ NETZ energy: setup needed',
-               'The add-on needs its configuration before it can fetch anything:\n'
-               + '\n'.join(f'- {line}' for line in problems)
-               + '\n\nOpen Settings > Apps (formerly Add-ons) > LINZ NETZ energy > Configuration, fill in the fields '
-                 'and save. '
-                 'Home Assistant then restarts the add-on.' if problems else None)
+        lang = ha_language(hass)
+        web.write_status(store, language=lang)
+        notify(hass, SETUP_NOTIFICATION, t(lang, 'setup.title'),
+               t(lang, 'setup.intro') + '\n' + '\n'.join(f'- {t(lang, key, **values)}' for key, values in problems)
+               + '\n\n' + t(lang, 'setup.howto') if problems else None)
     finally:
         hass.close()
+
+
+def ha_language(hass) -> str:
+    """The language of Home Assistant (Settings > System > General), 'en' if unknown."""
+    try:
+        return (hass.call('get_config') or {}).get('language') or 'en'
+    except HomeAssistantError:
+        return 'en'
 
 
 def connect() -> HomeAssistant:
@@ -414,15 +427,17 @@ def main(argv=None) -> int:
         # HA restarts the add-on when the configuration is saved; until then only the page runs
         threading.Event().wait()
     logger.info('Site %s, metering point ...%s, data in %s', options.site, options.metering_point[-4:], store)
-    web.write_status(store, site=options.site, meter_suffix=options.metering_point[-4:], phase='starting',
+    # the page shows the full metering point (it is the user's own HA); the log only the last digits
+    web.write_status(store, site=options.site, metering_point=options.metering_point, phase='starting',
                      detail='', setup=[])
     while True:
         wake.clear()
         try:
             hass = connect()
             try:
-                tz = hass.call('get_config').get('time_zone') or 'Europe/Vienna'
-                run_once(hass, options, store, tz, datetime.now(UTC))
+                config = hass.call('get_config') or {}
+                tz = config.get('time_zone') or 'Europe/Vienna'
+                run_once(hass, options, store, tz, datetime.now(UTC), config.get('language') or 'en')
             finally:
                 hass.close()
         except HomeAssistantError as err:

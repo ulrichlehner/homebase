@@ -30,6 +30,12 @@ class FakeHass:
     def call_service(self, domain, service, data=None):
         self.services.append((domain, service, data))
 
+    def call(self, type_, **payload):
+        assert type_ == 'get_config'
+        return {'language': self.language, 'time_zone': 'Europe/Vienna'}
+
+    language = 'en'
+
 
 def write_readings(store: Path, hours: int, start=None, kwh='0.100', name=None):
     start = start or datetime(2026, 10, 1, tzinfo=ZONE).astimezone(UTC)
@@ -70,6 +76,8 @@ def test_metering_point_and_site_are_normalized(tmp_path):
     assert problems == [] and o.metering_point == 'AT0031' + '0' * 27 and o.site == 'second_home'
     path.write_text(json.dumps({'portal_username': 'u', 'portal_password': 'p', 'metering_point': METER}))
     assert addon.load_options(path)[0].site == 'home'                   # the default
+    pasted = '\u200b' + METER[:10] + '\u00a0' + METER[10:] + ' \n'   # zero-width, no-break space, line break
+    assert addon.normalize_metering_point(pasted) == METER
 
 
 def test_an_empty_configuration_is_explained(tmp_path):
@@ -77,11 +85,11 @@ def test_an_empty_configuration_is_explained(tmp_path):
     path.write_text(json.dumps({'portal_username': '', 'portal_password': '', 'metering_point': '', 'site': 'home'}))
     o, problems = addon.load_options(path)
     assert o is None and len(problems) == 3
-    assert problems[0].startswith('Portal username: missing') and problems[1] == 'Portal password: missing.'
-    assert problems[2].startswith('Metering point: missing')
+    assert [key for key, _ in problems] == ['problem.username', 'problem.password', 'problem.metering_point']
     path.write_text(json.dumps({'portal_username': 'u', 'portal_password': 'p', 'metering_point': 'AT00310000'}))
-    assert addon.load_options(path)[1] == ['Metering point: 10 characters after removing spaces, expected 33 '
-                                           'starting with AT (the Zählpunktnummer, not the meter number).']
+    assert addon.load_options(path)[1] == [('problem.metering_point_length', {'count': 10})]
+    path.write_text(json.dumps({'portal_username': 'u', 'portal_password': 'p', 'metering_point': 'DE' + METER[2:]}))
+    assert addon.load_options(path)[1] == [('problem.metering_point_prefix', {})]
     assert addon.load_options(tmp_path / 'missing.json')[0] is None    # no options file at all
 
 
@@ -89,11 +97,18 @@ def test_setup_notification_lists_the_problems_and_goes_away(tmp_path, monkeypat
     hass = FakeHass()
     hass.close = lambda: None
     monkeypatch.setattr(addon, 'connect', lambda: hass)
-    addon.announce_setup(tmp_path, ['Portal password: missing.'])
+    addon.announce_setup(tmp_path, [('problem.password', {})])
     created = hass.services[-1]
     assert created[1] == 'create' and created[2]['notification_id'] == addon.SETUP_NOTIFICATION
-    assert '- Portal password: missing.' in created[2]['message'] and 'Configuration' in created[2]['message']
+    assert created[2]['title'] == 'LINZ NETZ energy: setup needed'
+    assert '- The portal password is missing.' in created[2]['message'] and 'Configuration' in created[2]['message']
     assert addon.web.read_status(tmp_path)['phase'] == 'setup'
+    # in the language of Home Assistant
+    hass.language = 'de-AT'
+    addon.announce_setup(tmp_path, [('problem.password', {})])
+    created = hass.services[-1]
+    assert created[2]['title'] == 'LINZ NETZ energy: Einrichtung nötig'
+    assert '- Das Portal-Passwort fehlt.' in created[2]['message'] and 'Tab Konfiguration' in created[2]['message']
     addon.announce_setup(tmp_path, [])
     assert hass.services[-1] == ('persistent_notification', 'dismiss', {'notification_id': addon.SETUP_NOTIFICATION})
 
@@ -170,7 +185,8 @@ def test_import_merges_readings_and_existing_rows_win(tmp_path):
     (tmp_path / 'import').mkdir()
     write_readings(tmp_path / 'import', hours=3, start=early, kwh='0.100')            # older archive
     lines = addon.import_history(tmp_path, METER)
-    assert lines == [f'{METER}_readings.csv: 4 of 12 readings added']
+    assert lines == [('import.readings', {'file': f'{METER}_readings.csv', 'added': 4, 'total': 12})]
+    assert addon.render('de', *lines[0]) == f'{METER}_readings.csv: 4 von 12 Werten ergänzt'
     rows = readings.read_csv_file(tmp_path / f'{METER}_readings.csv')
     assert len(rows) == 12
     values = [rows[k][2] for k in sorted(rows)]
@@ -187,7 +203,10 @@ def test_import_rejects_other_meters_and_bad_files(tmp_path):
     (folder / f'{METER}_readings.csv').write_text('a;b\n1;2\n')
     (folder / f'{METER}_all.csv').write_text('x\n')
     lines = addon.import_history(tmp_path, METER)
-    assert len(lines) == 3 and all('NOT imported' in line for line in lines)
+    assert len(lines) == 3 and all(key == 'import.failed' for key, _ in lines)
+    assert sorted(v['reason_key'] for _, v in lines) == ['import.bad_header', 'import.other_meter', 'import.unknown_file']
+    assert addon.render('en', *lines[0]).endswith('(only <metering point>_readings.csv and '
+                                                  '<metering point>_reconstructed_15min.csv can be imported)')
     assert sorted(p.name for p in (folder / 'failed').iterdir()) == sorted(
         [f'{other}_readings.csv', f'{METER}_readings.csv', f'{METER}_all.csv'])
     assert not (tmp_path / f'{METER}_readings.csv').exists()

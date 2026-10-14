@@ -13,11 +13,14 @@ writes them into Home Assistant as a long-term statistic for the Energy dashboar
 
 ## First start
 
-Install the add-on, fill in the **Configuration** tab (portal username, portal password and the
-metering point; everything else has defaults), save and start it. If you start it before that, it
-starts anyway and tells you what is missing: on its page (**Open Web UI**), in a notification and
-in the log. Saving the configuration makes Home Assistant restart the add-on, and the first download
-begins.
+Install the add-on (Home Assistant now calls add-ons "apps"), fill in the **Configuration** tab
+(portal username, portal password and the metering point; everything else has defaults), save and
+start it. If you start it before that, it starts anyway and tells you what is missing: on its page
+(**Open Web UI**), in a notification and in the log. After saving the configuration, restart the
+add-on on the **Info** tab, and the first download begins.
+
+Note: Home Assistant only enables **Save** after a field was changed. The page and the
+notifications follow the language of Home Assistant (German and English; the log stays English).
 
 ## Configuration
 
