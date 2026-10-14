@@ -10,6 +10,7 @@
 #   ./homebase reconstruct         reconstruct 6h values from the chart PNGs in DATA_DIR (+ split, unified file)
 #   ./homebase disaggregate        split the reconstructed 6h blocks into quarter hours (+ unified file)
 #   ./homebase fuse [--rf FILE]    fuse portal, RF (HA history CSV) and reconstruction into hours
+#   ./homebase ha-spike CMD        HA statistics import test (info | import | clear), needs HA_URL/HA_TOKEN
 #   ./homebase merge               rewrite the unified <meterId>_all.csv from the files above
 #   ./homebase check               report incomplete days in the readings CSV
 #   ./homebase up | down | logs    run the cron container in the background (csv + render every 30 min)
@@ -81,7 +82,7 @@ run_standalone() {
     "$IMAGE" "$@"
 }
 
-usage() { sed -n '3,23p' "$0"; }
+usage() { sed -n '3,24p' "$0"; }
 
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
@@ -115,6 +116,19 @@ case "$cmd" in
     tty_flags="-i"; [ -t 0 ] && [ -t 1 ] && tty_flags="-it"
     docker run --rm $tty_flags --env-file "$ENV_FILE" -v "$DATA_DIR:/app/export" ${extra[@]+"${extra[@]}"} "$IMAGE" \
       python3 /app/fusion.py --dir /app/export --meter "$METER_ID" --tz "${TZ_VALUE:-Europe/Vienna}" ${args[@]+"${args[@]}"}
+    ;;
+  ha-spike)
+    ensure_image
+    # containers cannot resolve mDNS names (homeassistant.local): resolve on the host
+    ha_host="$( (env_value HA_URL || true) | sed -E 's#^[a-z]+://##; s#[:/].*$##')"
+    host_flags=()
+    if [[ "$ha_host" == *.local ]]; then
+      ha_ip="$(dscacheutil -q host -a name "$ha_host" 2>/dev/null | awk '/^ip_address/ {print $2; exit}')"
+      [ -n "$ha_ip" ] || die "cannot resolve $ha_host"
+      host_flags=(--add-host "$ha_host:$ha_ip")
+    fi
+    docker run --rm -i --env-file "$ENV_FILE" -e EXPORT_DIR=/app/export -v "$DATA_DIR:/app/export" \
+      ${host_flags[@]+"${host_flags[@]}"} "$IMAGE" python3 /app/ha_spike.py "$@"
     ;;
   merge)
     ensure_image

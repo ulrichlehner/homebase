@@ -108,7 +108,10 @@ Done when the backtest error is acceptable and the source files are unchanged.
 
 ### Step 3: HA import spike (script from the Mac, test data only)
 
-- [ ] Script against the HA websocket with a long-lived token from `.env`: import one week as
+- [x] `databot/ha.py` (small websocket client, reused by the add-on) and `./homebase ha-spike
+      info | import | clear` (`databot/ha_spike.py`), tested without HA; the metadata fields newer
+      HA versions want (`mean_type`, `unit_class`) are discovered and logged
+- [ ] Run it: script against the HA websocket with a long-lived token from `.env`: import one week as
       `linznetz:test_grid` (`recorder/import_statistics`), read the RF counter history back
       (`history/history_during_period`, raw states, see step 2)
 - [ ] Check in a statistics graph card (the Energy tab stays untouched)
@@ -211,6 +214,8 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: user keeps the recorder at `purge_keep_days: 10` (raw states), the add-on archives
+  the RF readings itself. Step 3 code written; waiting for the HA backup and `HA_URL`/`HA_TOKEN`.
 - 2026-10-14: fusion dry run with the real RF energy counter: it matches the portal to about 1 Wh
   per hour (the portal values come from the same meter register). The counter has about 11
   silences of 30 to 52 minutes per two days while power keeps arriving every 5 s: the phases in

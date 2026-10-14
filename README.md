@@ -203,4 +203,8 @@ PASSWORD=<LINZ NETZ portal password>
 METER_ID=<your metering point number, used as file name prefix>
 TZ=Europe/Vienna
 DATA_DIR="/Users/<you>/Library/Mobile Documents/com~apple~CloudDocs/<folder>"  # optional, default ./data/databot
+# optional, only for `./homebase ha-spike` (Home Assistant statistics import test)
+HA_URL=http://homeassistant.local:8123
+HA_TOKEN=<long-lived access token from your HA profile, Security tab>
+HA_RF_ENTITY=sensor.<place>_grid_total_energy_consumption
 ```
