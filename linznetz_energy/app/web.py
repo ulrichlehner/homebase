@@ -90,6 +90,10 @@ STYLE = """
   :root { --bg: #111111; --card: #1c1c1c; --text: #e1e1e1; --muted: #9b9b9b; --divider: #2f2f2f;
           --primary-soft: rgba(3, 169, 244, .12); } }
 * { box-sizing: border-box; }
+/* The HA app shows the page in an iframe; on iOS such an iframe only scrolls when the page
+   scrolls itself, not the window: html stays fixed, body is the scroll container. */
+html { height: 100%; overflow: hidden; }
+body { height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--text);
        font: 16px/1.55 Roboto, "Noto Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 main { max-width: 880px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
