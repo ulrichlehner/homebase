@@ -95,7 +95,11 @@ Done when the backtest error is acceptable and the source files are unchanged.
       50 Wh), logged by `./homebase fuse --rf <history.csv>`
 - [x] Tests for every rule (synthetic data)
 - [x] Dry run without RF: 31631 hours (portal and reconstructed), no gaps
-- [ ] Dry run with a real RF history download from HA (needs the export, see the log)
+- [ ] Dry run with a real RF history download of the energy counter since 2026-10-08 (includes
+      the misread phases of 9.10. and 11.10.; their raw states are purged around 19.10./21.10.
+      unless `purge_keep_days` is raised)
+- [x] Cross-check with the RF power sensor (integrated, 12.10. 13:18 to 14.10.): 35 complete
+      hours -0.33 % against the portal, mean 3 Wh per hour, 13.10. 9.718 vs 9.772 kWh
 - [ ] Check whether the portal offers meter counter readings; if so, compare them with the RF
       counter (optional, the hourly validation already covers the drift)
 
@@ -134,8 +138,10 @@ Done when the backtest error is acceptable and the source files are unchanged.
 
 - [ ] Hourly (a few minutes past the hour): read the RF counter history, rebuild and import
       `…_grid_energy_fused`
-- [ ] Archive the RF readings in the add-on storage: HA purges raw states after 10 days by
-      default, the fused series must not lose RF hours the portal never filled
+- [ ] Archive the RF readings (energy counter and power) in the add-on storage, part of every HA
+      backup: the recorder purges raw states after `purge_keep_days` (default 10), long-term
+      statistics stay. Optionally raise `purge_keep_days` in HA (the user's decision, bigger
+      database)
 - [ ] Deviation sensor over MQTT, notification above a threshold
 - [ ] The portal delivers 1 to 2 days late: RF covers that span, the deviation check waits for it
 - [ ] About 2 weeks in parallel while the Energy tab still uses the RF sensor, compare daily
@@ -202,6 +208,10 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: RF power sensor history (5 s readings) integrated and compared with the portal:
+  -0.33 % over 35 hours, mean 3 Wh per hour; the small shortfall comes from receive gaps up to
+  110 s. The receiver and the portal agree. The energy counter export is still needed for the
+  fusion dry run.
 - 2026-10-14: step 2 implemented and tested (49 tests). Decision: RF comes from the raw counter
   history, not from HA's statistics, because the statistics already contain the misread spikes.
   Open: a dry run with a real HA history download of the RF energy sensor.
