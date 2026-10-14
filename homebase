@@ -11,6 +11,7 @@
 #   ./homebase disaggregate        split the reconstructed 6h blocks into quarter hours (+ unified file)
 #   ./homebase fuse [--rf FILE]    fuse portal, RF (HA history CSV) and reconstruction into hours
 #   ./homebase ha-spike CMD        HA statistics import test (info | import | clear), needs HA_URL/HA_TOKEN
+#   ./homebase assets [--check]    render the add-on icon/logo PNGs from linznetz_energy/assets/*.svg
 #   ./homebase merge               rewrite the unified <meterId>_all.csv from the files above
 #   ./homebase check               report incomplete days in the readings CSV
 #   ./homebase up | down | logs    run the cron container in the background (csv + render every 30 min)
@@ -82,7 +83,7 @@ run_standalone() {
     "$IMAGE" "$@"
 }
 
-usage() { sed -n '3,24p' "$0"; }
+usage() { sed -n '3,25p' "$0"; }
 
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
@@ -129,6 +130,11 @@ case "$cmd" in
     fi
     docker run --rm -i --env-file "$ENV_FILE" -e EXPORT_DIR=/app/export -v "$DATA_DIR:/app/export" \
       ${host_flags[@]+"${host_flags[@]}"} "$IMAGE" python3 /app/ha_spike.py "$@"
+    ;;
+  assets)
+    # own small image (cairo + DejaVu), independent of the databot image
+    docker build -q -t homebase-assets linznetz_energy/assets >/dev/null
+    docker run --rm -v "$PWD/linznetz_energy:/addon" --entrypoint python3 homebase-assets /addon/assets/render.py "$@"
     ;;
   merge)
     ensure_image

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Add-on icon: rising consumption bars and a lightning bolt, side by side (no overlap).
+     Source of icon.png and part of logo.png, rendered by `./homebase assets`. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect x="0" y="0" width="128" height="128" rx="28" fill="#03A9F4"/>
+  <g fill="#FFFFFF">
+    <rect x="19.2" y="74.2" width="14.1" height="25.6" rx="3.2"/>
+    <rect x="38.4" y="56.3" width="14.1" height="43.5" rx="3.2"/>
+    <rect x="57.6" y="35.8" width="14.1" height="64.0" rx="3.2"/>
+  </g>
+  <polygon fill="#FFC107"
+           points="94.7,20.5 74.2,66.6 88.3,66.6 78.1,110.1 112.6,56.3 97.3,56.3 110.1,20.5"/>
+</svg>

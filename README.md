@@ -176,6 +176,13 @@ creates the tag and the GitHub release, and the image workflow builds the images
 Version images are never overwritten: HA offers the update as soon as the release PR is merged and
 the images are built (a few minutes).
 
+### Add-on icon and logo
+
+`linznetz_energy/icon.png` and `logo.png` are rendered from the SVG sources in
+`linznetz_energy/assets/` (`icon.svg`; `logo.svg` embeds it and adds the name). Change the SVG, then
+run `./homebase assets` and commit the PNGs too; `./homebase assets --check` (and the workflow
+`addon-assets.yml`) fails when a PNG no longer matches its SVG.
+
 ## Develop
 
 ```bash

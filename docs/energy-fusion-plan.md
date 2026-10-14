@@ -148,7 +148,8 @@ Done when the backtest error is acceptable and the source files are unchanged.
 - [x] Versioning: starts at 1.0.0, release-please derives the next version from the
       conventional commits (release PR, tag, changelog); version images are immutable, `main`
       only builds a version that has no image yet, other branches push `dev`
-- [x] Store presentation: `icon.png`, `logo.png` (readable in light and dark mode), `CHANGELOG.md`,
+- [x] Store presentation: `icon.png`, `logo.png` (rendered from the SVGs in `linznetz_energy/assets/`
+      by `./homebase assets`, checked in CI; readable in light and dark mode), `CHANGELOG.md`,
       `stage: experimental`, minimum HA version 2026.10.0 (the tested one)
 - [ ] Installs from the repo URL on HA OS (`https://github.com/ulrichlehner/homebase`, after the
       merge of #13), survives a restart, no credentials in the logs
