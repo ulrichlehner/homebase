@@ -230,7 +230,9 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
 - [ ] Add-on README with the prerequisites: quarter-hour analysis ("Viertelstundenauswertung")
       enabled in the portal, data arrives 1 to 2 days late (already in the homebase README)
 - [ ] Add-on README, homebase README, `smartmeter/` docs (guard sensor possibly unnecessary)
-- [ ] Decide whether the Docker databot keeps writing the CSV archive outside HA
+- [x] Decide whether the Docker databot keeps writing the CSV archive outside HA: no, the add-on does
+      the regular fetching; the cron container, docker-compose and the published tool image are removed,
+      the `./homebase` commands stay for manual use
 
 ## Related projects and what we take from them
 
@@ -280,6 +282,9 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: cron container removed (cron scripts, `start.sh`, `docker-compose.yml`,
+  `./homebase up/down/logs`, the workflow that published the tool image); the tool image is only
+  built locally (`homebase-databot:local`).
 - 2026-10-14: add-on texts (notifications, page) follow the language of HA (de/en), plainer
   wording; page with larger type and a drop zone for the upload; full metering point on the page;
   metering point keeps only letters and digits (invisible characters from copying).

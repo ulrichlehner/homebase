@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 #
 # Docker wrapper for the homebase tools. Nothing needs to be installed locally
-# except Docker. The image is (re)built automatically whenever the sources in
-# ./databot change.
+# except Docker. The image is built locally, and rebuilt automatically whenever
+# the sources in ./lib or ./databot change. The regular fetching runs in the
+# Home Assistant add-on (linznetz_energy/); these commands are for manual use.
 #
 #   ./homebase csv                 update the readings CSV in DATA_DIR from the portal (+ unified file)
 #   ./homebase render [args]       render the current chart from the CSV; `--archive` adds finished weeks
@@ -14,7 +15,6 @@
 #   ./homebase assets [--check]    render the add-on icon/logo PNGs from linznetz_energy/assets/*.svg
 #   ./homebase merge               rewrite the unified <meterId>_all.csv from the files above
 #   ./homebase check               report incomplete days in the readings CSV
-#   ./homebase up | down | logs    run the cron container in the background (csv + render every 30 min)
 #   ./homebase databot <args>      any databot command, e.g. `databot csv --overlap 30`
 #   ./homebase test                run the unit tests
 #   ./homebase build               force a rebuild of the image
@@ -28,7 +28,7 @@ set -euo pipefail
 
 cd "$(dirname "$(readlink -f "$0")")"
 
-IMAGE="ghcr.io/ulrichlehner/homebase-databot:main"
+IMAGE="homebase-databot:local"
 # the image holds the shared library (lib/) and the command line tools (databot/)
 SRC_DIRS=(./lib ./databot)
 ENV_FILE="./.env"
@@ -150,16 +150,6 @@ case "$cmd" in
     # refresh the quarter-hour split, then the unified file
     run_standalone python3 /app/databot.py disaggregate
     run_standalone python3 /app/databot.py merge
-    ;;
-  up)
-    ensure_image
-    DATA_DIR="$DATA_DIR" docker compose up -d "$@"
-    ;;
-  down)
-    DATA_DIR="$DATA_DIR" docker compose down "$@"
-    ;;
-  logs)
-    DATA_DIR="$DATA_DIR" docker compose logs -f "$@"
     ;;
   databot)
     ensure_image

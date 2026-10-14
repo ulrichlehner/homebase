@@ -23,8 +23,8 @@ Everything lives in one data folder (`DATA_DIR`, see below):
 | `original_charts/`               | backup: the charts as they were before `render --all` replaced them; never delete it |
 
 `databot csv` keeps the readings file current and rewrites the unified file; `render.py` draws the
-charts from the unified file. The cron jobs in the container run both every 30 minutes and archive the
-chart of the finished week on Mondays.
+charts from the unified file. Both run on demand; the regular fetching for Home Assistant is done by
+the add-on in `linznetz_energy/`.
 
 Prerequisite: the quarter-hour analysis ("Viertelstundenauswertung") must be enabled for the meter
 in the portal. The portal shows the values of a day one to two days later.
@@ -32,15 +32,13 @@ in the portal. The portal shows the values of a day one to two days later.
 ## Run
 
 Everything runs in Docker through the `./homebase` wrapper, nothing else needs to be installed. The
-wrapper rebuilds the image automatically whenever the sources in `databot/` change.
+wrapper builds the image locally and rebuilds it automatically whenever the sources in `lib/` or
+`databot/` change.
 
 ```bash
 ./homebase csv            # fetch new readings from the portal into the CSV files
 ./homebase render         # render the current chart, `render --archive` for finished weeks
 ./homebase render --all   # re-render ALL weekly charts and the current one from the CSV data
-./homebase up             # start the cron container (csv + render every 30 minutes)
-./homebase logs           # follow its logs
-./homebase down           # stop it
 ./homebase check          # report incomplete days in the readings CSV
 ./homebase reconstruct    # reconstruct 6h values from archived chart PNGs (see below)
 ./homebase disaggregate   # split the reconstructed 6h values into quarter hours (see below)
@@ -77,8 +75,7 @@ exports of every run are kept in `<DATA_DIR>/csv/`.
 ### Charts
 
 `./homebase render` draws `current.png` (the running week plus the two before) from `<meterId>_all.csv`.
-`./homebase render --archive` adds the chart of each finished week as `<meterId>_<monday>-<sunday>.png`
-(the Monday cron job does this).
+`./homebase render --archive` adds the chart of each finished week as `<meterId>_<monday>-<sunday>.png`.
 
 `./homebase render --all` re-renders **every** weekly chart from the first week with data to the last
 finished week, plus `current.png`, e.g. after the renderer changed or after gaps in the data were
@@ -193,7 +190,7 @@ run `./homebase assets` and commit the PNGs too; `./homebase assets --check` (an
 | Folder              | Content                                                                                  |
 | ------------------- | ---------------------------------------------------------------------------------------- |
 | `lib/homebase/`     | the shared library (Python package `homebase`), no command line, no add-on specifics: `portal` (LINZ NETZ client), `readings` (the CSV archive), `disaggregate`, `fusion`, `hass` (Home Assistant websocket client) |
-| `databot/`          | the command line tools for Docker on the Mac: `databot.py` (`csv`, `merge`, `check`, `disaggregate`, `fuse`), `render.py` (charts), `reconstruct.py` (chart OCR), `ha_spike.py` (HA import test), the cron image |
+| `databot/`          | the command line tools for Docker on the Mac: `databot.py` (`csv`, `merge`, `check`, `disaggregate`, `fuse`), `render.py` (charts), `reconstruct.py` (chart OCR), `ha_spike.py` (HA import test) |
 | `linznetz_energy/`  | the Home Assistant add-on: `app/main.py` (main loop), `app/web.py` (its page in HA), `config.yaml`, docs, assets |
 | `smartmeter/`       | the wM-Bus driver and MQTT discovery for the RF readings of the meter                    |
 
@@ -216,29 +213,11 @@ tree, and `./homebase shell` opens a shell there.
 
 ## Setup
 
-### Raspberry Pi (or any Docker host)
-
-1. Install `Raspberry Pi OS Lite (64-Bit)`
-2. Install `Docker` (see [Install Docker Engine on Debian](https://docs.docker.com/engine/install/debian/#install-using-the-convenience-script) for latest instructions, at this time the _Install using the convenience script_ section must be used for Raspberry Pi):
-
-   ```bash
-   curl -fsSL https://get.docker.com -o get-docker.sh
-   sudo sh get-docker.sh
-
-   # Let the logged-in user use `docker` without `sudo`
-   sudo usermod -aG docker ${USER}
-   ```
-
-3. (Optional) Make Raspian OS auto-update itself (confirm with `Yes` in the configuration)
-
-   ```bash
-   sudo apt-get install unattended-upgrades
-   sudo dpkg-reconfigure -plow unattended-upgrades
-   ```
+Requires Docker (Docker Desktop on the Mac).
 
 ### App
 
-Clone this repo and create a `./.env` in the app folder with following content, then `./homebase up`:
+Clone this repo and create a `./.env` with the following content, then run `./homebase csv`:
 
 ```bash
 USERNAME=<LINZ NETZ portal login>
