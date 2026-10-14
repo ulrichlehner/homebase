@@ -279,7 +279,7 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime) -> Non
                     first, last = (datetime.fromtimestamp(t, zone) for t in (min(rows), max(rows)))
                     notify(hass, DOWNLOAD_NOTIFICATION, 'LINZ NETZ energy: first download done',
                            f'{len(rows)} quarter-hour readings from {first:%d.%m.%Y} to {last:%d.%m.%Y %H:%M}. '
-                           f'Older history can be added through the import folder, see the add-on documentation.')
+                           f'Older history can be uploaded on the add-on page (Open Web UI, "Import older history").')
                 else:
                     notify(hass, DOWNLOAD_NOTIFICATION, 'LINZ NETZ energy: no data',
                            'The portal has no readings for this metering point. Is the quarter-hour analysis '
