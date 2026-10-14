@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/ulrichlehner/homebase/compare/v0.1.0...v0.1.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* guide through the add-on setup instead of failing the start ([7785cf0](https://github.com/ulrichlehner/homebase/commit/7785cf058b454b944c2b08cf63fcd651c3ff4667))
+
 ## 0.1.0 (2026-10-14)
 
 
