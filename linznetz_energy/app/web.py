@@ -24,6 +24,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Optional
 
+from texts import TEXTS, language, t
+
 logger = logging.getLogger('addon.web')
 
 INGRESS_PROXY = '172.30.32.2'
@@ -82,40 +84,54 @@ def store_upload(import_dir: Path, name: str, data: bytes) -> Path:
 # -- Page ---------------------------------------------------------------------------------
 
 STYLE = """
-:root { --primary: #03a9f4; --bg: #fafafa; --card: #ffffff; --text: #212121; --muted: #727272;
-        --divider: #e0e0e0; --ok: #43a047; --warn: #ffa000; --err: #db4437; }
+:root { --primary: #03a9f4; --primary-soft: rgba(3, 169, 244, .08); --bg: #fafafa; --card: #ffffff;
+        --text: #212121; --muted: #727272; --divider: #e0e0e0; --ok: #43a047; --warn: #ffa000; --err: #db4437; }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #111111; --card: #1c1c1c; --text: #e1e1e1; --muted: #9b9b9b; --divider: #2f2f2f; } }
+  :root { --bg: #111111; --card: #1c1c1c; --text: #e1e1e1; --muted: #9b9b9b; --divider: #2f2f2f;
+          --primary-soft: rgba(3, 169, 244, .12); } }
 * { box-sizing: border-box; }
-body { margin: 0; padding: 16px; background: var(--bg); color: var(--text);
-       font: 14px/1.5 Roboto, "Noto Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-main { max-width: 860px; margin: 0 auto; display: grid; gap: 16px; }
-.card { background: var(--card); border-radius: 12px; border: 1px solid var(--divider); padding: 16px 20px; }
-h1 { font-size: 22px; font-weight: 400; margin: 4px 0 0; }
-h2 { font-size: 16px; font-weight: 500; margin: 0 0 12px; }
+body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--text);
+       font: 16px/1.55 Roboto, "Noto Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+main { max-width: 880px; margin: 0 auto; display: grid; gap: 20px; }
+.card { background: var(--card); border-radius: 12px; border: 1px solid var(--divider); padding: 20px 24px; }
+h1 { font-size: 28px; font-weight: 400; margin: 0; }
+h2 { font-size: 20px; font-weight: 500; margin: 0 0 14px; }
+p { margin: 0 0 12px; }
 table { width: 100%; border-collapse: collapse; }
-td, th { text-align: left; padding: 6px 8px 6px 0; border-bottom: 1px solid var(--divider); vertical-align: top; }
-th { font-weight: 500; color: var(--muted); white-space: nowrap; width: 36%; }
+td, th { text-align: left; padding: 10px 12px 10px 0; border-bottom: 1px solid var(--divider); vertical-align: top; }
+th { font-weight: 500; color: var(--muted); width: 36%; }
 tr:last-child td, tr:last-child th { border-bottom: 0; }
 .muted { color: var(--muted); }
-.pill { display: inline-block; border-radius: 10px; padding: 0 8px; font-size: 12px; color: #fff; }
+.pill { display: inline-block; border-radius: 12px; padding: 1px 10px; font-size: 14px; color: #fff; }
 .ok { background: var(--ok); } .warn { background: var(--warn); } .err { background: var(--err); }
 .run { background: var(--primary); }
 .setup { border-left: 4px solid var(--warn); }
-input[type=file] { display: block; margin: 8px 0 12px; color: var(--text); }
-button { background: var(--primary); color: #fff; border: 0; border-radius: 4px; padding: 8px 16px;
-         font: inherit; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; cursor: pointer; }
+.files { margin: 0 0 18px; padding: 0; list-style: none; display: grid; gap: 8px; }
+.files li { display: grid; gap: 2px; }
+.drop { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; cursor: pointer;
+        padding: 28px 16px; border: 2px dashed var(--divider); border-radius: 12px; background: var(--primary-soft);
+        transition: border-color .15s, background .15s; }
+.drop:hover, .drop.over { border-color: var(--primary); }
+.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.drop svg { width: 40px; height: 40px; fill: var(--primary); }
+.drop strong { font-size: 18px; font-weight: 500; }
+.chosen { font-weight: 500; color: var(--text); }
+button { display: block; width: 100%; margin-top: 14px; background: var(--primary); color: #fff; border: 0;
+         border-radius: 8px; padding: 14px 20px; font: inherit; font-size: 17px; font-weight: 500; cursor: pointer; }
+button:disabled { opacity: .45; cursor: default; }
 ul { margin: 0; padding-left: 20px; }
-code { font-size: 13px; }
+code { font-size: 14px; }
+@media (max-width: 600px) { th { width: auto; } td, th { display: block; padding: 4px 0; } tr { display: block; padding: 8px 0;
+  border-bottom: 1px solid var(--divider); } td, th { border: 0; } }
 """
 
 
-def _fmt_time(value: Optional[str]) -> str:
+def _fmt_time(value: Optional[str], lang: str) -> str:
     if not value:
-        return '<span class="muted">never</span>'
+        return f'<span class="muted">{t(lang, "page.never")}</span>'
     try:
-        t = datetime.fromisoformat(value).astimezone()
-        return html.escape(t.strftime('%d.%m.%Y %H:%M'))
+        when = datetime.fromisoformat(value).astimezone()
+        return html.escape(when.strftime('%d.%m.%Y %H:%M'))
     except ValueError:
         return html.escape(value)
 
@@ -124,88 +140,137 @@ def _rows(pairs: list) -> str:
     return ''.join(f'<tr><th>{html.escape(k)}</th><td>{v}</td></tr>' for k, v in pairs)
 
 
-def render_page(status: dict, message: str = '') -> str:
+def _text(lang: str, entry) -> str:
+    """A stored (text key, values) pair in the page language; plain strings stay as they are."""
+    if isinstance(entry, str):
+        return entry
+    key, values = entry
+    values = dict(values)
+    if 'reason_key' in values:
+        values['reason'] = t(lang, values.pop('reason_key'))
+    return t(lang, key, **values)
+
+
+def render_page(status: dict, message=None) -> str:
+    """The page in the language of HA (`status['language']`). `message` is a (text key,
+    values) pair shown on top, e.g. the result of an upload."""
+    lang = language(status.get('language'))
     phase = status.get('phase', 'idle')
-    pill = {'idle': ('ok', 'up to date'), 'importing': ('run', 'importing'),
-            'downloading': ('run', 'downloading from the portal'), 'statistics': ('run', 'writing statistics'),
-            'setup': ('warn', 'setup needed'), 'error': ('err', 'error')}.get(phase, ('warn', phase))
+    pill_class = {'idle': 'ok', 'importing': 'run', 'downloading': 'run', 'statistics': 'run',
+                  'starting': 'run', 'setup': 'warn', 'error': 'err'}.get(phase, 'warn')
+    pill_text = t(lang, f'phase.{phase}') if f'phase.{phase}' in TEXTS['en'] else phase
+    detail = status.get('detail', '')
+    detail = t(lang, detail) if detail in TEXTS['en'] else detail
     busy = phase not in ('idle', 'setup') or status.get('import_pending')
     refresh = '<meta http-equiv="refresh" content="5">' if busy else ''
+
     setup = status.get('setup') or []
     setup_html = ''
     if setup:
-        items = ''.join(f'<li>{html.escape(line)}</li>' for line in setup)
-        setup_html = (f'<div class="card setup"><h2>Setup needed</h2><ul>{items}</ul>'
-                      '<p>Open <strong>Settings &gt; Apps (formerly Add-ons) &gt; LINZ NETZ energy &gt; Configuration</strong>, '
-                      'fill in the fields and save. Home Assistant then restarts the add-on and the first '
-                      'download starts.</p></div>')
+        items = ''.join(f'<li>{html.escape(_text(lang, line))}</li>' for line in setup)
+        setup_html = (f'<div class="card setup"><h2>{t(lang, "page.setup_title")}</h2><ul>{items}</ul>'
+                      f'<p>{html.escape(t(lang, "setup.howto"))}</p></div>')
 
     portal = status.get('portal', {})
     if portal.get('login_failed'):
-        login = '<span class="pill err">login rejected</span> ' + _fmt_time(portal.get('login_failed'))
+        login = (f'<span class="pill err">{t(lang, "page.login_rejected")}</span> '
+                 + _fmt_time(portal.get('login_failed'), lang))
     elif portal.get('ok'):
-        login = '<span class="pill ok">ok</span>'
+        login = f'<span class="pill ok">{t(lang, "page.login_ok")}</span>'
     else:
-        login = '<span class="muted">not tried yet</span>'
+        login = f'<span class="muted">{t(lang, "page.not_tried")}</span>'
     data = status.get('data', {})
     stats = status.get('statistics', {})
 
     def stat_row(key: str) -> str:
         s = stats.get(key)
         if not s:
-            return '<span class="muted">not written yet</span>'
-        sources = ', '.join(f'{k} {v}' for k, v in s.get('sources', {}).items())
-        flagged = f' · <span class="pill warn">{s["flagged"]} deviating hours</span>' if s.get('flagged') else ''
-        return (f'<code>{html.escape(s["id"])}</code><br>{s["hours"]} hours, {html.escape(s["from"])} to '
-                f'{html.escape(s["to"])}, {s["kwh"]:.1f} kWh<br><span class="muted">{html.escape(sources)}</span>{flagged}')
+            return f'<span class="muted">{t(lang, "page.not_written")}</span>'
+        sources = ', '.join(f'{t(lang, "source." + k) if "source." + k in TEXTS["en"] else k} {v}'
+                            for k, v in s.get('sources', {}).items())
+        flagged = (f' · <span class="pill warn">{t(lang, "page.deviating", count=s["flagged"])}</span>'
+                   if s.get('flagged') else '')
+        line = t(lang, 'page.stat_line', hours=s['hours'], first=s['from'], last=s['to'], kwh=f'{s["kwh"]:.1f}')
+        return (f'<code>{html.escape(s["id"])}</code><br>{html.escape(line)}<br>'
+                f'<span class="muted">{html.escape(sources)}</span>{flagged}')
 
-    def range_row(d: Optional[dict], unit: str) -> str:
+    def range_row(d: Optional[dict]) -> str:
         if not d:
-            return '<span class="muted">none</span>'
-        return f'{d["count"]} {unit}, {html.escape(d["from"])} to {html.escape(d["to"])}'
+            return f'<span class="muted">{t(lang, "page.none")}</span>'
+        return html.escape(t(lang, 'page.quarter_hours', count=d['count'], first=d['from'], last=d['to']))
 
     last_import = status.get('last_import') or {}
-    import_lines = ''.join(f'<li>{html.escape(line)}</li>' for line in last_import.get('lines', []))
-    import_html = (f'<p class="muted">{_fmt_time(last_import.get("at"))}</p><ul>{import_lines}</ul>'
-                   if import_lines else '<p class="muted">Nothing imported yet.</p>')
-    note = f'<div class="card"><strong>{html.escape(message)}</strong></div>' if message else ''
-    pending = ('<p><span class="pill run">import pending</span> the files are imported in a moment.</p>'
+    import_lines = ''.join(f'<li>{html.escape(_text(lang, line))}</li>' for line in last_import.get('lines', []))
+    import_html = (f'<p class="muted">{_fmt_time(last_import.get("at"), lang)}</p><ul>{import_lines}</ul>'
+                   if import_lines else f'<p class="muted">{t(lang, "page.nothing_imported")}</p>')
+    note = f'<div class="card"><strong>{html.escape(_text(lang, message))}</strong></div>' if message else ''
+    pending = (f'<p><span class="pill run">{t(lang, "phase.importing")}</span> {t(lang, "page.import_pending")}</p>'
                if status.get('import_pending') else '')
 
-    site_line = (f'Site {html.escape(status["site"])} · metering point …{html.escape(status.get("meter_suffix", ""))}'
-                 if status.get('site') else 'Not configured yet')
+    if status.get('site'):
+        point = status.get('metering_point') or ('…' + status.get('meter_suffix', ''))
+        site_line = html.escape(t(lang, 'page.site', site=status['site'], metering_point=point))
+    else:
+        site_line = html.escape(t(lang, 'page.not_configured'))
     return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="{lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 {refresh}<title>LINZ NETZ energy</title><style>{STYLE}</style></head>
 <body><main>
 <div><h1>LINZ NETZ energy</h1><p class="muted">{site_line}</p></div>
 {note}
 {setup_html}
-<div class="card"><h2>Status</h2><table>{_rows([
-        ('State', f'<span class="pill {pill[0]}">{pill[1]}</span> {html.escape(status.get("detail", ""))}'),
-        ('Last run', _fmt_time(status.get('last_run'))),
-        ('Next run', _fmt_time(status.get('next_run'))),
-        ('Portal login', login),
-        ('Last portal fetch', _fmt_time(portal.get('ok'))),
+<div class="card"><h2>{t(lang, 'page.status')}</h2><table>{_rows([
+        (t(lang, 'page.state'), f'<span class="pill {pill_class}">{html.escape(pill_text)}</span> {html.escape(detail)}'),
+        (t(lang, 'page.last_run'), _fmt_time(status.get('last_run'), lang)),
+        (t(lang, 'page.next_run'), _fmt_time(status.get('next_run'), lang)),
+        (t(lang, 'page.portal_login'), login),
+        (t(lang, 'page.last_fetch'), _fmt_time(portal.get('ok'), lang)),
     ])}</table></div>
-<div class="card"><h2>Data</h2><table>{_rows([
-        ('Portal readings', range_row(data.get('readings'), 'quarter hours')),
-        ('Reconstructed history', range_row(data.get('reconstructed'), 'quarter hours')),
+<div class="card"><h2>{t(lang, 'page.data')}</h2><table>{_rows([
+        (t(lang, 'page.readings'), range_row(data.get('readings'))),
+        (t(lang, 'page.reconstructed'), range_row(data.get('reconstructed'))),
     ])}</table></div>
-<div class="card"><h2>Statistics</h2><table>{_rows([
-        ('Grid consumption (for the Energy dashboard)', stat_row('consumption')),
-        ('Portal readings only (for checks)', stat_row('portal')),
+<div class="card"><h2>{t(lang, 'page.statistics')}</h2><table>{_rows([
+        (t(lang, 'page.stat_consumption'), stat_row('consumption')),
+        (t(lang, 'page.stat_portal'), stat_row('portal')),
     ])}</table></div>
-<div class="card"><h2>Import older history</h2>
-<p>The portal keeps only about 36 months. Upload <code>&lt;meterId&gt;_readings.csv</code> (older portal
-readings, merged row by row) and <code>&lt;meterId&gt;_reconstructed_15min.csv</code> (the reconstructed
-history from <code>./homebase disaggregate</code>). Files are checked and imported right away;
-importing the same file again changes nothing.</p>
+<div class="card"><h2>{t(lang, 'page.import_title')}</h2>
+<p>{t(lang, 'page.import_lead')}</p>
+<ul class="files">
+<li><code>&lt;{t(lang, 'page.metering_point')}&gt;_readings.csv</code><span class="muted">{t(lang, 'page.file_readings')}</span></li>
+<li><code>&lt;{t(lang, 'page.metering_point')}&gt;_reconstructed_15min.csv</code><span class="muted">{t(lang, 'page.file_reconstructed')}</span></li>
+</ul>
 {pending}
 <form method="post" action="upload" enctype="multipart/form-data">
-<input type="file" name="files" accept=".csv" multiple required>
-<button type="submit">Upload and import</button></form></div>
-<div class="card"><h2>Last import</h2>{import_html}</div>
+<label class="drop" id="drop">
+<input type="file" name="files" id="files" accept=".csv" multiple required>
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>
+<strong id="chosen-title">{t(lang, 'page.drop')}</strong>
+<span class="muted" id="chosen">{t(lang, 'page.drop_hint')}</span>
+</label>
+<button type="submit" id="upload" disabled>{t(lang, 'page.upload')}</button>
+</form>
+<script>
+(function () {{
+  var input = document.getElementById('files'), drop = document.getElementById('drop');
+  var title = document.getElementById('chosen-title'), names = document.getElementById('chosen');
+  var button = document.getElementById('upload');
+  function show() {{
+    var list = Array.prototype.map.call(input.files, function (f) {{ return f.name; }});
+    button.disabled = list.length === 0;
+    if (list.length) {{ title.textContent = {json.dumps(t(lang, 'page.selected'))}.replace('{{count}}', list.length);
+      names.textContent = list.join(', '); names.className = 'chosen'; }}
+  }}
+  input.addEventListener('change', show);
+  ['dragenter', 'dragover'].forEach(function (e) {{ drop.addEventListener(e, function (ev) {{
+    ev.preventDefault(); drop.classList.add('over'); }}); }});
+  ['dragleave', 'drop'].forEach(function (e) {{ drop.addEventListener(e, function (ev) {{
+    ev.preventDefault(); drop.classList.remove('over'); }}); }});
+  drop.addEventListener('drop', function (ev) {{ input.files = ev.dataTransfer.files; show(); }});
+}})();
+</script>
+</div>
+<div class="card"><h2>{t(lang, 'page.last_import')}</h2>{import_html}</div>
 </main></body></html>"""
 
 
@@ -253,17 +318,17 @@ class Handler(BaseHTTPRequestHandler):
             return
         length = int(self.headers.get('Content-Length') or 0)
         if length > MAX_UPLOAD:
-            self._send(413, render_page(read_status(self.store), 'The upload is too large.'))
+            self._send(413, render_page(read_status(self.store), ('page.too_large', {})))
             return
         files = parse_upload(self.headers.get('Content-Type', ''), self.rfile.read(length))
         if not files:
-            self._send(400, render_page(read_status(self.store), 'No file was uploaded.'))
+            self._send(400, render_page(read_status(self.store), ('page.no_file', {})))
             return
         names = [store_upload(self.store / 'import', name, data).name for name, data in files]
         write_status(self.store, import_pending=True)
         self.wake.set()
         logger.info('Uploaded %s, importing', ', '.join(names))
-        self._send(200, render_page(read_status(self.store), f'Uploaded {", ".join(names)}.'))
+        self._send(200, render_page(read_status(self.store), ('page.uploaded', {'files': ', '.join(names)})))
 
 
 def start(store: Path, wake: threading.Event, port: int = PORT) -> ThreadingHTTPServer:

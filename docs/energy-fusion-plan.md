@@ -280,6 +280,9 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: add-on texts (notifications, page) follow the language of HA (de/en), plainer
+  wording; page with larger type and a drop zone for the upload; full metering point on the page;
+  metering point keeps only letters and digits (invisible characters from copying).
 - 2026-10-14: first install: starting before configuring failed with a regex message. Onboarding
   reworked (0.1.1): the add-on starts anyway and explains the missing settings, the metering point
   accepts spaces and lowercase, `site` defaults to `home`. HA now calls add-ons "Apps".

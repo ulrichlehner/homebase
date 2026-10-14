@@ -64,7 +64,7 @@ def test_upload_stores_files_and_wakes_the_loop(server):
     ctype, body = multipart([(f'{METER}_readings.csv', b'start_local;start_utc;kwh;kw;substitute\n')])
     req = urllib.request.Request(url + '/upload', data=body, headers={'Content-Type': ctype}, method='POST')
     page = urllib.request.urlopen(req).read().decode()
-    assert f'Uploaded {METER}_readings.csv.' in page and 'import pending' in page
+    assert f'Uploaded: {METER}_readings.csv' in page and 'The files are being imported' in page
     assert (store / 'import' / f'{METER}_readings.csv').exists()
     assert wake.is_set() and W.read_status(store)['import_pending'] is True
     assert urllib.request.urlopen(url + '/upload').status == 200    # the page refreshes there
@@ -85,7 +85,26 @@ def test_only_the_ingress_proxy_may_connect(tmp_path, monkeypatch):
 
 
 def test_page_explains_the_setup():
-    page = W.render_page({'phase': 'setup', 'setup': ['Portal password: missing.']})
-    assert 'Setup needed' in page and 'Portal password: missing.' in page and 'Not configured yet' in page
+    page = W.render_page({'phase': 'setup', 'setup': [['problem.password', {}]]})
+    assert 'Setup needed' in page and 'The portal password is missing.' in page and 'Not configured yet' in page
     assert 'http-equiv="refresh"' not in page          # nothing changes until HA restarts the add-on
     assert 'not tried yet' in page and 'pill ok">ok' not in page
+
+
+def test_page_follows_the_language_of_home_assistant():
+    status = {'language': 'de', 'site': 'home', 'metering_point': 'AT' + '0' * 31, 'phase': 'idle',
+              'detail': 'detail.new_readings', 'portal': {'ok': '2026-10-14T15:00:00+00:00'},
+              'last_import': {'at': '2026-10-14T15:00:00+00:00',
+                              'lines': [['import.failed', {'file': 'x.csv', 'reason_key': 'import.other_meter'}]]}}
+    page = W.render_page(status)
+    assert '<html lang="de">' in page and 'Standort home · Zählpunkt AT0000000' in page   # full metering point
+    assert 'Letzter Portal-Abruf' in page and 'Ältere Daten importieren' in page and 'aktuell' in page
+    assert 'x.csv: nicht importiert (die Datei gehört zu einem anderen Zählpunkt)' in page
+    assert 'Dateien auswählen oder hierher ziehen' in page and 'Hochladen und importieren' in page
+    assert '<html lang="en">' in W.render_page({**status, 'language': 'fr'})            # fallback
+
+
+def test_upload_area_is_prominent():
+    page = W.render_page({})
+    assert 'class="drop"' in page and 'id="upload" disabled' in page    # enabled once files are chosen
+    assert '"{count} file(s) selected"' in page                          # template for the script
