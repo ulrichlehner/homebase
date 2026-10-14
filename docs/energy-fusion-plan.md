@@ -281,6 +281,9 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: "Remove everything from Home Assistant" on the add-on page (statistics, MQTT device,
+  notifications; refused while the Energy dashboard uses the statistic; pauses the add-on,
+  "Reactivate" undoes it), because uninstalling an add-on leaves statistics and MQTT entities behind.
 - 2026-10-14: `rf_entity` renamed to `live_meter_entity` before 1.0.0 (any live counter of the meter
   works, wM-Bus radio is one example); entities `…_live_data_until`, `…_live_deviation`, archive
   `…_live_raw.csv`/`…_live_hourly.csv`, module `livearchive`; CLI `--live` (`--rf` stays as alias).

@@ -112,6 +112,14 @@ tr:last-child td, tr:last-child th { border-bottom: 0; }
 .ok { background: var(--ok); } .warn { background: var(--warn); } .err { background: var(--err); }
 .run { background: var(--primary); }
 .setup { border-left: 4px solid var(--warn); }
+.danger { border-left: 4px solid var(--err); }
+/* destructive and secondary actions: outlined and only as wide as their text, the upload stays the main action */
+button.danger, button.secondary { display: inline-block; width: auto; background: transparent; font-size: 16px;
+                                  padding: 10px 18px; }
+button.danger { color: var(--err); border: 1px solid var(--err); }
+button.secondary { color: var(--primary); border: 1px solid var(--primary); }
+.check { display: flex; gap: 10px; align-items: flex-start; margin-top: 4px; }
+.check input { margin-top: 5px; }
 .setup p { margin: 12px 0 0; }
 .files { margin: 0 0 18px; padding: 0; list-style: none; display: grid; gap: 8px; }
 .files li { display: grid; gap: 2px; }
@@ -178,11 +186,12 @@ def render_page(status: dict, message=None) -> str:
     lang = language(status.get('language'))
     phase = status.get('phase', 'idle')
     pill_class = {'idle': 'ok', 'importing': 'run', 'downloading': 'run', 'statistics': 'run', 'live': 'run',
+                  'removed': 'err', 'removing': 'run',
                   'starting': 'run', 'setup': 'warn', 'error': 'err'}.get(phase, 'warn')
     pill_text = t(lang, f'phase.{phase}') if f'phase.{phase}' in TEXTS['en'] else phase
     detail = status.get('detail', '')
     detail = t(lang, detail) if detail in TEXTS['en'] else detail
-    busy = phase not in ('idle', 'setup') or status.get('import_pending')
+    busy = phase not in ('idle', 'setup', 'removed') or status.get('import_pending') or status.get('removal_request')
     refresh = '<meta http-equiv="refresh" content="5">' if busy else ''
 
     setup = status.get('setup') or []
@@ -234,6 +243,21 @@ def render_page(status: dict, message=None) -> str:
         bad = (f' <span class="pill warn">{len(c["bad_days"])} × &gt; 2 %</span>' if c.get('bad_days') else '')
         return line + bad
 
+    removal = status.get('removal') or {}
+    if removal.get('state') == 'done':
+        remove_html = (f'<div class="card danger"><h2>{t(lang, "page.removed_title")}</h2>'
+                       f'<p>{html.escape(t(lang, "page.removed_text"))}</p>'
+                       f'<form method="post" action="resume"><button type="submit" class="secondary">'
+                       f'{t(lang, "page.resume")}</button></form></div>')
+    else:
+        refused = (f'<p><span class="pill warn">!</span> {html.escape(t(lang, "page.remove_refused"))}</p>'
+                   if removal.get('state') == 'refused' else '')
+        remove_html = (f'<div class="card danger"><h2>{t(lang, "page.remove_title")}</h2>'
+                       f'<p>{html.escape(t(lang, "page.remove_text"))}</p>{refused}'
+                       f'<form method="post" action="remove" onsubmit="return confirm({json.dumps(t(lang, "page.remove_confirm"))})">'
+                       f'<label class="check"><input type="checkbox" name="confirm" value="yes" required> '
+                       f'{html.escape(t(lang, "page.remove_check"))}</label>'
+                       f'<button type="submit" class="danger">{t(lang, "page.remove_button")}</button></form></div>')
     energy = status.get('energy')
     energy_html = ''
     if 'energy' in status:
@@ -324,6 +348,7 @@ def render_page(status: dict, message=None) -> str:
 </script>
 </div>
 <div class="card"><h2>{t(lang, 'page.last_import')}</h2>{import_html}</div>
+{remove_html}
 </main></body></html>"""
 
 
@@ -366,7 +391,20 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._allowed():
             return
-        if self.path.split('?')[0].rstrip('/') != '/upload':
+        path = self.path.split('?')[0].rstrip('/')
+        if path in ('/remove', '/resume'):
+            # the main loop does the work (it holds the connection to HA); the page only asks
+            length = int(self.headers.get('Content-Length') or 0)
+            body = self.rfile.read(length).decode(errors='replace')
+            if path == '/remove' and 'confirm=yes' not in body:
+                self._send(400, render_page(read_status(self.store), ('page.remove_unconfirmed', {})))
+                return
+            write_status(self.store, removal_request=path.strip('/'))
+            self.wake.set()
+            logger.info('Requested on the add-on page: %s', path.strip('/'))
+            self._send(200, render_page(read_status(self.store), (f'page.{path.strip("/")}_requested', {})))
+            return
+        if path != '/upload':
             self.send_error(404)
             return
         length = int(self.headers.get('Content-Length') or 0)

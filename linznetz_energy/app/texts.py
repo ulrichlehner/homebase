@@ -72,6 +72,26 @@ TEXTS = {
                               'statistics stay.',
         'page.energy_none': 'nothing yet',
         'page.energy_unknown': 'The configuration of the Energy dashboard could not be read.',
+        'page.remove_title': 'Remove everything from Home Assistant',
+        'page.remove_text': 'Before uninstalling the add-on: this deletes what it created in Home Assistant (the '
+                            'statistic, the device with its status entities, its notifications) and pauses the add-on. '
+                            'Its own files stay until you uninstall it with "delete data". Not possible while the '
+                            'Energy dashboard uses the statistic.',
+        'page.remove_check': 'I understand that the statistic with the whole history is deleted from Home Assistant.',
+        'page.remove_confirm': 'Delete the statistic, the device and the notifications of the add-on?',
+        'page.remove_button': 'Remove everything',
+        'page.remove_unconfirmed': 'Please tick the box to confirm.',
+        'page.remove_requested': 'Removing, the page updates itself.',
+        'page.remove_refused': 'The Energy dashboard still uses the statistic. Remove it there first '
+                               '(Settings > Dashboards > Energy), then try again.',
+        'page.removed_title': 'Removed from Home Assistant',
+        'page.removed_text': 'The statistic, the device and the notifications are gone, and the add-on is paused. Now '
+                             'uninstall it and tick "delete data" to remove its files too. Changed your mind? '
+                             'Reactivate it: everything is created again within an hour.',
+        'page.resume': 'Reactivate',
+        'page.resume_requested': 'Reactivating, the page updates itself.',
+        'phase.removing': 'removing',
+        'phase.removed': 'removed, paused',
         'page.not_configured': 'Not configured yet',
         'page.site': 'Site {site} · metering point {metering_point}',
         'source.live': 'live meter',
@@ -191,6 +211,26 @@ TEXTS = {
                               'machen; die alten Statistiken bleiben.',
         'page.energy_none': 'noch nichts',
         'page.energy_unknown': 'Die Einstellungen des Energie-Dashboards ließen sich nicht lesen.',
+        'page.remove_title': 'Alles aus Home Assistant entfernen',
+        'page.remove_text': 'Vor dem Deinstallieren: das löscht, was die App in Home Assistant angelegt hat (die '
+                            'Statistik, das Gerät mit seinen Status-Entitäten, ihre Benachrichtigungen) und pausiert die '
+                            'App. Ihre eigenen Dateien bleiben, bis du sie mit „Daten löschen“ deinstallierst. Nicht '
+                            'möglich, solange das Energie-Dashboard die Statistik nutzt.',
+        'page.remove_check': 'Mir ist klar, dass die Statistik mit dem ganzen Verlauf aus Home Assistant gelöscht wird.',
+        'page.remove_confirm': 'Statistik, Gerät und Benachrichtigungen der App löschen?',
+        'page.remove_button': 'Alles entfernen',
+        'page.remove_unconfirmed': 'Bitte zur Bestätigung das Kästchen anhaken.',
+        'page.remove_requested': 'Wird entfernt, die Seite aktualisiert sich selbst.',
+        'page.remove_refused': 'Das Energie-Dashboard nutzt die Statistik noch. Bitte dort zuerst entfernen '
+                               '(Einstellungen > Dashboards > Energie), dann nochmals versuchen.',
+        'page.removed_title': 'Aus Home Assistant entfernt',
+        'page.removed_text': 'Statistik, Gerät und Benachrichtigungen sind weg, die App ist pausiert. Jetzt deinstallieren '
+                             'und „Daten löschen“ anhaken, damit auch ihre Dateien weg sind. Doch nicht? Reaktivieren: '
+                             'alles wird innerhalb einer Stunde neu angelegt.',
+        'page.resume': 'Reaktivieren',
+        'page.resume_requested': 'Wird reaktiviert, die Seite aktualisiert sich selbst.',
+        'phase.removing': 'entfernt',
+        'phase.removed': 'entfernt, pausiert',
         'page.not_configured': 'Noch nicht eingerichtet',
         'page.site': 'Standort {site} · Zählpunkt {metering_point}',
         'source.live': 'Live-Zähler',

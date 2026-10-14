@@ -397,3 +397,68 @@ def test_the_portal_statistic_of_earlier_versions_is_deleted_once(tmp_path, monk
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW + timedelta(hours=1))
     assert hass.cleared == ('linznetz_energy:place_grid_consumption_portal',)       # only once
     assert all(m['statistic_id'] == 'linznetz_energy:place_grid_consumption' for m, _ in hass.imports)
+
+
+# -- Remove everything from Home Assistant ------------------------------------------------------------
+
+def test_removal_is_refused_while_the_energy_dashboard_uses_the_statistic(tmp_path, monkeypatch):
+    hass = FakeHass()
+    hass.energy_prefs = {'energy_sources': [{'type': 'grid', 'flow_from': [
+        {'stat_energy_from': 'linznetz_energy:place_grid_consumption'}]}]}
+    hass.existing_statistics = ('linznetz_energy:place_grid_consumption',)
+    addon.web.write_status(tmp_path, removal_request='remove')
+    addon.handle_removal_request(hass, options(), tmp_path)
+    assert hass.cleared == () and addon.web.read_status(tmp_path)['removal'] == {'state': 'refused'}
+    assert not addon.read_state(tmp_path).get('removed')
+
+
+def test_remove_everything_then_reactivate(tmp_path, monkeypatch):
+    removed_devices = []
+    monkeypatch.setattr(addon.mqtt_status, 'broker', lambda: {'host': 'core-mosquitto'})
+    monkeypatch.setattr(addon.mqtt_status, 'remove', lambda conn, site_id: removed_devices.append(site_id) or True)
+    monkeypatch.setattr(addon, 'fetch_portal', lambda *a: None)
+    hass = FakeHass()
+    hass.existing_statistics = ('linznetz_energy:place_grid_consumption', 'linznetz_energy:place_grid_consumption_portal')
+    addon.web.write_status(tmp_path, removal_request='remove')
+    addon.handle_removal_request(hass, options(), tmp_path)
+    assert set(hass.cleared) == set(hass.existing_statistics) and removed_devices == ['place']
+    dismissed = {s[2]['notification_id'] for s in hass.services if s[1] == 'dismiss'}
+    assert dismissed == set(addon.ALL_NOTIFICATIONS)
+    status = addon.web.read_status(tmp_path)
+    assert status['removal'] == {'state': 'done'} and status['phase'] == 'removed' and not status.get('removal_request')
+    assert addon.read_state(tmp_path)['removed'] is True
+    # reactivate
+    addon.web.write_status(tmp_path, removal_request='resume')
+    addon.handle_removal_request(hass, options(), tmp_path)
+    assert 'removed' not in addon.read_state(tmp_path) and addon.web.read_status(tmp_path)['removal'] == {}
+
+
+def test_mqtt_remove_sends_empty_retained_messages(monkeypatch):
+    import sys, types
+    import mqtt_status
+    sent = []
+
+    class Result:
+        def wait_for_publish(self, timeout=None):
+            return True
+
+    class Client:
+        def __init__(self, *a, **kw): pass
+        def username_pw_set(self, *a): pass
+        def connect(self, *a, **kw): pass
+        def loop_start(self): pass
+        def loop_stop(self): pass
+        def disconnect(self): pass
+        def publish(self, topic, payload, qos=0, retain=False):
+            sent.append((topic, payload, retain))
+            return Result()
+
+    fake = types.ModuleType('paho.mqtt.client')
+    fake.Client = Client
+    fake.CallbackAPIVersion = types.SimpleNamespace(VERSION2=2)
+    monkeypatch.setitem(sys.modules, 'paho', types.ModuleType('paho'))
+    monkeypatch.setitem(sys.modules, 'paho.mqtt', types.ModuleType('paho.mqtt'))
+    monkeypatch.setitem(sys.modules, 'paho.mqtt.client', fake)
+    assert mqtt_status.remove({'host': 'h'}, 'lakeside') is True
+    assert len(sent) == len(mqtt_status.ENTITIES) + 1 and all(p == '' and r for _, p, r in sent)
+    assert ('homeassistant/binary_sensor/linznetz_energy_lakeside/portal_login_problem/config', '', True) in sent

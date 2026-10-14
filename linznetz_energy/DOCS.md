@@ -144,4 +144,16 @@ The CSV files (readings, the reconstructed history and the raw portal exports) l
 configuration folder `/addon_configs/<id>_linznetz_energy/`, reachable with the Samba or SSH
 add-on, and are part of every Home Assistant backup that includes the add-on.
 
-To remove the statistics: Developer tools > Statistics, search `linznetz_energy:`, delete.
+## Uninstalling
+
+Uninstalling an add-on does not touch what it created in Home Assistant itself: the statistic lives
+in Home Assistant's database, and the device with the status entities is kept by the MQTT broker.
+So, before uninstalling:
+
+1. If the Energy dashboard uses "<Site> grid consumption", switch it back to another source first.
+2. On the add-on page, at the bottom: **Remove everything from Home Assistant**. It deletes the
+   statistic, the device with its status entities and the add-on's notifications, and pauses the
+   add-on so nothing is created again. (It refuses while the Energy dashboard still uses the
+   statistic. Changed your mind? **Reactivate** brings everything back within an hour.)
+3. Uninstall the add-on and tick the option to also delete its data: that removes its own files
+   (the readings archive). Backups that include the add-on keep them.

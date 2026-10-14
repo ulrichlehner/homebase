@@ -114,3 +114,30 @@ def publish(connection: dict, site: str, site_id: str, lang: str, version: str, 
     finally:
         client.loop_stop()
         client.disconnect()
+
+
+def remove(connection: dict, site_id: str) -> bool:
+    """Removes the device: an empty retained discovery config deletes an entity in Home Assistant,
+    an empty retained state clears the broker."""
+    import paho.mqtt.client as mqtt   # only in the add-on image
+
+    node = f'linznetz_energy_{site_id}'
+    topics = [f'{DISCOVERY_PREFIX}/{component}/{node}/{key}/config' for key, (component, *_) in ENTITIES.items()]
+    topics.append(f'linznetz_energy/{site_id}/state')
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f'linznetz_energy_{site_id}')
+    if connection.get('username'):
+        client.username_pw_set(connection['username'], connection.get('password'))
+    if connection.get('ssl'):
+        client.tls_set()
+    try:
+        client.connect(connection['host'], int(connection.get('port') or 1883), keepalive=30)
+        client.loop_start()
+        for topic in topics:
+            client.publish(topic, '', qos=1, retain=True).wait_for_publish(timeout=10)
+        return True
+    except (OSError, ValueError, RuntimeError) as err:
+        logger.warning('MQTT broker %s not reachable, the device could not be removed: %s', connection.get('host'), err)
+        return False
+    finally:
+        client.loop_stop()
+        client.disconnect()

@@ -447,6 +447,52 @@ def remove_portal_statistic(hass, options: Options, store: Path, state: dict) ->
     write_state(store, state)
 
 
+ALL_NOTIFICATIONS = (LOGIN_NOTIFICATION, IMPORT_NOTIFICATION, DOWNLOAD_NOTIFICATION, SETUP_NOTIFICATION,
+                     DEVIATION_NOTIFICATION)
+
+
+def handle_removal_request(hass, options: Options, store: Path) -> None:
+    """Carries out "remove everything" or "reactivate" from the add-on page (web.py only records
+    the request, the connection to HA is here)."""
+    request = web.read_status(store).get('removal_request')
+    if not request:
+        return
+    state = read_state(store)
+    if request == 'resume':
+        state.pop('removed', None)
+        write_state(store, state)
+        web.write_status(store, removal_request=None, removal={}, phase='starting', detail='')
+        logger.info('Reactivated on the add-on page')
+        return
+    web.write_status(store, phase='removing', detail='')
+    energy = energy_status(hass, options)
+    if energy and energy.get('uses_consumption'):
+        logger.warning('Not removed: the Energy dashboard still uses %s', options.consumption_statistic)
+        web.write_status(store, removal_request=None, removal={'state': 'refused'}, phase='idle', energy=energy)
+        return
+    remove_all(hass, options)
+    state['removed'] = True
+    write_state(store, state)
+    web.write_status(store, removal_request=None, removal={'state': 'done'}, phase='removed', detail='',
+                     statistics={}, energy=None)
+
+
+def remove_all(hass, options: Options) -> None:
+    """Deletes what the add-on created in Home Assistant: its statistics, the MQTT device and its
+    notifications. Its own files stay (they go when it is uninstalled with "delete data")."""
+    ids = [options.consumption_statistic, options.portal_statistic]
+    existing = [m['statistic_id'] for m in hass.statistics_metadata(ids)]
+    if existing:
+        hass.clear_statistics(existing)
+    connection = mqtt_status.broker()
+    if connection:
+        mqtt_status.remove(connection, options.site_id)
+    for notification_id in ALL_NOTIFICATIONS:
+        notify(hass, notification_id, '', None)
+    logger.info('Removed from Home Assistant: statistics %s, the MQTT device, the notifications; the add-on is paused',
+                ', '.join(existing) or '(none)')
+
+
 def energy_status(hass, options: Options) -> Optional[dict]:
     """What the Energy dashboard uses as grid consumption (read only, `energy/get_prefs`), for the
     card on the add-on page that explains the switch (step 7). None if it cannot be read."""
@@ -567,7 +613,12 @@ def main(argv=None) -> int:
             try:
                 config = hass.call('get_config') or {}
                 tz = config.get('time_zone') or 'Europe/Vienna'
-                run_once(hass, options, store, tz, datetime.now(UTC), config.get('language') or 'en')
+                handle_removal_request(hass, options, store)
+                if read_state(store).get('removed'):
+                    # paused after "remove everything": nothing is created again until reactivated
+                    web.write_status(store, phase='removed', detail='', language=config.get('language') or 'en')
+                else:
+                    run_once(hass, options, store, tz, datetime.now(UTC), config.get('language') or 'en')
             finally:
                 hass.close()
         except HomeAssistantError as err:
@@ -579,7 +630,7 @@ def main(argv=None) -> int:
         web.write_status(store, next_run=at.isoformat())
         logger.debug('Next run at %s', at.isoformat())
         if wake.wait(max(1.0, (at - datetime.now(UTC)).total_seconds())):
-            logger.info('Woken up by an upload')
+            logger.info('Woken up by the add-on page')
 
 
 if __name__ == '__main__':

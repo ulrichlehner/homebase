@@ -137,3 +137,25 @@ def test_energy_card_explains_the_switch_and_double_counting():
                                                'uses_consumption': True}})
     assert 'Nutzt „Lakeside Netzbezug“ als Netzbezug.' in double and 'doppelt gezählt' in double
     assert '<h2>Energie-Dashboard</h2>' not in W.render_page(base)   # no card before the first run
+
+
+def test_remove_needs_the_confirmation_box(server):
+    url, store, wake = server
+    req = urllib.request.Request(url + '/remove', data=b'', method='POST')
+    with pytest.raises(urllib.error.HTTPError) as err:
+        urllib.request.urlopen(req)
+    assert err.value.code == 400 and not wake.is_set()
+    req = urllib.request.Request(url + '/remove', data=b'confirm=yes', method='POST',
+                                 headers={'Content-Type': 'application/x-www-form-urlencoded'})
+    page = urllib.request.urlopen(req).read().decode()
+    assert 'Removing, the page updates itself.' in page and wake.is_set()
+    assert W.read_status(store)['removal_request'] == 'remove'
+
+
+def test_page_offers_removal_and_after_it_reactivation():
+    page = W.render_page({'language': 'de'})
+    assert 'Alles aus Home Assistant entfernen' in page and 'name="confirm" value="yes" required' in page
+    done = W.render_page({'language': 'de', 'removal': {'state': 'done'}})
+    assert 'Aus Home Assistant entfernt' in done and 'action="resume"' in done and 'action="remove"' not in done
+    refused = W.render_page({'language': 'de', 'removal': {'state': 'refused'}})
+    assert 'nutzt die Statistik noch' in refused
