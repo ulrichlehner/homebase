@@ -57,7 +57,7 @@ HA setup before step 7, except the separate `…_grid_energy_portal` statistic.
 
 - [x] HA host: Raspberry Pi 5, `aarch64` (add-on image must be built for it)
 - [x] RF entity IDs: `sensor.<place>_grid_*`
-- [ ] Full HA backup before the first statistics import (step 3)
+- [x] Full HA backup before the first statistics import (step 3): "Before HA Energy Add-on", 2026-10-14
 
 ### Step 1: Split the 6h chart blocks into quarter hours (databot, offline)
 
