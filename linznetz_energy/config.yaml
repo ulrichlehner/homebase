@@ -18,6 +18,9 @@ boot: auto
 image: ghcr.io/ulrichlehner/homebase-linznetz-energy-{arch}
 # websocket access to the HA core through the Supervisor (statistics, notifications)
 homeassistant_api: true
+# the MQTT broker for the status entities (optional: without it the add-on runs without them)
+services:
+  - mqtt:want
 # the add-on page (status and history upload) behind "Open Web UI", optionally in the sidebar
 ingress: true
 ingress_port: 8099
@@ -36,9 +39,11 @@ options:
   metering_point: ""
   site: Home
   fetch_interval_hours: 12
+  rf_entity: ""
 schema:
   portal_username: str?
   portal_password: password?
   metering_point: str?
   site: str?
   fetch_interval_hours: int(6,48)
+  rf_entity: str?

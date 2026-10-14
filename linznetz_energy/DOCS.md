@@ -34,6 +34,7 @@ notifications follow the language of Home Assistant (German and English; the log
 | `metering_point`       | the metering point number (Zählpunktnummer, not the meter number), 33 characters starting with `AT`; spaces, dots and lowercase letters are fine |
 | `site`                 | name of the place, shown as you write it (default `Home`); the statistic IDs use a simplified form (`Zweitwohnsitz Linz` → `zweitwohnsitz_linz`) |
 | `fetch_interval_hours` | hours between two portal fetches (default 12, 6 to 48)                     |
+| `rf_entity`            | optional: the energy counter of the meter's radio (wM-Bus) readings in Home Assistant, e.g. `sensor.home_grid_total_energy_consumption` (see below) |
 
 The portal shows a day only one to two days later, so fetching more often brings nothing new;
 the statistic is still rebuilt every hour from the files the add-on already has.
@@ -54,6 +55,42 @@ Every hour, a few minutes past the full hour, the add-on
    | `linznetz_energy:<site>_grid_consumption_portal`  | "<Site> grid consumption (portal)" ("<Site> Netzbezug (Portal)"): the portal readings only, to check the first one |
 
 Pick a statistic in a statistics graph card, or in the Energy dashboard as grid consumption.
+
+## Live readings from the meter's radio (optional)
+
+With a wM-Bus receiver (for example the wmbusmeters add-on with the `amiplus_linznetz` driver of this
+repository) Home Assistant has the meter's energy counter live. Enter that entity as `rf_entity`, and
+the add-on
+
+- reads the new counter readings every hour (only reads, nothing is changed in Home Assistant),
+- cleans them: repeated values count from their first occurrence, phases in which the meter sends
+  wrong values (a tenth of the counter, near-zero values, spikes) are dropped, and an hour gets a
+  value only if good readings at most 60 minutes apart surround both of its ends,
+- makes them the **primary source** of the consumption statistic: the hours since the last portal
+  day come from the radio right away, and where the radio has no value (a gap, a misread phase) the
+  portal fills in a day or two later,
+- compares the radio with the portal for every day both have complete, and sends a notification
+  when a day differs by more than 2 % (the radio value is kept),
+- archives the readings in its own folder: the raw readings of the last 90 days and the cleaned
+  hourly values for good. Home Assistant's recorder drops raw states after 10 days by default; the
+  archive is independent of that.
+
+## Status entities
+
+If an MQTT broker is set up in Home Assistant (for example the Mosquitto add-on), the add-on creates
+a device **LINZ NETZ Energy <site>** with these entities (no credentials needed, the add-on gets the
+broker from Home Assistant):
+
+| Entity | Content |
+| --- | --- |
+| Last portal fetch | when the portal was fetched successfully the last time |
+| Portal data until | the end of the newest portal reading |
+| Radio data until | the end of the newest hour with a radio value |
+| Radio vs portal (last day) | the deviation on the last day both have complete, in % |
+| Deviating hours (7 days) | radio hours of the last 7 days that differ from the portal |
+| Portal login problem | on while the portal rejects the login |
+
+Without a broker the add-on works the same, only without these entities.
 
 ## The add-on page
 

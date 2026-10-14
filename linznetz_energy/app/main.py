@@ -44,10 +44,11 @@ from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from homebase import disaggregate, fusion, readings
+from homebase import disaggregate, fusion, readings, rfarchive
 from homebase.hass import HomeAssistant, HomeAssistantError
 from homebase.portal import LinzNetzError, LoginError
 
+import mqtt_status
 import web
 from texts import t
 
@@ -61,6 +62,9 @@ LOGIN_NOTIFICATION = 'linznetz_energy_login'
 IMPORT_NOTIFICATION = 'linznetz_energy_import'
 DOWNLOAD_NOTIFICATION = 'linznetz_energy_download'
 SETUP_NOTIFICATION = 'linznetz_energy_setup'
+DEVIATION_NOTIFICATION = 'linznetz_energy_deviation'
+RF_HISTORY_DAYS = 10            # how far back the first RF read goes (HA's default purge_keep_days)
+CHECK_DAYS = 7                  # days of RF/portal comparison for the status and the notification
 METERING_POINT = re.compile(r'^AT[0-9A-Z]{31}$')
 DEFAULT_SITE = 'Home'
 IMPORT_DIR = 'import'
@@ -76,6 +80,7 @@ class Options:
     metering_point: str          # the 33-character Zählpunktnummer (not the meter number)
     site: str                    # the name of the place as entered, e.g. "Zweitwohnsitz Linz"
     fetch_interval_hours: int = 12
+    rf_entity: str = ''          # the RF energy counter in HA (kWh total), empty: portal only
 
     @property
     def site_id(self) -> str:
@@ -139,9 +144,13 @@ def load_options(path: Path) -> tuple:
         problems.append(('problem.metering_point_prefix', {}))
     if not site_id(site):
         problems.append(('problem.site', {}))
+    rf_entity = (raw.get('rf_entity') or '').strip()
+    if rf_entity and not re.fullmatch(r'sensor\.[a-z0-9_]+', rf_entity):
+        problems.append(('problem.rf_entity', {'value': rf_entity}))
     if problems:
         return None, problems
-    return Options(username, password, metering_point, site, int(raw.get('fetch_interval_hours') or 12)), []
+    return Options(username, password, metering_point, site, int(raw.get('fetch_interval_hours') or 12),
+                   rf_entity), []
 
 
 # -- State ----------------------------------------------------------------------
@@ -245,11 +254,42 @@ def portal_hours(store: Path, metering_point: str) -> list:
 
 
 def fused_hours(store: Path, metering_point: str) -> list:
-    """The best source per hour: portal readings, then the reconstructed history."""
+    """The best source per hour: RF (primary), then portal readings, then the reconstructed
+    history (fusion.fuse)."""
     path = store / f'{metering_point}_readings.csv'
     portal = fusion.read_portal(path) if path.exists() else {}
     reconstructed = fusion.read_reconstructed(store / f'{metering_point}_reconstructed_15min.csv')
-    return fusion.fuse(portal, {}, reconstructed)
+    return fusion.fuse(portal, rfarchive.read_hourly(store, metering_point), reconstructed)
+
+
+def update_rf(hass, options: Options, store: Path, now: datetime) -> dict:
+    """New raw states of the RF counter from HA into the RF archive (see homebase.rfarchive)."""
+    last = rfarchive.last_raw_time(store, options.metering_point)
+    since = last - timedelta(hours=1) if last else now - timedelta(days=RF_HISTORY_DAYS)
+    states = hass.history(options.rf_entity, since)
+    summary = rfarchive.update(store, options.metering_point, rfarchive.parse_states(states), now)
+    logger.info('RF %s: %d new states, archive %d raw readings (%d rejected, %d misread phase(s)), %d hours up to %s',
+                options.rf_entity, len(states), summary['raw'], summary['rejected'], summary['dropped_segments'],
+                summary['hours'], summary['last_hour'])
+    return summary
+
+
+def compare_rf(store: Path, metering_point: str, zone: ZoneInfo, now: datetime) -> dict:
+    """RF against the portal: the last complete day both have, the days of the last
+    `CHECK_DAYS` outside the tolerance, and the deviating hours in that span."""
+    path = readings.readings_path(store, metering_point)
+    portal = fusion.read_portal(path) if path.exists() else {}
+    rf = rfarchive.read_hourly(store, metering_point)
+    result = fusion.validate(portal, rf, zone)
+    since = (now - timedelta(days=CHECK_DAYS)).astimezone(zone).date()
+    last = result.days[-1] if result.days else None
+    hours = fusion.fuse(portal, rf, {})
+    return {
+        'last_day': last[0].isoformat() if last else None,
+        'last_day_percent': round(100 * (last[2] - last[1]) / last[1], 2) if last and last[1] else None,
+        'bad_days': [(d.isoformat(), p, r) for d, p, r in result.bad_days if d >= since],
+        'deviating_hours': sum(1 for h in hours if h.flag and h.start.astimezone(zone).date() >= since),
+    }
 
 
 def portal_statistics(store: Path, metering_point: str) -> list:
@@ -272,7 +312,8 @@ def data_status(store: Path, metering_point: str, zone: ZoneInfo) -> dict:
     measured = readings.read_csv_file(readings.readings_path(store, metering_point))
     reconstructed = fusion.read_reconstructed(store / f'{metering_point}_reconstructed_15min.csv')
     return {'readings': _range([datetime.fromtimestamp(t, UTC) for t in measured], zone),
-            'reconstructed': _range(list(reconstructed), zone)}
+            'reconstructed': _range(list(reconstructed), zone),
+            'rf': _range(list(rfarchive.read_hourly(store, metering_point)), zone)}
 
 
 def statistic_status(statistic_id: str, hours: list, zone: ZoneInfo) -> dict:
@@ -358,7 +399,24 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
         web.write_status(store, portal={'ok': state.get('portal_ok'),
                                         'login_failed': state.get('portal_login_failed')})
 
-    web.write_status(store, phase='statistics', detail='', data=data_status(store, options.metering_point, zone))
+    rf = None
+    if options.rf_entity:
+        web.write_status(store, phase='radio', detail='')
+        try:
+            rf = update_rf(hass, options, store, now)
+        except HomeAssistantError as err:
+            logger.warning('Could not read the RF counter %s: %s', options.rf_entity, err)
+    check = compare_rf(store, options.metering_point, zone, now) if options.rf_entity else None
+    if check and check['bad_days']:
+        new = [d for d in check['bad_days'] if d[0] not in state.get('deviation_notified', [])]
+        if new:
+            details = ', '.join(f'{d}: {r / 1000:.2f} / {p / 1000:.2f} kWh' for d, p, r in new)
+            notify(hass, DEVIATION_NOTIFICATION, t(lang, 'deviation.title'), t(lang, 'deviation.text', details=details))
+            state['deviation_notified'] = sorted(set(state.get('deviation_notified', [])) | {d for d, _, _ in new})[-60:]
+            write_state(store, state)
+
+    web.write_status(store, phase='statistics', detail='', data=data_status(store, options.metering_point, zone),
+                     rf_check=check)
     written = {}
     for key, statistic_id, name, hours in (
             ('portal', options.portal_statistic, t(lang, 'stat.portal', site=options.site),
@@ -372,6 +430,27 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
                         stats[0]['start'].isoformat(), stats[-1]['start'].isoformat(), stats[-1]['sum'])
             written[key] = statistic_status(statistic_id, hours, zone)
     web.write_status(store, phase='idle', detail='', statistics=written, last_run=now.isoformat())
+    publish_status(options, store, lang, state, check, zone)
+
+
+def publish_status(options: Options, store: Path, lang: str, state: dict, check: Optional[dict],
+                   zone: ZoneInfo) -> None:
+    """The status entities over MQTT (see mqtt_status), if there is a broker."""
+    connection = mqtt_status.broker()
+    if not connection:
+        return
+    portal_rows = readings.read_csv_file(readings.readings_path(store, options.metering_point))
+    rf = rfarchive.read_hourly(store, options.metering_point)
+    values = {
+        'last_portal_fetch': state.get('portal_ok'),
+        'portal_data_until': (datetime.fromtimestamp(max(portal_rows), UTC) + timedelta(minutes=15)).isoformat()
+                             if portal_rows else None,
+        'rf_data_until': (max(rf) + fusion.HOUR).isoformat() if rf else None,
+        'rf_deviation': check['last_day_percent'] if check else None,
+        'deviating_hours': check['deviating_hours'] if check else None,
+        'portal_login_problem': bool(state.get('portal_login_failed')),
+    }
+    mqtt_status.publish(connection, options.site, options.site_id, lang, os.environ.get('ADDON_VERSION', ''), values)
 
 
 def announce_setup(store: Path, problems: list) -> None:

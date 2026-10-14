@@ -10,6 +10,9 @@ configuration:
   site:
     name: Standort
     description: Name des Orts, wird so angezeigt wie eingegeben (z. B. „Home“ oder „Zweitwohnsitz Linz“). Die Statistik-IDs verwenden eine vereinfachte Form (linznetz_energy:zweitwohnsitz_linz_grid_consumption).
+  rf_entity:
+    name: Funk-Zählerstand (optional)
+    description: Der Energie-Zählerstand aus dem Funk (wM-Bus) des Zählers in Home Assistant, z. B. sensor.home_grid_total_energy_consumption. Seine Werte werden zur Hauptquelle der Verbrauchsstatistik; das Portal prüft sie und füllt Lücken. Leer bedeutet nur Portal.
   fetch_interval_hours:
     name: Abrufintervall Portal (Stunden)
     description: Wie oft neue Werte vom Portal geholt werden. Das Portal zeigt einen Tag erst ein bis zwei Tage später, 12 Stunden reichen.

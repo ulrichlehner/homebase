@@ -196,20 +196,22 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
 
 ### Step 6: Fusion live, running alongside the current setup
 
-- [ ] Hourly (a few minutes past the hour): read the RF counter history, rebuild and import
-      `…_grid_consumption`
-- [x] Priority in `fusion.py` changed to RF primary: RF valid > portal measured > portal
-      substitute > reconstructed > portal partial; deviating hours (more than 2 %, at least 20 Wh
-      per hour) keep RF and are flagged in the fused CSV (`portal_kwh`, `flag`); dry run with the
-      RF history read from HA: 53 RF hours, none flagged
-- [ ] Deviating hours counted in the status entities and notified
-- [ ] Archive the RF readings (energy counter and power) in the add-on storage, part of every HA
-      backup: the recorder purges raw states after `purge_keep_days` (default 10), long-term
-      statistics stay. Optionally raise `purge_keep_days` in HA (the user's decision, bigger
-      database)
-- [ ] Status entities over MQTT discovery (device "LINZ NETZ Energy <site>"): last portal fetch,
-      portal data until, fused data from/until, RF deviation; notification above a threshold
-- [ ] The portal delivers 1 to 2 days late: RF covers that span, the deviation check waits for it
+- [x] Option `rf_entity` (the RF energy counter, e.g. `sensor.<place>_grid_total_energy_consumption`);
+      empty means portal only
+- [x] Hourly: read the new RF counter states from HA (`history/history_during_period`, read only),
+      archive them (`lib/homebase/rfarchive.py`: raw readings 90 days, cleaned hourly values for
+      good), re-clean the raw window, rebuild `…_grid_consumption` with RF as the primary source
+- [x] Counter cleaning: repeated values count from their first occurrence (a repeated value with a
+      later timestamp made the next step look like 35 kW and cut off a whole evening, found in the
+      live test on 2026-10-14)
+- [x] RF vs portal per complete day, notification for days beyond 2 % (once per day), status on the
+      add-on page
+- [x] Status entities over MQTT discovery (`services: mqtt:want`, broker from the Supervisor): device
+      "LINZ NETZ Energy <site>", entities `sensor.<site>_linznetz_last_portal_fetch`,
+      `…_portal_data_until`, `…_rf_data_until`, `…_rf_deviation`, `…_deviating_hours`,
+      `binary_sensor.<site>_linznetz_portal_login_problem`; tested with a local Mosquitto
+- [x] Tested read-only against HA: 57 RF hours up to the current hour, 13.10. RF vs portal 0.0 %
+- [ ] Release, set `rf_entity` on the installed add-on, check the entities in HA
 - [ ] About 2 weeks in parallel while the Energy tab still uses the RF sensor, compare daily
 
 ### Step 7: Switch the Energy tab
@@ -282,6 +284,9 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: step 6 implemented (RF archive and fusion, deviation notification, MQTT status entities).
+  The live test found a cleaning bug: a repeated counter value with a later timestamp cut off the
+  rest of the evening; repeated values now count from their first occurrence.
 - 2026-10-14: cron container removed (cron scripts, `start.sh`, `docker-compose.yml`,
   `./homebase up/down/logs`, the workflow that published the tool image); the tool image is only
   built locally (`homebase-databot:local`).

@@ -192,7 +192,7 @@ run `./homebase assets` and commit the PNGs too; `./homebase assets --check` (an
 
 | Folder              | Content                                                                                  |
 | ------------------- | ---------------------------------------------------------------------------------------- |
-| `lib/homebase/`     | the shared library (Python package `homebase`), no command line, no add-on specifics: `portal` (LINZ NETZ client), `readings` (the CSV archive), `disaggregate`, `fusion`, `hass` (Home Assistant websocket client) |
+| `lib/homebase/`     | the shared library (Python package `homebase`), no command line, no add-on specifics: `portal` (LINZ NETZ client), `readings` (the CSV archive), `disaggregate`, `fusion`, `rfarchive` (the archive of the radio readings), `hass` (Home Assistant websocket client) |
 | `databot/`          | the command line tools for Docker on the Mac: `databot.py` (`csv`, `merge`, `check`, `disaggregate`, `fuse`), `render.py` (charts), `reconstruct.py` (chart OCR), `ha_spike.py` (HA import test) |
 | `linznetz_energy/`  | the Home Assistant add-on: `app/main.py` (main loop), `app/web.py` (its page in HA), `config.yaml`, docs, assets |
 | `smartmeter/`       | the wM-Bus driver and MQTT discovery for the RF readings of the meter                    |

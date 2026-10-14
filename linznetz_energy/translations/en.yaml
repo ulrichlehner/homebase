@@ -10,6 +10,9 @@ configuration:
   site:
     name: Site
     description: Name of the place, shown as you write it (e.g. "Home" or "Second home Linz"). The statistic IDs use a simplified form (linznetz_energy:second_home_linz_grid_consumption).
+  rf_entity:
+    name: Radio meter counter (optional)
+    description: The energy counter of the meter's radio (wM-Bus) readings in Home Assistant, e.g. sensor.home_grid_total_energy_consumption. Its readings become the primary source of the consumption statistic; the portal checks them and fills gaps. Empty means portal only.
   fetch_interval_hours:
     name: Portal fetch interval (hours)
     description: How often new readings are fetched from the portal. It shows a day only one to two days later, so 12 hours is enough.

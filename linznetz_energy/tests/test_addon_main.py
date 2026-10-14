@@ -272,3 +272,88 @@ def test_site_without_letters_is_a_problem(tmp_path):
     path = tmp_path / 'options.json'
     path.write_text(json.dumps({'portal_username': 'u', 'portal_password': 'p', 'metering_point': METER, 'site': '***'}))
     assert addon.load_options(path)[1] == [('problem.site', {})]
+
+
+# -- Step 6: RF readings, comparison and status entities ------------------------------------------
+
+class FakeHassWithHistory(FakeHass):
+    def __init__(self, states):
+        super().__init__()
+        self.states = states
+        self.history_calls = []
+
+    def history(self, entity_id, start, end=None):
+        self.history_calls.append((entity_id, start))
+        return [(t, s) for t, s in self.states if t >= start]
+
+
+def rf_states(start, hours, watts=400, base=12_000_000):
+    return [(start + timedelta(minutes=m), f'{(base + round(watts * m / 60)) / 1000:.3f}') for m in range(0, hours * 60 + 1)]
+
+
+def test_rf_becomes_the_primary_source_and_is_checked(tmp_path, monkeypatch):
+    monkeypatch.setattr(addon, 'fetch_portal', lambda *a: None)
+    monkeypatch.setattr(addon.mqtt_status, 'broker', lambda: None)
+    start = datetime(2026, 10, 1, tzinfo=ZONE).astimezone(UTC)
+    write_readings(tmp_path, hours=48, start=start)               # portal: 400 Wh per hour, two full days
+    hass = FakeHassWithHistory(rf_states(start, 50))             # RF: the same, two hours further
+    o = options(rf_entity='sensor.place_grid_total_energy_consumption')
+    addon.run_once(hass, o, tmp_path, 'Europe/Vienna', start + timedelta(hours=50, minutes=7))
+    assert hass.history_calls[0][0] == 'sensor.place_grid_total_energy_consumption'
+    consumption = [stats for m, stats in hass.imports if m['statistic_id'].endswith('_grid_consumption')]
+    hours = [s for chunk in consumption for s in chunk]
+    assert len(hours) == 50 and hours[-1]['sum'] == pytest.approx(50 * 0.4)   # RF covers the two extra hours
+    status = addon.web.read_status(tmp_path)
+    assert status['rf_check']['last_day'] == '2026-10-02' and status['rf_check']['last_day_percent'] == 0.0
+    assert status['rf_check']['bad_days'] == [] and status['data']['rf']['count'] == 50
+    # the next run only asks HA for what is new
+    addon.run_once(hass, o, tmp_path, 'Europe/Vienna', start + timedelta(hours=51, minutes=7))
+    assert hass.history_calls[1][1] == start + timedelta(hours=49)   # last raw reading minus one hour
+
+
+def test_a_deviating_day_is_notified_once(tmp_path, monkeypatch):
+    monkeypatch.setattr(addon, 'fetch_portal', lambda *a: None)
+    monkeypatch.setattr(addon.mqtt_status, 'broker', lambda: None)
+    start = datetime(2026, 10, 1, tzinfo=ZONE).astimezone(UTC)
+    write_readings(tmp_path, hours=24, start=start)               # portal: 9.6 kWh that day
+    hass = FakeHassWithHistory(rf_states(start, 24, watts=500))    # RF: 12 kWh, 25 % more
+    o = options(rf_entity='sensor.place_grid_total_energy_consumption')
+    now = start + timedelta(hours=26)
+    addon.run_once(hass, o, tmp_path, 'Europe/Vienna', now)
+    notes = [s[2] for s in hass.services if s[2].get('notification_id') == addon.DEVIATION_NOTIFICATION]
+    assert len(notes) == 1 and '2026-10-01: 12.00 / 9.60 kWh' in notes[0]['message']
+    addon.run_once(hass, o, tmp_path, 'Europe/Vienna', now + timedelta(hours=1))
+    assert len([s for s in hass.services if s[2].get('notification_id') == addon.DEVIATION_NOTIFICATION]) == 1
+
+
+def test_rf_entity_must_look_like_an_entity(tmp_path):
+    path = tmp_path / 'options.json'
+    path.write_text(json.dumps({'portal_username': 'u', 'portal_password': 'p', 'metering_point': METER,
+                                'rf_entity': 'Lakeside grid'}))
+    assert addon.load_options(path)[1] == [('problem.rf_entity', {'value': 'Lakeside grid'})]
+
+
+def test_status_entities_over_mqtt(tmp_path, monkeypatch):
+    published = []
+    monkeypatch.setattr(addon.mqtt_status, 'broker', lambda: {'host': 'core-mosquitto'})
+    monkeypatch.setattr(addon.mqtt_status, 'publish', lambda *a: published.append(a) or True)
+    write_readings(tmp_path, hours=2)
+    addon.publish_status(options(), tmp_path, 'de', {'portal_ok': '2026-10-14T12:00:00+00:00'}, None, ZONE)
+    connection, site, site_id, lang, version, values = published[0]
+    assert (site, site_id, lang) == ('Place', 'place', 'de')
+    assert values['portal_data_until'] == '2026-10-01T00:00:00+00:00'                 # end of the last quarter hour
+    assert values['portal_login_problem'] is False and values['rf_deviation'] is None
+
+
+def test_mqtt_messages():
+    import mqtt_status
+    msgs = dict(mqtt_status.messages('Lakeside', 'lakeside', 'de', '0.3.0', {'rf_deviation': 0.4}))
+    config = json.loads(msgs['homeassistant/sensor/linznetz_energy_lakeside/rf_deviation/config'])
+    assert config['name'] == 'Funk vs. Portal (letzter Tag)' and config['unit_of_measurement'] == '%'
+    assert config['default_entity_id'] == 'sensor.lakeside_linznetz_rf_deviation'
+    assert config['unique_id'] == 'linznetz_energy_lakeside_rf_deviation'
+    assert config['device']['name'] == 'LINZ NETZ Energy Lakeside'
+    problem = json.loads(msgs['homeassistant/binary_sensor/linznetz_energy_lakeside/portal_login_problem/config'])
+    assert problem['device_class'] == 'problem' and problem['entity_category'] == 'diagnostic'
+    state = json.loads(msgs['linznetz_energy/lakeside/state'])
+    assert state['rf_deviation'] == 0.4 and state['last_portal_fetch'] is None
