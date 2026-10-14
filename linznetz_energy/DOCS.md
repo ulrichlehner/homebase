@@ -60,6 +60,9 @@ can take it over:
 
 Copy the files before the first start to have the full history in the very first import.
 
+The first download is announced with a notification, which is replaced by the result (number of
+readings and their range) when it is done.
+
 If the portal rejects the login, a notification appears in Home Assistant and the add-on tries
 again after `fetch_interval_hours`; the notification disappears after the next successful login.
 

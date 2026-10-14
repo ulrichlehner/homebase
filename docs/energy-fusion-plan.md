@@ -8,7 +8,9 @@ reconstructed day (March 2023) up to the current hour:
 3. RF readings validated against the portal.
 
 Constraints: runs inside Home Assistant OS as a normal add-on from a custom add-on repository
-(no HACS, no custom integration, HA not exposed to the internet). Every derived file is
+(no HACS, no custom integration, HA not exposed to the internet). As native to HA as possible: no
+custom web UI (no Ingress); feedback through notifications, status through regular entities (MQTT
+discovery), files through the add-on config folder (Samba or File editor add-on). Every derived file is
 non-destructive and repeatable: inputs are never modified, the same inputs give the same output.
 
 ## Design in short
@@ -165,6 +167,8 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
       already has win), `<meterId>_reconstructed_15min.csv` replaces the previous one; processed
       files move to `import/done/`, rejected ones (other meter, wrong header, other file) to
       `import/failed/`; idempotent; HA notification with what was imported
+- [x] First download announced and reported with a notification (count and range; failure and
+      "no data" too)
 - [x] New statistic `linznetz:<site>_grid_energy_fused` (portal, then reconstructed; RF in step 6),
       `…_grid_energy_portal` stays portal only
 - [x] Tested end to end with the add-on image against HA: 109348 readings and 17180
@@ -180,7 +184,8 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
       backup: the recorder purges raw states after `purge_keep_days` (default 10), long-term
       statistics stay. Optionally raise `purge_keep_days` in HA (the user's decision, bigger
       database)
-- [ ] Deviation sensor over MQTT, notification above a threshold
+- [ ] Status entities over MQTT discovery (device "LINZ NETZ energy <site>"): last portal fetch,
+      portal data until, fused data from/until, RF deviation; notification above a threshold
 - [ ] The portal delivers 1 to 2 days late: RF covers that span, the deviation check waits for it
 - [ ] About 2 weeks in parallel while the Energy tab still uses the RF sensor, compare daily
 
@@ -252,6 +257,9 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: design rule: native HA only, no custom UI (Ingress); notifications for the first
+  download added. Open decision: RF as the primary source (user's view), portal to verify and fill
+  gaps.
 - 2026-10-14: initial version 0.1.0 instead of 1.0.0 (the add-on is not complete); old 0.1.0/0.1.1
   images from early branch builds exist on ghcr, so 0.1.0 is rebuilt once after the merge
   (`addon-image.yml` with `force`).

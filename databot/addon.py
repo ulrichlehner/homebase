@@ -55,6 +55,7 @@ RUN_MINUTE = 7                   # minutes past the hour: the recorder has compi
 IMPORT_CHUNK = 5000              # rows per import call, keeps websocket messages small
 LOGIN_NOTIFICATION = 'linznetz_energy_login'
 IMPORT_NOTIFICATION = 'linznetz_energy_import'
+DOWNLOAD_NOTIFICATION = 'linznetz_energy_download'
 IMPORT_DIR = 'import'
 
 
@@ -225,8 +226,26 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime) -> Non
                '\n'.join(f'- {line}' for line in imported))
     state = read_state(store)
     if portal_due(state, now, options.fetch_interval_hours):
+        readings = store / f'{options.meter_id}_readings.csv'
+        first_download = not readings.exists()
+        if first_download:
+            notify(hass, DOWNLOAD_NOTIFICATION, 'LINZ NETZ energy: first download',
+                   'Downloading everything the LINZ NETZ portal still has (about three years). '
+                   'This takes about a minute; the log of the add-on shows the progress.')
         try:
             fetch_portal(options, store, tz)
+            if first_download:
+                rows = databot.read_csv_file(readings)
+                if rows:
+                    zone = ZoneInfo(tz)
+                    first, last = (datetime.fromtimestamp(t, zone) for t in (min(rows), max(rows)))
+                    notify(hass, DOWNLOAD_NOTIFICATION, 'LINZ NETZ energy: first download done',
+                           f'{len(rows)} quarter-hour readings from {first:%d.%m.%Y} to {last:%d.%m.%Y %H:%M}. '
+                           f'Older history can be added through the import folder, see the add-on documentation.')
+                else:
+                    notify(hass, DOWNLOAD_NOTIFICATION, 'LINZ NETZ energy: no data',
+                           'The portal has no readings for this metering point. Is the quarter-hour analysis '
+                           '("Viertelstundenauswertung") enabled in the portal?')
             state['portal_ok'] = now.isoformat()
             state.pop('portal_login_failed', None)
             notify(hass, LOGIN_NOTIFICATION, '', None)
@@ -238,6 +257,9 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime) -> Non
                    f'password in the add-on configuration. Next attempt in {options.fetch_interval_hours} hours.')
         except LinzNetzError as err:
             logger.warning('Portal fetch failed, retrying next hour: %s', err)
+            if first_download:
+                notify(hass, DOWNLOAD_NOTIFICATION, 'LINZ NETZ energy: first download failed',
+                       f'The portal did not answer as expected ({err}). The add-on tries again next hour.')
         write_state(store, state)
 
     for statistic_id, label, stats in (

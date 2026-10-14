@@ -123,6 +123,7 @@ def test_other_portal_errors_retry_next_hour(tmp_path, monkeypatch):
         raise linznetz.LinzNetzError('giving up after 4 attempts')
     monkeypatch.setattr(addon, 'fetch_portal', broken)
     hass = FakeHass()
+    write_readings(tmp_path, hours=0)   # not the first download
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW)
     assert hass.services == [] and hass.imports == []
     assert addon.portal_due(addon.read_state(tmp_path), NOW + timedelta(hours=1), 12)
@@ -177,3 +178,27 @@ def test_fused_statistic_includes_the_reconstructed_history(tmp_path, monkeypatc
     created = [s for s in hass.services if s[1] == 'create']
     assert created and created[0][2]['notification_id'] == addon.IMPORT_NOTIFICATION
     assert '12 reconstructed quarter hours taken over' in created[0][2]['message']
+
+
+def test_first_download_is_announced_and_reported(tmp_path, monkeypatch):
+    def download(options, store, tz):
+        write_readings(store, hours=3)
+    monkeypatch.setattr(addon, 'fetch_portal', download)
+    hass = FakeHass()
+    addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW)
+    msgs = [s[2] for s in hass.services if s[1] == 'create' and s[2]['notification_id'] == addon.DOWNLOAD_NOTIFICATION]
+    assert [m['title'] for m in msgs] == ['LINZ NETZ energy: first download', 'LINZ NETZ energy: first download done']
+    assert msgs[1]['message'].startswith('12 quarter-hour readings from 01.10.2026 to 01.10.2026 02:45')
+    # later fetches are not announced
+    addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW + timedelta(hours=13))
+    assert len([s for s in hass.services if s[2].get('notification_id') == addon.DOWNLOAD_NOTIFICATION]) == 2
+
+
+def test_failed_first_download_is_reported(tmp_path, monkeypatch):
+    def broken(*a):
+        raise linznetz.LinzNetzError('giving up after 4 attempts')
+    monkeypatch.setattr(addon, 'fetch_portal', broken)
+    hass = FakeHass()
+    addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW)
+    titles = [s[2]['title'] for s in hass.services if s[1] == 'create']
+    assert titles == ['LINZ NETZ energy: first download', 'LINZ NETZ energy: first download failed']
