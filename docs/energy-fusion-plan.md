@@ -146,7 +146,7 @@ Done when the backtest error is acceptable and the source files are unchanged.
       as `linznetz:<place>_grid_energy_portal`, portal login and the login-failure notification
       (created and dismissed again) work
 - [x] Image published and public on ghcr.io (both architectures, version 0.1.0)
-- [x] Versioning: starts at 1.0.0, release-please derives the next version from the
+- [x] Versioning: starts at 0.1.0 (incomplete until step 7), release-please derives the next version from the
       conventional commits (release PR, tag, changelog); version images are immutable, `main`
       only builds a version that has no image yet, other branches push `dev`
 - [x] Store presentation: `icon.png`, `logo.png` (rendered from the SVGs in `linznetz_energy/assets/`
@@ -194,8 +194,9 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
 ### Step 8: Docs and cleanup
 
 - [ ] Revoke the long-lived HA token used by `ha-spike` (profile > Security)
-- [ ] After the first release (v1.0.0): remove `release-as` from `release-please-config.json`,
-      otherwise every release PR stays at 1.0.0
+- [ ] After the first release (v0.1.0): remove `release-as` from `release-please-config.json`,
+      otherwise every release PR stays at 0.1.0
+- [ ] Release 1.0.0 deliberately (`release-as: 1.0.0`) once the Energy tab uses the fused statistic
 - [ ] Remove `stage: experimental` from `linznetz_energy/config.yaml` once the Energy tab uses
       the fused statistic
 - [ ] Add-on README with the prerequisites: quarter-hour analysis ("Viertelstundenauswertung")
@@ -251,6 +252,9 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: initial version 0.1.0 instead of 1.0.0 (the add-on is not complete); old 0.1.0/0.1.1
+  images from early branch builds exist on ghcr, so 0.1.0 is rebuilt once after the merge
+  (`addon-image.yml` with `force`).
 - 2026-10-14: step 5 done ahead of the rest (in PR #13, so the first install starts with the full
   history): `import/` folder in the add-on, fused statistic with the reconstructed history.
 - 2026-10-14: add-on versioning switched to 1.0.0 with release-please (standard-version is

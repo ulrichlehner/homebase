@@ -14,6 +14,11 @@ on:
       - 'linznetz_energy/**'
       - '.github/workflows/addon-image.yml'
   workflow_dispatch:
+    inputs:
+      force:
+        description: 'Rebuild the version in config.yaml even if its image exists (deliberate exception)'
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -49,7 +54,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           if [ "$GITHUB_REF_NAME" != "main" ]; then
             echo "tags=$IMAGE:dev" >> "$GITHUB_OUTPUT"
-          elif docker manifest inspect "$IMAGE:$version" >/dev/null 2>&1; then
+          elif [ "${{ inputs.force }}" != "true" ] && docker manifest inspect "$IMAGE:$version" >/dev/null 2>&1; then
             echo "Image $IMAGE:$version exists already, nothing to build"
             echo "tags=" >> "$GITHUB_OUTPUT"
           else
