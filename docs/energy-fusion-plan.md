@@ -142,7 +142,7 @@ Done when the backtest error is acceptable and the source files are unchanged.
 - [x] Tested from the Mac with the add-on image against HA: 27337 hours (6626.673 kWh) imported
       as `linznetz:<place>_grid_energy_portal`, portal login and the login-failure notification
       (created and dismissed again) work
-- [ ] Image published and public on ghcr.io
+- [x] Image published and public on ghcr.io (both architectures, version 0.1.0)
 - [ ] Installs from the repo URL on HA OS (`https://github.com/ulrichlehner/homebase#fusion-disaggregate`),
       survives a restart, no credentials in the logs
 
