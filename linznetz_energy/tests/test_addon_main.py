@@ -100,14 +100,14 @@ def test_setup_notification_lists_the_problems_and_goes_away(tmp_path, monkeypat
     addon.announce_setup(tmp_path, [('problem.password', {})])
     created = hass.services[-1]
     assert created[1] == 'create' and created[2]['notification_id'] == addon.SETUP_NOTIFICATION
-    assert created[2]['title'] == 'LINZ NETZ energy: setup needed'
+    assert created[2]['title'] == 'LINZ NETZ Energy: setup needed'
     assert '- The portal password is missing.' in created[2]['message'] and 'Configuration' in created[2]['message']
     assert addon.web.read_status(tmp_path)['phase'] == 'setup'
     # in the language of Home Assistant
     hass.language = 'de-AT'
     addon.announce_setup(tmp_path, [('problem.password', {})])
     created = hass.services[-1]
-    assert created[2]['title'] == 'LINZ NETZ energy: Einrichtung nötig'
+    assert created[2]['title'] == 'LINZ NETZ Energy: Einrichtung nötig'
     assert '- Das Portal-Passwort fehlt.' in created[2]['message'] and 'Tab Konfiguration' in created[2]['message']
     addon.announce_setup(tmp_path, [])
     assert hass.services[-1] == ('persistent_notification', 'dismiss', {'notification_id': addon.SETUP_NOTIFICATION})
@@ -239,7 +239,7 @@ def test_first_download_is_announced_and_reported(tmp_path, monkeypatch):
     hass = FakeHass()
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW)
     msgs = [s[2] for s in hass.services if s[1] == 'create' and s[2]['notification_id'] == addon.DOWNLOAD_NOTIFICATION]
-    assert [m['title'] for m in msgs] == ['LINZ NETZ energy: first download', 'LINZ NETZ energy: first download done']
+    assert [m['title'] for m in msgs] == ['LINZ NETZ Energy: first download', 'LINZ NETZ Energy: first download done']
     assert msgs[1]['message'].startswith('12 quarter-hour readings from 01.10.2026 to 01.10.2026 02:45')
     # later fetches are not announced
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW + timedelta(hours=13))
@@ -253,4 +253,4 @@ def test_failed_first_download_is_reported(tmp_path, monkeypatch):
     hass = FakeHass()
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW)
     titles = [s[2]['title'] for s in hass.services if s[1] == 'create']
-    assert titles == ['LINZ NETZ energy: first download', 'LINZ NETZ energy: first download failed']
+    assert titles == ['LINZ NETZ Energy: first download', 'LINZ NETZ Energy: first download failed']

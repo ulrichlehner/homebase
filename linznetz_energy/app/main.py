@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Main loop of the Home Assistant add-on "LINZ NETZ energy".
+"""Main loop of the Home Assistant add-on "LINZ NETZ Energy".
 
 Every hour, a few minutes past the full hour:
 
@@ -405,7 +405,7 @@ def connect() -> HomeAssistant:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description='LINZ NETZ energy add-on')
+    parser = argparse.ArgumentParser(description='LINZ NETZ Energy add-on')
     parser.add_argument('--once', action='store_true', help='run one cycle and exit')
     parser.add_argument('-d', '--debug', action='store_true')
     args = parser.parse_args(argv)

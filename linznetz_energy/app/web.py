@@ -1,4 +1,4 @@
-"""The page of the add-on "LINZ NETZ energy" in Home Assistant (Ingress): status and history upload.
+"""The page of the add-on "LINZ NETZ Energy" in Home Assistant (Ingress): status and history upload.
 
 Home Assistant shows it behind the "Open Web UI" button of the add-on (and optionally in the
 sidebar); HA handles the login and proxies the requests. The server therefore only answers
@@ -231,9 +231,9 @@ def render_page(status: dict, message=None) -> str:
         site_line = html.escape(t(lang, 'page.not_configured'))
     return f"""<!doctype html>
 <html lang="{lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-{refresh}<title>LINZ NETZ energy</title><style>{STYLE}</style></head>
+{refresh}<title>LINZ NETZ Energy</title><style>{STYLE}</style></head>
 <body><main>
-<div><h1>LINZ NETZ energy</h1><p class="muted">{site_line}</p></div>
+<div><h1>LINZ NETZ Energy</h1><p class="muted">{site_line}</p></div>
 {note}
 {setup_html}
 <div class="card"><h2>{t(lang, 'page.status')}</h2><table>{_rows([

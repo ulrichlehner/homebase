@@ -19,25 +19,25 @@ TEXTS = {
                                          '(the Zählpunktnummer, not the meter number).',
         'problem.site': 'The site may only contain letters, digits and _.',
         # notifications
-        'setup.title': 'LINZ NETZ energy: setup needed',
+        'setup.title': 'LINZ NETZ Energy: setup needed',
         'setup.intro': 'The app needs a few settings before it can fetch anything:',
-        'setup.howto': 'Open the app "LINZ NETZ energy" in Home Assistant, fill in the fields on the Configuration tab '
+        'setup.howto': 'Open the app "LINZ NETZ Energy" in Home Assistant, fill in the fields on the Configuration tab '
                        'and save. Then restart the app on the Info tab.',
-        'download.title': 'LINZ NETZ energy: first download',
+        'download.title': 'LINZ NETZ Energy: first download',
         'download.text': 'Downloading everything the LINZ NETZ portal still has (about three years). This takes about '
                          'a minute; the app page shows the progress.',
-        'download_done.title': 'LINZ NETZ energy: first download done',
+        'download_done.title': 'LINZ NETZ Energy: first download done',
         'download_done.text': '{count} quarter-hour readings from {first} to {last}. Older history can be uploaded on '
                               'the app page (Open Web UI, "Import older history").',
-        'no_data.title': 'LINZ NETZ energy: no data',
+        'no_data.title': 'LINZ NETZ Energy: no data',
         'no_data.text': 'The portal has no readings for this metering point. Is the quarter-hour analysis '
                         '("Viertelstundenauswertung") switched on in the portal?',
-        'download_failed.title': 'LINZ NETZ energy: first download failed',
+        'download_failed.title': 'LINZ NETZ Energy: first download failed',
         'download_failed.text': 'The portal did not answer as expected ({error}). The app tries again in an hour.',
-        'login_failed.title': 'LINZ NETZ energy: portal login failed',
+        'login_failed.title': 'LINZ NETZ Energy: portal login failed',
         'login_failed.text': 'The LINZ NETZ portal rejected the login. Please check the portal username and password '
                              'on the Configuration tab of the app. Next attempt in {hours} hours.',
-        'import.title': 'LINZ NETZ energy: history imported',
+        'import.title': 'LINZ NETZ Energy: history imported',
         'import.readings': '{file}: {added} of {total} readings added',
         'import.reconstructed': '{file}: {rows} reconstructed quarter hours taken over',
         'import.failed': '{file}: not imported ({reason})',
@@ -114,26 +114,26 @@ TEXTS = {
         'problem.metering_point_prefix': 'Der Zählpunkt muss mit AT beginnen. Bitte mit der Rechnung vergleichen '
                                          '(die Zählpunktnummer, nicht die Zählernummer).',
         'problem.site': 'Der Standort darf nur Buchstaben, Ziffern und _ enthalten.',
-        'setup.title': 'LINZ NETZ energy: Einrichtung nötig',
+        'setup.title': 'LINZ NETZ Energy: Einrichtung nötig',
         'setup.intro': 'Die App braucht noch ein paar Einstellungen, bevor sie Daten holen kann:',
-        'setup.howto': 'Öffne in Home Assistant die App „LINZ NETZ energy“, fülle im Tab Konfiguration die Felder aus '
+        'setup.howto': 'Öffne in Home Assistant die App „LINZ NETZ Energy“, fülle im Tab Konfiguration die Felder aus '
                        'und speichere. Starte die App danach im Tab Info neu.',
-        'download.title': 'LINZ NETZ energy: erster Download',
+        'download.title': 'LINZ NETZ Energy: erster Download',
         'download.text': 'Alles, was das LINZ NETZ Portal noch hat (etwa drei Jahre), wird geladen. Das dauert etwa '
                          'eine Minute; die Seite der App zeigt den Fortschritt.',
-        'download_done.title': 'LINZ NETZ energy: erster Download fertig',
+        'download_done.title': 'LINZ NETZ Energy: erster Download fertig',
         'download_done.text': '{count} Viertelstundenwerte vom {first} bis {last}. Ältere Daten lassen sich auf der '
                               'Seite der App hochladen (Web-UI öffnen, „Ältere Daten importieren“).',
-        'no_data.title': 'LINZ NETZ energy: keine Daten',
+        'no_data.title': 'LINZ NETZ Energy: keine Daten',
         'no_data.text': 'Das Portal hat keine Werte für diesen Zählpunkt. Ist im Portal die Viertelstundenauswertung '
                         'eingeschaltet?',
-        'download_failed.title': 'LINZ NETZ energy: erster Download fehlgeschlagen',
+        'download_failed.title': 'LINZ NETZ Energy: erster Download fehlgeschlagen',
         'download_failed.text': 'Das Portal hat nicht wie erwartet geantwortet ({error}). Die App versucht es in einer '
                                 'Stunde wieder.',
-        'login_failed.title': 'LINZ NETZ energy: Portal-Login fehlgeschlagen',
+        'login_failed.title': 'LINZ NETZ Energy: Portal-Login fehlgeschlagen',
         'login_failed.text': 'Das LINZ NETZ Portal hat den Login abgelehnt. Bitte Portal-Benutzername und -Passwort im '
                              'Tab Konfiguration der App prüfen. Nächster Versuch in {hours} Stunden.',
-        'import.title': 'LINZ NETZ energy: ältere Daten importiert',
+        'import.title': 'LINZ NETZ Energy: ältere Daten importiert',
         'import.readings': '{file}: {added} von {total} Werten ergänzt',
         'import.reconstructed': '{file}: {rows} rekonstruierte Viertelstunden übernommen',
         'import.failed': '{file}: nicht importiert ({reason})',

@@ -1,4 +1,4 @@
-name: LINZ NETZ energy
+name: LINZ NETZ Energy
 # set by release-please from the conventional commits (only this line), see README "Releases"
 version: "0.2.0" # x-release-please-version
 slug: linznetz_energy
@@ -22,7 +22,7 @@ homeassistant_api: true
 ingress: true
 ingress_port: 8099
 panel_icon: mdi:transmission-tower
-panel_title: LINZ NETZ energy
+panel_title: LINZ NETZ Energy
 map:
   # the add-on's own config folder (/addon_configs/<id>_linznetz_energy): CSV files, the
   # import/ folder for older history, part of backups

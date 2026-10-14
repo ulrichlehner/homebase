@@ -1,4 +1,7 @@
-# LINZ NETZ energy
+# LINZ NETZ Energy
+
+> Not affiliated with LINZ NETZ GmbH. The add-on uses the public LINZ NETZ customer portal with your own
+> login, the same way you would in the browser.
 
 Fetches the quarter-hour readings of your smart meter from the
 [LINZ NETZ service portal](https://www.linznetz.at/portal/de/home/online_services/serviceportal) and
