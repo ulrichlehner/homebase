@@ -79,6 +79,8 @@ Done when the backtest error is acceptable and the source files are unchanged.
 - [ ] Portal hours count only with all 4 quarter hours present
 - [ ] RF hour valid only if plausible: not negative, below a ceiling, not spanning a gap
 - [ ] Priority: portal measured > RF valid > portal substitute > reconstructed
+- [ ] Running sums in integer Wh, no float drift over 30k hours
+- [ ] Check whether the portal offers meter counter readings; if so, compare them with the RF counter
 - [ ] Validation: RF vs portal per hour and per day, implausible RF hours stay empty until the
       portal fills them
 - [ ] Tests for every rule, dry run with the CSV files plus an RF export from HA
@@ -101,6 +103,7 @@ Done when the backtest error is acceptable and the source files are unchanged.
 - [ ] Multi-arch image (at least `aarch64`) built by GitHub Actions
 - [ ] CSV storage in the add-on config folder (part of HA backups)
 - [ ] Portal fetch twice a day, import of `…_grid_energy_portal`
+- [ ] Login failure is its own state: HA notification, the add-on keeps running on RF
 - [ ] Installs from the repo URL on HA OS, survives a restart, no credentials in the logs
 
 ### Step 5: Load the history once
@@ -114,6 +117,7 @@ Done when the backtest error is acceptable and the source files are unchanged.
 - [ ] Hourly (a few minutes past the hour): read RF statistics, rebuild and import
       `…_grid_energy_fused`
 - [ ] Deviation sensor over MQTT, notification above a threshold
+- [ ] The portal delivers 1 to 2 days late: RF covers that span, the deviation check waits for it
 - [ ] About 2 weeks in parallel while the Energy tab still uses the RF sensor, compare daily
 
 ### Step 7: Switch the Energy tab
@@ -128,15 +132,54 @@ Done when the backtest error is acceptable and the source files are unchanged.
 - [ ] Add-on README, homebase README, `smartmeter/` docs (guard sensor possibly unnecessary)
 - [ ] Decide whether the Docker databot keeps writing the CSV archive outside HA
 
+## Related projects and what we take from them
+
+We stay with the tools of this repo (portal client, CSV files, add-on); these projects are
+references only. All three are HACS custom integrations, none fuses portal and live data.
+
+- [DarkC35/ha_linznetz](https://github.com/DarkC35/ha_linznetz) (LINZ NETZ): imports the
+  quarter-hour CSV (downloaded by hand or from the daily e-mail report) into the statistics of a
+  placeholder sensor and patches the running sum when older values arrive. Its README admits the
+  sums can get corrupted and recommends a full re-import. Taken: rebuild the fused series
+  completely on every run instead of patching sums; the daily e-mail report ("Tagesbericht
+  Viertelstundenverbrauch") as a possible fallback source if the portal login breaks; hours are
+  only imported with all four quarter hours, and the autumn DST hour needs care (our parser
+  already resolves it, see `test_parse_csv_autumn_dst_switch`).
+- [superbox-dev/netzooe_eservice](https://github.com/superbox-dev/netzooe_eservice) and
+  [VarChar42/hassio-netzooe-eservice](https://github.com/VarChar42/hassio-netzooe-eservice)
+  (Netz OÖ, a different grid operator with a JSON API): sensors for meter reading and
+  daily/weekly consumption, no hourly history. Taken: a portal login failure should surface as a
+  clear "re-authenticate" state (they use HA's auth-failed flow), for the add-on that means a
+  persistent notification and an error sensor instead of silent gaps.
+
+## Related projects
+
+All three are HACS custom integrations, none fuses portal history with live readings. We keep our
+own approach and take over what improves it (already reflected in the steps above).
+
+- [DarkC35/ha_linznetz](https://github.com/DarkC35/ha_linznetz) (LINZ NETZ): imports the
+  quarter-hour CSV (e-mail report or manual download) into the statistics of a placeholder sensor
+  and patches the running sum on overlaps; its README advises a full re-import when the sums get
+  corrupted. Taken over: full rebuild instead of patching, exact (integer) sums, only complete
+  hours, the e-mail report as fallback source, the 1 to 2 day delay of the portal. Its DST marker
+  (start == end on the repeated autumn hour) is already handled by `linznetz.py`.
+- [superbox-dev/netzooe_eservice](https://github.com/superbox-dev/netzooe_eservice) and
+  [VarChar42/hassio-netzooe-eservice](https://github.com/VarChar42/hassio-netzooe-eservice)
+  (Netz OÖ, a different portal with a JSON API): sensors only, no history. Taken over: the portal
+  client stays independent of HA, a login failure is its own state, meter counter readings as a
+  validation source.
+
 ## Risks
 
 - Portal login changes (for example 2FA): the add-on must report it clearly and fall back to
-  RF only.
+  RF only. Second data source as fallback: the daily e-mail report "Tagesbericht
+  Viertelstundenverbrauch" (S/MIME encrypted, see ha_linznetz).
 - The recorder websocket API changes between HA releases: the step 3 script doubles as a check
   after major updates.
 - Personal data in the public repo: check the whole branch diff before every PR.
 
 ## Log
 
+- 2026-10-14: related projects reviewed, learnings added to steps 2, 4 and 6.
 - 2026-10-14: plan written, step 0 done except the backup, step 1 started (branch
   `fusion-disaggregate`).
