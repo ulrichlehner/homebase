@@ -273,6 +273,9 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: HA cleaned up after the tests: the statistics `…_grid_energy_portal` and
+  `…_grid_energy_fused` written by the local add-on test runs deleted (the installed add-on creates
+  them fresh), no `linznetz:` statistic, entity or notification left from the tests.
 - 2026-10-14: code restructured for separation of concerns: `lib/homebase/` (library: portal,
   readings, disaggregate, fusion, hass), `databot/` (command line tools), `linznetz_energy/app/`
   (add-on: main, web). All derived files byte-identical before and after, add-on image tested
