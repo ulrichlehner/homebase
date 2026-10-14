@@ -18,6 +18,7 @@ import csv
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -89,14 +90,27 @@ def read_back(hass: HomeAssistant, start: datetime, end: datetime) -> list:
     return rows
 
 
-def compare(expected: list, got: list) -> int:
+def compare(expected: list, got: list) -> tuple:
     want = {s['start']: s['sum'] for s in expected}
     have = {t: s for t, s, _ in got}
     missing = [t for t in want if t not in have]
     wrong = [t for t in want if t in have and abs(have[t] - want[t]) > 0.0005]
     extra = [t for t in have if t not in want]
-    logger.info('  read back %d rows: %d missing, %d different, %d unexpected', len(got), len(missing), len(wrong), len(extra))
-    return len(missing) + len(wrong) + len(extra)
+    return len(got), len(missing), len(wrong), len(extra)
+
+
+def wait_for(hass: HomeAssistant, expected: list, start: datetime, end: datetime, timeout: float = 30) -> int:
+    """The recorder imports asynchronously in its own queue: polls until the read-back
+    matches or `timeout` seconds have passed. Returns the number of problems."""
+    began = time.monotonic()
+    while True:
+        rows, missing, wrong, extra = compare(expected, read_back(hass, start, end))
+        problems = missing + wrong + extra
+        if not problems or time.monotonic() - began > timeout:
+            logger.info('  read back %d rows after %.1f s: %d missing, %d different, %d unexpected',
+                        rows, time.monotonic() - began, missing, wrong, extra)
+            return problems
+        time.sleep(0.5)
 
 
 def cmd_info(hass: HomeAssistant, args, zone: ZoneInfo) -> int:
@@ -129,14 +143,14 @@ def cmd_import(hass: HomeAssistant, args, zone: ZoneInfo) -> int:
                 end.astimezone(zone).isoformat(), stats[-1]['sum'], STATISTIC_ID)
     metadata = import_with_discovery(hass, stats)
     logger.info('Accepted metadata on HA %s: %s', hass.version, metadata)
-    problems = compare(stats, read_back(hass, start, end))
+    problems = wait_for(hass, stats, start, end)
 
     logger.info('Overwrite test: importing the same hours with every sum +1 kWh')
     hass.import_statistics(metadata, to_stats(hours, offset=1.0))
-    problems += compare(to_stats(hours, offset=1.0), read_back(hass, start, end))
+    problems += wait_for(hass, to_stats(hours, offset=1.0), start, end)
     logger.info('Restoring the original values')
     hass.import_statistics(metadata, stats)
-    problems += compare(stats, read_back(hass, start, end))
+    problems += wait_for(hass, stats, start, end)
 
     if problems:
         logger.error('%d problem(s), see above', problems)

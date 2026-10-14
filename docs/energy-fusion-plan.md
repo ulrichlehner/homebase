@@ -111,13 +111,15 @@ Done when the backtest error is acceptable and the source files are unchanged.
 - [x] `databot/ha.py` (small websocket client, reused by the add-on) and `./homebase ha-spike
       info | import | clear` (`databot/ha_spike.py`), tested without HA; the metadata fields newer
       HA versions want (`mean_type`, `unit_class`) are discovered and logged
-- [ ] Run it: script against the HA websocket with a long-lived token from `.env`: import one week as
-      `linznetz:test_grid` (`recorder/import_statistics`), read the RF counter history back
-      (`history/history_during_period`, raw states, see step 2)
-- [ ] Check in a statistics graph card (the Energy tab stays untouched)
-- [ ] Confirm the payload format of the installed HA version, re-import overwrites, deletion via
-      Developer tools > Statistics works
-- [ ] Delete the test statistic
+- [x] Run against HA 2026.10.1: one week (168 hours, 70.167 kWh) imported as `linznetz:test_grid`,
+      read back exactly, re-import overwrites (no duplicates), RF counter history readable
+      (`history/history_during_period`, about 4700 states per day)
+- [x] Payload: the minimal metadata (`source`, `statistic_id`, `name`, `unit_of_measurement`,
+      `has_mean`, `has_sum`) is accepted, HA adds `mean_type` and `unit_class` itself
+- [x] The recorder imports asynchronously: read back only after polling (about 0.6 s)
+- [ ] Visual check in a statistics graph card (13.10. should show 9.77 kWh like the Energy tab)
+- [ ] Delete the test statistic (`./homebase ha-spike clear`), then revoke the token (the add-on
+      uses the Supervisor token)
 
 ### Step 4: Add-on skeleton
 
@@ -214,6 +216,8 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: step 3 run against HA 2026.10.1 (backup "Before HA Energy Add-on" taken first):
+  import, read back and overwrite work; imports are asynchronous, the spike polls.
 - 2026-10-14: user keeps the recorder at `purge_keep_days: 10` (raw states), the add-on archives
   the RF readings itself. Step 3 code written; waiting for the HA backup and `HA_URL`/`HA_TOKEN`.
 - 2026-10-14: fusion dry run with the real RF energy counter: it matches the portal to about 1 Wh
