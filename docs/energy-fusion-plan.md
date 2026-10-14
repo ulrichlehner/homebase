@@ -145,6 +145,8 @@ Done when the backtest error is acceptable and the source files are unchanged.
       as `linznetz:<place>_grid_energy_portal`, portal login and the login-failure notification
       (created and dismissed again) work
 - [x] Image published and public on ghcr.io (both architectures, version 0.1.0)
+- [x] Store presentation: `icon.png`, `logo.png` (readable in light and dark mode), `CHANGELOG.md`,
+      `stage: experimental`, minimum HA version 2026.10.0 (the tested one)
 - [ ] Installs from the repo URL on HA OS (`https://github.com/ulrichlehner/homebase`, after the
       merge of #13), survives a restart, no credentials in the logs
 
@@ -179,6 +181,8 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
 ### Step 8: Docs and cleanup
 
 - [ ] Revoke the long-lived HA token used by `ha-spike` (profile > Security)
+- [ ] Remove `stage: experimental` from `linznetz_energy/config.yaml` once the Energy tab uses
+      the fused statistic
 - [ ] Add-on README with the prerequisites: quarter-hour analysis ("Viertelstundenauswertung")
       enabled in the portal, data arrives 1 to 2 days late (already in the homebase README)
 - [ ] Add-on README, homebase README, `smartmeter/` docs (guard sensor possibly unnecessary)
