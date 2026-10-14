@@ -1,14 +1,10 @@
-import sys
 import threading
 import urllib.error
 import urllib.request
-from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-import addon_web as W  # noqa: E402
+import web as W
 
 METER = 'AT0000000000000000000000000000000'
 

@@ -1,28 +1,14 @@
 import csv
-import sys
 from datetime import datetime, timedelta
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-import ha  # noqa: E402
-import ha_spike  # noqa: E402
+import ha_spike
+from homebase import hass as ha
 
 ZONE = ZoneInfo('Europe/Vienna')
 UTC = ZoneInfo('UTC')
-
-
-@pytest.mark.parametrize('url,expected', [
-    ('http://homeassistant.local:8123', 'ws://homeassistant.local:8123/api/websocket'),
-    ('https://ha.example.org/', 'wss://ha.example.org/api/websocket'),
-    ('http://supervisor/core', 'ws://supervisor/core/api/websocket'),
-    ('http://supervisor/core/websocket', 'ws://supervisor/core/websocket'),
-])
-def test_websocket_url(url, expected):
-    assert ha.websocket_url(url) == expected
 
 
 class FakeHass:

@@ -6,10 +6,16 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY requirements.txt /app/
+# Built from the repository root: docker build -f databot/Dockerfile .
+# The shared library first (portal client, readings archive, fusion, HA client) ...
+COPY lib /tmp/lib
+RUN pip install --no-cache-dir /tmp/lib && rm -rf /tmp/lib
+
+# ... then the command line tools (charts, chart OCR, HA import test)
+COPY databot/requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY *.py *.sh /app/
+COPY databot/*.py databot/*.sh /app/
 RUN chmod 0644 /app/*.sh && chmod +x /app/start.sh /app/databot.py \
     && ln -s /app/databot.py /usr/local/bin/databot
 

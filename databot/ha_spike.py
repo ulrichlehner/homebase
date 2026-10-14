@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from ha import HomeAssistant, HomeAssistantError
+from homebase.hass import HomeAssistant, HomeAssistantError
 
 logger = logging.getLogger('ha_spike')
 

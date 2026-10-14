@@ -1,17 +1,13 @@
 import json
-import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-import addon  # noqa: E402
-import databot  # noqa: E402
-import disaggregate  # noqa: E402
-import linznetz  # noqa: E402
+import main as addon
+from homebase import disaggregate, readings
+from homebase import portal as linznetz
 
 UTC = ZoneInfo('UTC')
 ZONE = ZoneInfo('Europe/Vienna')
@@ -138,7 +134,7 @@ def test_import_merges_readings_and_existing_rows_win(tmp_path):
     write_readings(tmp_path / 'import', hours=3, start=early, kwh='0.100')            # older archive
     lines = addon.import_history(tmp_path, METER)
     assert lines == [f'{METER}_readings.csv: 4 of 12 readings added']
-    rows = databot.read_csv_file(tmp_path / f'{METER}_readings.csv')
+    rows = readings.read_csv_file(tmp_path / f'{METER}_readings.csv')
     assert len(rows) == 12
     values = [rows[k][2] for k in sorted(rows)]
     assert values[:4] == ['0.100'] * 4 and values[4:] == ['0.200'] * 8   # overlap: existing wins

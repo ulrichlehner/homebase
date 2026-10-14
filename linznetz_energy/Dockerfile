@@ -10,10 +10,11 @@ LABEL io.hass.type="addon" io.hass.arch="${BUILD_ARCH}" io.hass.version="${BUILD
 ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
-COPY linznetz_energy/requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
+# The shared library (portal client, readings archive, fusion, HA client) ...
+COPY lib /tmp/lib
+RUN pip install --no-cache-dir /tmp/lib && rm -rf /tmp/lib
 
-COPY databot/linznetz.py databot/databot.py databot/disaggregate.py databot/fusion.py databot/ha.py \
-     databot/addon.py databot/addon_web.py /app/
+# ... and the add-on itself: main loop and its page in HA
+COPY linznetz_energy/app/*.py /app/
 
-CMD [ "python3", "/app/addon.py" ]
+CMD [ "python3", "/app/main.py" ]

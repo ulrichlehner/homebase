@@ -1,12 +1,8 @@
 import csv
-import sys
 from datetime import date, datetime, timedelta
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-import fusion as F  # noqa: E402
+from homebase import fusion as F
 
 ZONE = ZoneInfo('Europe/Vienna')
 UTC = ZoneInfo('UTC')
@@ -173,29 +169,3 @@ def test_read_rf_history_skips_unavailable(tmp_path):
         'sensor.place_grid_total_energy_consumption_kwh,12345.010,2026-10-05T00:02:00.000Z\n'
     )
     assert F.read_rf_history(path) == [(T0, 12_345_000), (T0 + timedelta(minutes=2), 12_345_010)]
-
-
-def test_main_writes_a_repeatable_file(tmp_path):
-    meter = 'AT0000000000000000000000000000000'
-    with (tmp_path / f'{meter}_readings.csv').open('w', newline='') as fh:
-        w = csv.writer(fh, delimiter=';')
-        w.writerow(['start_local', 'start_utc', 'kwh', 'kw', 'substitute'])
-        for i in range(8):
-            q = T0 + i * F.QUARTER
-            w.writerow([q.astimezone(ZONE).isoformat(), q.strftime('%Y-%m-%dT%H:%M:%SZ'), '0.150', '0.600', 'false'])
-    history = tmp_path / 'history.csv'
-    with history.open('w', newline='') as fh:
-        w = csv.writer(fh)
-        w.writerow(['entity_id', 'state', 'last_changed'])
-        for t, v in counter(240):
-            w.writerow(['sensor.place_grid_energy', f'{v / 1000:.3f}', t.isoformat()])
-    args = ['--dir', str(tmp_path), '--meter', meter, '--rf', str(history)]
-    assert F.main(args) == 0
-    out = tmp_path / f'{meter}_fused_1h.csv'
-    first = out.read_bytes()
-    assert F.main(args) == 0 and out.read_bytes() == first
-    rows = list(csv.DictReader(out.open(), delimiter=';'))
-    assert [r['source'] for r in rows] == ['rf', 'rf', 'rf', 'rf']           # RF primary
-    assert [r['portal_kwh'] for r in rows] == ['0.600', '0.600', '', '']   # the portal verifies
-    assert [r['flag'] for r in rows] == [''] * 4
-    assert [r['sum_kwh'] for r in rows] == ['0.600', '1.200', '1.800', '2.400']

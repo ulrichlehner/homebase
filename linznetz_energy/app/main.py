@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Main loop of the Home Assistant add-on (linznetz_energy/).
+"""Main loop of the Home Assistant add-on "LINZ NETZ energy".
 
 Every hour, a few minutes past the full hour:
 
@@ -41,12 +41,11 @@ from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-import addon_web
-import databot
-import disaggregate
-import fusion
-from ha import HomeAssistant, HomeAssistantError
-from linznetz import LinzNetzError, LoginError
+from homebase import disaggregate, fusion, readings
+from homebase.hass import HomeAssistant, HomeAssistantError
+from homebase.portal import LinzNetzError, LoginError
+
+import web
 
 logger = logging.getLogger('addon')
 
@@ -125,10 +124,8 @@ def next_run(now: datetime) -> datetime:
 # -- Steps --------------------------------------------------------------------------
 
 def fetch_portal(options: Options, store: Path, tz: str) -> None:
-    """databot's `csv` command: new readings into <meterId>_readings.csv."""
-    config = databot.Config(options.username, options.password, options.meter_id, tz, store)
-    args = databot.build_parser().parse_args(['csv'])
-    databot.cmd_csv(args, config)
+    """New readings from the portal into <meterId>_readings.csv (and the unified file)."""
+    readings.update_from_portal(options.username, options.password, options.meter_id, tz, store)
 
 
 def import_history(store: Path, meter_id: str) -> list:
@@ -146,12 +143,12 @@ def import_history(store: Path, meter_id: str) -> list:
             if f.name.endswith('_readings.csv'):
                 target = store / f'{meter_id}_readings.csv'
                 try:
-                    incoming = databot.read_csv_file(f)
+                    incoming = readings.read_csv_file(f)
                 except SystemExit as err:   # read_csv_file reports a wrong header this way
                     raise ValueError(str(err)) from None
-                existing = databot.read_csv_file(target)
+                existing = readings.read_csv_file(target)
                 added = {k: v for k, v in incoming.items() if k not in existing}
-                databot.write_csv_file(target, {**existing, **added})
+                readings.write_csv_file(target, {**existing, **added})
                 done.append(f'{f.name}: {len(added)} of {len(incoming)} readings added')
             elif f.name.endswith('_reconstructed_15min.csv'):
                 with f.open(newline='') as fh:
@@ -212,9 +209,9 @@ def _range(times: list, zone: ZoneInfo, unit_fmt: str = '%d.%m.%Y %H:%M') -> Opt
 
 
 def data_status(store: Path, meter_id: str, zone: ZoneInfo) -> dict:
-    readings = databot.read_csv_file(store / f'{meter_id}_readings.csv')
+    measured = readings.read_csv_file(readings.readings_path(store, meter_id))
     reconstructed = fusion.read_reconstructed(store / f'{meter_id}_reconstructed_15min.csv')
-    return {'readings': _range([datetime.fromtimestamp(t, UTC) for t in readings], zone),
+    return {'readings': _range([datetime.fromtimestamp(t, UTC) for t in measured], zone),
             'reconstructed': _range(list(reconstructed), zone)}
 
 
@@ -257,19 +254,19 @@ def notify(hass, notification_id: str, title: str, message: Optional[str]) -> No
 def run_once(hass, options: Options, store: Path, tz: str, now: datetime) -> None:
     zone = ZoneInfo(tz)
     if any((store / IMPORT_DIR).glob('*.csv')):
-        addon_web.write_status(store, phase='importing', detail='older history')
+        web.write_status(store, phase='importing', detail='older history')
     imported = import_history(store, options.meter_id)
     if imported:
-        addon_web.write_status(store, last_import={'at': now.isoformat(), 'lines': imported})
+        web.write_status(store, last_import={'at': now.isoformat(), 'lines': imported})
         notify(hass, IMPORT_NOTIFICATION, 'LINZ NETZ energy: history imported',
                '\n'.join(f'- {line}' for line in imported))
-    addon_web.write_status(store, import_pending=False)
+    web.write_status(store, import_pending=False)
     state = read_state(store)
     if portal_due(state, now, options.fetch_interval_hours):
-        readings = store / f'{options.meter_id}_readings.csv'
-        first_download = not readings.exists()
-        addon_web.write_status(store, phase='downloading',
-                               detail='first download, about a minute' if first_download else 'new readings')
+        readings_file = readings.readings_path(store, options.meter_id)
+        first_download = not readings_file.exists()
+        web.write_status(store, phase='downloading',
+                         detail='first download, about a minute' if first_download else 'new readings')
         if first_download:
             notify(hass, DOWNLOAD_NOTIFICATION, 'LINZ NETZ energy: first download',
                    'Downloading everything the LINZ NETZ portal still has (about three years). '
@@ -277,9 +274,8 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime) -> Non
         try:
             fetch_portal(options, store, tz)
             if first_download:
-                rows = databot.read_csv_file(readings)
+                rows = readings.read_csv_file(readings_file)
                 if rows:
-                    zone = ZoneInfo(tz)
                     first, last = (datetime.fromtimestamp(t, zone) for t in (min(rows), max(rows)))
                     notify(hass, DOWNLOAD_NOTIFICATION, 'LINZ NETZ energy: first download done',
                            f'{len(rows)} quarter-hour readings from {first:%d.%m.%Y} to {last:%d.%m.%Y %H:%M}. '
@@ -303,10 +299,10 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime) -> Non
                 notify(hass, DOWNLOAD_NOTIFICATION, 'LINZ NETZ energy: first download failed',
                        f'The portal did not answer as expected ({err}). The add-on tries again next hour.')
         write_state(store, state)
-        addon_web.write_status(store, portal={'ok': state.get('portal_ok'),
-                                              'login_failed': state.get('portal_login_failed')})
+        web.write_status(store, portal={'ok': state.get('portal_ok'),
+                                        'login_failed': state.get('portal_login_failed')})
 
-    addon_web.write_status(store, phase='statistics', detail='', data=data_status(store, options.meter_id, zone))
+    web.write_status(store, phase='statistics', detail='', data=data_status(store, options.meter_id, zone))
     written = {}
     for key, statistic_id, hours in (
             ('portal', options.portal_statistic, portal_hours(store, options.meter_id)),
@@ -317,7 +313,7 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime) -> Non
             logger.info('Imported %s: %d hours %s to %s, %.3f kWh', statistic_id, len(stats),
                         stats[0]['start'].isoformat(), stats[-1]['start'].isoformat(), stats[-1]['sum'])
             written[key] = statistic_status(statistic_id, hours, zone)
-    addon_web.write_status(store, phase='idle', detail='', statistics=written, last_run=now.isoformat())
+    web.write_status(store, phase='idle', detail='', statistics=written, last_run=now.isoformat())
 
 
 def connect() -> HomeAssistant:
@@ -343,11 +339,11 @@ def main(argv=None) -> int:
     store = Path(os.environ.get('ADDON_STORE', '/config'))
     (store / IMPORT_DIR).mkdir(parents=True, exist_ok=True)
     logger.info('Site %s, meter ...%s, data in %s', options.site, options.meter_id[-4:], store)
-    addon_web.write_status(store, site=options.site, meter_suffix=options.meter_id[-4:], phase='starting', detail='')
+    web.write_status(store, site=options.site, meter_suffix=options.meter_id[-4:], phase='starting', detail='')
 
     wake = threading.Event()   # set by an upload on the add-on page: run right away
     if not args.once:
-        addon_web.start(store, wake)
+        web.start(store, wake)
     while True:
         wake.clear()
         try:
@@ -359,11 +355,11 @@ def main(argv=None) -> int:
                 hass.close()
         except HomeAssistantError as err:
             logger.error('Home Assistant: %s', err)
-            addon_web.write_status(store, phase='error', detail=f'Home Assistant: {err}')
+            web.write_status(store, phase='error', detail=f'Home Assistant: {err}')
         if args.once:
             return 0
         at = next_run(datetime.now(UTC))
-        addon_web.write_status(store, next_run=at.isoformat())
+        web.write_status(store, next_run=at.isoformat())
         logger.debug('Next run at %s', at.isoformat())
         if wake.wait(max(1.0, (at - datetime.now(UTC)).total_seconds())):
             logger.info('Woken up by an upload')

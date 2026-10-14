@@ -1,6 +1,5 @@
-requests>=2.31,<3
+# the shared library (lib/, installed by the Dockerfile) brings requests, websocket-client, tzdata
 python-dotenv>=1.0,<2
 matplotlib>=3.8,<4
 numpy>=1.26,<3
 Pillow>=10,<12
-websocket-client>=1.7,<2

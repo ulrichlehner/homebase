@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fuses portal readings, live radio (RF) meter readings and the reconstructed history
 into one hourly consumption series, and validates RF against the portal.
 
@@ -34,11 +33,9 @@ same file.
 
 from __future__ import annotations
 
-import argparse
 import bisect
 import csv
 import logging
-import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -46,7 +43,7 @@ from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-logger = logging.getLogger('fusion')
+logger = logging.getLogger(__name__)
 
 UTC = ZoneInfo('UTC')
 HOUR = timedelta(hours=1)
@@ -329,72 +326,3 @@ def write_fused(path: Path, hours: list, zone: ZoneInfo) -> None:
                              f'{h.wh / 1000:.3f}', h.source, f'{h.sum_wh / 1000:.3f}',
                              '' if h.portal_wh is None else f'{h.portal_wh / 1000:.3f}', h.flag])
     tmp.replace(path)
-
-
-def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description='fuse portal, RF and reconstructed readings into hours')
-    parser.add_argument('--dir', required=True, help='data folder with the CSV files')
-    parser.add_argument('--meter', required=True, help='meter ID (file name prefix)')
-    parser.add_argument('--tz', default='Europe/Vienna')
-    parser.add_argument('--rf', help='Home Assistant history download of the RF energy sensor (CSV)')
-    parser.add_argument('--rf-entity', help='entity ID in the history file, if it holds several')
-    parser.add_argument('--max-kw', type=float, default=DEFAULT_MAX_KW,
-                        help=f'fastest plausible consumption in kW (default {DEFAULT_MAX_KW:g})')
-    parser.add_argument('--max-gap-minutes', type=int, default=int(DEFAULT_MAX_GAP.total_seconds() // 60),
-                        help='longest RF silence that is still interpolated')
-    parser.add_argument('-d', '--debug', action='store_true')
-    args = parser.parse_args(argv)
-    logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO,
-                        format='[ %(asctime)s %(levelname)s ] %(message)s')
-
-    zone = ZoneInfo(args.tz)
-    folder = Path(args.dir)
-    readings_path = folder / f'{args.meter}_readings.csv'
-    if not readings_path.exists():
-        logger.error('%s not found, run `csv` first', readings_path)
-        return 1
-    portal = read_portal(readings_path)
-    reconstructed = read_reconstructed(folder / f'{args.meter}_reconstructed_15min.csv')
-
-    rf: dict = {}
-    if args.rf:
-        samples = read_rf_history(Path(args.rf), args.rf_entity)
-        cleaning = clean_counter(samples, args.max_kw)
-        rf = rf_hourly(cleaning.accepted, timedelta(minutes=args.max_gap_minutes), args.max_kw)
-        logger.info('RF: %d readings, %d rejected in %d dropped segment(s), %d hours with a value',
-                    len(samples), cleaning.rejected, len(cleaning.dropped_segments), len(rf))
-        for first, last, n in cleaning.dropped_segments:
-            logger.info('  dropped %s to %s (%d readings)', first.astimezone(zone).isoformat(timespec='minutes'),
-                        last.astimezone(zone).isoformat(timespec='minutes'), n)
-        v = validate(portal, rf, zone)
-        if v.hours:
-            logger.info('RF vs portal: %d hours, mean abs deviation %.0f Wh per hour, total %.3f vs %.3f kWh (%+.2f%%)',
-                        v.hours, v.mean_abs_wh, v.rf_wh / 1000, v.portal_wh / 1000,
-                        100 * (v.rf_wh - v.portal_wh) / v.portal_wh if v.portal_wh else 0)
-            logger.info('  %d complete day(s) compared, %d outside the tolerance', len(v.days), len(v.bad_days))
-            for day, p, r in v.bad_days:
-                logger.warning('  %s: RF %.3f kWh, portal %.3f kWh', day, r / 1000, p / 1000)
-        else:
-            logger.info('RF vs portal: no common hours yet')
-
-    hours = fuse(portal, rf, reconstructed)
-    out = folder / f'{args.meter}_fused_1h.csv'
-    write_fused(out, hours, zone)
-    counts = defaultdict(int)
-    for h in hours:
-        counts[h.source] += 1
-    span = round((hours[-1].start - hours[0].start) / HOUR) + 1 if hours else 0
-    logger.info('Fused %d hours (%s), %d hour(s) without data, total %.3f kWh -> %s', len(hours),
-                ', '.join(f'{s} {counts[s]}' for s in SOURCES if counts[s]), span - len(hours),
-                hours[-1].sum_wh / 1000 if hours else 0, out)
-    flagged = [h for h in hours if h.flag]
-    if flagged:
-        logger.warning('%d RF hour(s) deviate from the portal beyond the tolerance (RF kept):', len(flagged))
-        for h in flagged[:20]:
-            logger.warning('  %s: RF %.3f kWh, portal %.3f kWh', h.start.astimezone(zone).isoformat(timespec='minutes'),
-                           h.wh / 1000, h.portal_wh / 1000)
-    return 0
-
-
-if __name__ == '__main__':
-    sys.exit(main())

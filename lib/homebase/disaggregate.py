@@ -1,9 +1,8 @@
-#!/usr/bin/env python3
 """Splits the reconstructed 6-hour blocks into quarter hours by a typical profile.
 
 The chart reconstruction (reconstruct.py) only knows 6-hour sums. Home Assistant
 keeps hourly statistics, and the blocks run from 00:15 to 06:15 and so on, so they
-do not even line up with full hours. This script
+do not even line up with full hours. This module
 
   1. builds a typical load profile from measured portal readings: the median kWh
      of each quarter hour of the day, separately per meteorological season and day
@@ -22,11 +21,9 @@ window is fixed, so the same inputs always give the same file.
 
 from __future__ import annotations
 
-import argparse
 import csv
 import logging
 import statistics
-import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -34,7 +31,7 @@ from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-logger = logging.getLogger('disaggregate')
+logger = logging.getLogger(__name__)
 
 UTC = ZoneInfo('UTC')
 QUARTER = timedelta(minutes=15)
@@ -284,59 +281,3 @@ def backtest(readings: dict, zone: ZoneInfo, profile_window: tuple, test_window:
             'wape': sum(errors) / result['actual_kwh'] if result['actual_kwh'] else 0.0,
         }
     return result
-
-
-# -- Main ---------------------------------------------------------------------
-
-def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description='split reconstructed 6h blocks into quarter hours')
-    parser.add_argument('--dir', required=True, help='data folder with the CSV files')
-    parser.add_argument('--meter', required=True, help='meter ID (file name prefix)')
-    parser.add_argument('--tz', default='Europe/Vienna')
-    parser.add_argument('--profile-from', type=date.fromisoformat, default=DEFAULT_PROFILE_FROM)
-    parser.add_argument('--profile-to', type=date.fromisoformat, default=DEFAULT_PROFILE_TO)
-    parser.add_argument('--backtest', action='store_true', help='only run the backtest, write nothing')
-    parser.add_argument('--backtest-from', type=date.fromisoformat, default=DEFAULT_BACKTEST_FROM)
-    parser.add_argument('--backtest-to', type=date.fromisoformat, default=DEFAULT_BACKTEST_TO)
-    parser.add_argument('-d', '--debug', action='store_true')
-    args = parser.parse_args(argv)
-    logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO,
-                        format='[ %(asctime)s %(levelname)s ] %(message)s')
-
-    zone = ZoneInfo(args.tz)
-    folder = Path(args.dir)
-    readings_path = folder / f'{args.meter}_readings.csv'
-    blocks_path = folder / f'{args.meter}_reconstructed_6h.csv'
-    out_path = folder / f'{args.meter}_reconstructed_15min.csv'
-    if not readings_path.exists():
-        logger.error('%s not found, run `csv` first', readings_path)
-        return 1
-    readings = read_readings(readings_path)
-    window = (args.profile_from, args.profile_to)
-
-    result = backtest(readings, zone, window, (args.backtest_from, args.backtest_to))
-    logger.info('Backtest %s to %s (left out of the profile): %d blocks, %d hours, %.1f kWh',
-                args.backtest_from, args.backtest_to, result['blocks'], result['hours'], result['actual_kwh'])
-    for name in ('profile', 'uniform'):
-        logger.info('  %-7s split: hourly mean abs error %.3f kWh, %.1f%% of the consumption',
-                    name, result[name]['mae_kwh'], 100 * result[name]['wape'])
-    if args.backtest:
-        return 0
-
-    if not blocks_path.exists():
-        logger.error('%s not found, run `reconstruct` first', blocks_path)
-        return 1
-    blocks = read_blocks(blocks_path)
-    profile = build_profile(readings, zone, *window)
-    if not profile:
-        logger.error('no readings in the profile window %s to %s', *window)
-        return 1
-    rows = disaggregate(blocks, profile, zone, window)
-    write_rows(out_path, rows)
-    logger.info('Split %d blocks (%.2f kWh) into %d quarter hours (%.3f kWh) -> %s', len(blocks),
-                sum(b.kwh for b in blocks), len(rows), sum(float(r[2]) for r in rows), out_path)
-    return 0
-
-
-if __name__ == '__main__':
-    sys.exit(main())

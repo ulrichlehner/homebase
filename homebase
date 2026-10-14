@@ -29,7 +29,8 @@ set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 
 IMAGE="ghcr.io/ulrichlehner/homebase-databot:main"
-SRC_DIR="./databot"
+# the image holds the shared library (lib/) and the command line tools (databot/)
+SRC_DIRS=(./lib ./databot)
 ENV_FILE="./.env"
 
 die() { echo "error: $*" >&2; exit 1; }
@@ -51,8 +52,9 @@ DATA_DIR="$(cd "$DATA_DIR" && pwd)"
 
 source_hash() {
   # hash of every file that goes into the image
-  find "$SRC_DIR" -type f \( -name '*.py' -o -name '*.sh' -o -name 'requirements*.txt' -o -name Dockerfile \) \
-    -not -path '*/tests/*' -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | cut -d' ' -f1
+  find "${SRC_DIRS[@]}" -type f \( -name '*.py' -o -name '*.sh' -o -name 'requirements*.txt' -o -name Dockerfile \
+    -o -name pyproject.toml \) -not -path '*/tests/*' -not -path '*.egg-info*' -print0 \
+    | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | cut -d' ' -f1
 }
 
 image_hash() {
@@ -61,7 +63,7 @@ image_hash() {
 
 build() {
   echo ">> building image $IMAGE"
-  docker build --label "homebase.source=$(source_hash)" -t "$IMAGE" "$SRC_DIR"
+  docker build --label "homebase.source=$(source_hash)" -t "$IMAGE" -f databot/Dockerfile .
 }
 
 ensure_image() {
@@ -96,8 +98,7 @@ case "$cmd" in
   disaggregate)
     ensure_image
     # profile from the readings, input <meterId>_reconstructed_6h.csv, output <meterId>_reconstructed_15min.csv
-    run_standalone python3 /app/disaggregate.py \
-      --dir /app/export --meter "$METER_ID" --tz "${TZ_VALUE:-Europe/Vienna}" "$@"
+    run_standalone python3 /app/databot.py disaggregate "$@"
     # refresh the unified file, unless only the backtest ran
     case " $* " in *" --backtest "*) ;; *) run_standalone python3 /app/databot.py merge ;; esac
     ;;
@@ -115,8 +116,8 @@ case "$cmd" in
       fi
     done
     tty_flags="-i"; [ -t 0 ] && [ -t 1 ] && tty_flags="-it"
-    docker run --rm $tty_flags --env-file "$ENV_FILE" -v "$DATA_DIR:/app/export" ${extra[@]+"${extra[@]}"} "$IMAGE" \
-      python3 /app/fusion.py --dir /app/export --meter "$METER_ID" --tz "${TZ_VALUE:-Europe/Vienna}" ${args[@]+"${args[@]}"}
+    docker run --rm $tty_flags --env-file "$ENV_FILE" -e EXPORT_DIR=/app/export -v "$DATA_DIR:/app/export" \
+      ${extra[@]+"${extra[@]}"} "$IMAGE" python3 /app/databot.py fuse ${args[@]+"${args[@]}"}
     ;;
   ha-spike)
     ensure_image
@@ -147,7 +148,7 @@ case "$cmd" in
       --charts /app/export --meter "$METER_ID" --tz "${TZ_VALUE:-Europe/Vienna}" \
       --readings "/app/export/${METER_ID}_readings.csv" "$@"
     # refresh the quarter-hour split, then the unified file
-    run_standalone python3 /app/disaggregate.py --dir /app/export --meter "$METER_ID" --tz "${TZ_VALUE:-Europe/Vienna}"
+    run_standalone python3 /app/databot.py disaggregate
     run_standalone python3 /app/databot.py merge
     ;;
   up)
@@ -174,7 +175,9 @@ case "$cmd" in
     ;;
   test)
     ensure_image
-    docker run --rm -v "$PWD/$SRC_DIR:/app" "$IMAGE" sh -c 'pip install -q pytest >/dev/null && python3 -m pytest -q tests'
+    # the sources are mounted, so the tests run against the working tree (pytest.ini sets the paths)
+    docker run --rm -v "$PWD:/src" -w /src "$IMAGE" sh -c \
+      'pip install -q pytest >/dev/null && python3 -m pytest -q -p no:cacheprovider'
     ;;
   build)
     build

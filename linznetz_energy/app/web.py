@@ -1,4 +1,4 @@
-"""The add-on's page in Home Assistant (Ingress): status and history upload.
+"""The page of the add-on "LINZ NETZ energy" in Home Assistant (Ingress): status and history upload.
 
 Home Assistant shows it behind the "Open Web UI" button of the add-on (and optionally in the
 sidebar); HA handles the login and proxies the requests. The server therefore only answers
@@ -24,7 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Optional
 
-logger = logging.getLogger('addon_web')
+logger = logging.getLogger('addon.web')
 
 INGRESS_PROXY = '172.30.32.2'
 PORT = 8099

@@ -10,7 +10,7 @@ name: Build the add-on image
 on:
   push:
     paths:
-      - 'databot/**'
+      - 'lib/**'
       - 'linznetz_energy/**'
       - '.github/workflows/addon-image.yml'
   workflow_dispatch:

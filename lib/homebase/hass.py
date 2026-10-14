@@ -1,7 +1,8 @@
 """Minimal Home Assistant websocket client for statistics and history.
 
-Used by the fusion add-on (through the Supervisor proxy) and by ha_spike.py (with a
-long-lived access token from the Mac). Only the few commands the project needs:
+Used by the add-on (linznetz_energy/, through the Supervisor proxy) and by
+databot/ha_spike.py (with a long-lived access token from the Mac). Only the few commands
+the project needs:
 
   recorder/import_statistics          write external statistics (whole hours, UTC)
   recorder/statistics_during_period   read statistics back
@@ -22,7 +23,7 @@ from zoneinfo import ZoneInfo
 
 import websocket
 
-logger = logging.getLogger('ha')
+logger = logging.getLogger(__name__)
 
 UTC = ZoneInfo('UTC')
 

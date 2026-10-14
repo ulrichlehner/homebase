@@ -6,7 +6,7 @@ into CSV files and renders weekly consumption charts.
 
 ## How it works
 
-`databot/linznetz.py` talks to the portal ("Verbrauchsdateninformation") over plain HTTP: it logs in via
+`lib/homebase/portal.py` talks to the portal ("Verbrauchsdateninformation") over plain HTTP: it logs in via
 the Keycloak SSO, replays the JSF form posts that select *Viertelstundenwerte* and the date range, and
 downloads the CSV exports for *Energiemenge in kWh* and *Leistung in kW*. No browser, no database.
 
@@ -188,17 +188,31 @@ the images are built (a few minutes). The only exception is a manual run of the 
 run `./homebase assets` and commit the PNGs too; `./homebase assets --check` (and the workflow
 `addon-assets.yml`) fails when a PNG no longer matches its SVG.
 
+## Repository layout
+
+| Folder              | Content                                                                                  |
+| ------------------- | ---------------------------------------------------------------------------------------- |
+| `lib/homebase/`     | the shared library (Python package `homebase`), no command line, no add-on specifics: `portal` (LINZ NETZ client), `readings` (the CSV archive), `disaggregate`, `fusion`, `hass` (Home Assistant websocket client) |
+| `databot/`          | the command line tools for Docker on the Mac: `databot.py` (`csv`, `merge`, `check`, `disaggregate`, `fuse`), `render.py` (charts), `reconstruct.py` (chart OCR), `ha_spike.py` (HA import test), the cron image |
+| `linznetz_energy/`  | the Home Assistant add-on: `app/main.py` (main loop), `app/web.py` (its page in HA), `config.yaml`, docs, assets |
+| `smartmeter/`       | the wM-Bus driver and MQTT discovery for the RF readings of the meter                    |
+
+Both images install the library from `lib/` (`databot/Dockerfile` and `linznetz_energy/Dockerfile`,
+built from the repository root). Each folder has its tests next to it (`lib/tests/`,
+`databot/tests/`, `linznetz_energy/tests/`); `pytest.ini` puts the three source folders on the import
+path.
+
 ## Develop
 
 ```bash
-cd databot
-python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m pytest tests
-EXPORT_DIR=../data/databot .venv/bin/python databot.py -c ../.env -d csv
-EXPORT_DIR=../data/databot LOGLEVEL=DEBUG .venv/bin/python render.py
+python3 -m venv .venv && .venv/bin/pip install -e lib -r databot/requirements-dev.txt
+.venv/bin/python -m pytest
+EXPORT_DIR=data/databot .venv/bin/python databot/databot.py -c .env -d csv
+EXPORT_DIR=data/databot LOGLEVEL=DEBUG .venv/bin/python databot/render.py
 ```
 
-Without a local Python, `./homebase test` and `./homebase shell` run the same inside the container.
+Without a local Python, `./homebase test` runs all tests inside the container against the working
+tree, and `./homebase shell` opens a shell there.
 
 ## Setup
 

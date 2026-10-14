@@ -118,7 +118,7 @@ Done when the backtest error is acceptable and the source files are unchanged.
 
 ### Step 3: HA import spike (script from the Mac, test data only)
 
-- [x] `databot/ha.py` (small websocket client, reused by the add-on) and `./homebase ha-spike
+- [x] `lib/homebase/hass.py` (small websocket client, reused by the add-on) and `./homebase ha-spike
       info | import | clear` (`databot/ha_spike.py`), tested without HA; the metadata fields newer
       HA versions want (`mean_type`, `unit_class`) are discovered and logged
 - [x] Run against HA 2026.10.1: one week (168 hours, 70.167 kWh) imported as `linznetz:test_grid`,
@@ -135,7 +135,7 @@ Done when the backtest error is acceptable and the source files are unchanged.
 ### Step 4: Add-on skeleton
 
 - [x] `repository.yaml` + add-on folder `linznetz_energy/` in this repo, reusing `databot/`
-      (`linznetz.py`, `databot.py`, `fusion.py`, `ha.py`); main loop `databot/addon.py`
+      (now the library `lib/homebase/`); main loop `linznetz_energy/app/main.py`
 - [x] `config.yaml` with `homeassistant_api: true` (websocket through the Supervisor, no token),
       options: portal login (password field), meter ID, site name, `fetch_interval_hours`
       (English and German translations); the time zone
@@ -273,6 +273,10 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: code restructured for separation of concerns: `lib/homebase/` (library: portal,
+  readings, disaggregate, fusion, hass), `databot/` (command line tools), `linznetz_energy/app/`
+  (add-on: main, web). All derived files byte-identical before and after, add-on image tested
+  against HA again.
 - 2026-10-14: the user does not want Samba: history upload and status on an add-on page through
   Ingress (the configuration tab cannot take files).
 - 2026-10-14: decisions: RF is the primary source (portal verifies and fills gaps, deviations
