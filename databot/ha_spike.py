@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Step 3 of docs/energy-fusion-plan.md: first contact with the Home Assistant recorder.
 
-Imports one week of fused hours as the external statistic `linznetz:test_grid`, reads
+Imports one week of fused hours as the external statistic `linznetz_energy:test_grid`, reads
 it back, checks that a second import overwrites instead of duplicating, and reads the
-raw history of the RF energy counter. Only touches `linznetz:test_grid`; `clear`
+raw history of the RF energy counter. Only touches `linznetz_energy:test_grid`; `clear`
 deletes it again. Needs HA_URL and HA_TOKEN (a long-lived access token) in .env.
 
   info      HA version, the test statistic (if any), the last day of RF counter states
   import    import the last 7 complete days, read back, overwrite test
-  clear     delete linznetz:test_grid
+  clear     delete linznetz_energy:test_grid
 """
 
 from __future__ import annotations
@@ -28,9 +28,9 @@ from homebase.hass import HomeAssistant, HomeAssistantError
 logger = logging.getLogger('ha_spike')
 
 UTC = ZoneInfo('UTC')
-STATISTIC_ID = 'linznetz:test_grid'
+STATISTIC_ID = 'linznetz_energy:test_grid'
 BASE_METADATA = {
-    'source': 'linznetz',
+    'source': 'linznetz_energy',
     'statistic_id': STATISTIC_ID,
     'name': 'Test grid (homebase spike)',
     'unit_of_measurement': 'kWh',

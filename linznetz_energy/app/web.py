@@ -177,8 +177,8 @@ metering point …{html.escape(status.get('meter_suffix', ''))}</p></div>
         ('Reconstructed history', range_row(data.get('reconstructed'), 'quarter hours')),
     ])}</table></div>
 <div class="card"><h2>Statistics</h2><table>{_rows([
-        ('Portal', stat_row('portal')),
-        ('Fused (Energy dashboard)', stat_row('fused')),
+        ('Grid consumption (for the Energy dashboard)', stat_row('consumption')),
+        ('Portal readings only (for checks)', stat_row('portal')),
     ])}</table></div>
 <div class="card"><h2>Import older history</h2>
 <p>The portal keeps only about 36 months. Upload <code>&lt;meterId&gt;_readings.csv</code> (older portal

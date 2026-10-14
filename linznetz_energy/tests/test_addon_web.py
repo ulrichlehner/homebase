@@ -39,12 +39,12 @@ def test_status_is_merged(tmp_path):
 def test_page_renders_status_and_refreshes_only_while_busy():
     status = {'site': 'place', 'meter_suffix': '5000', 'phase': 'idle',
               'data': {'readings': {'count': 12, 'from': '01.09.2023 00:00', 'to': '14.10.2026 00:45'}},
-              'statistics': {'fused': {'id': 'linznetz:place_grid_energy_fused', 'hours': 3, 'from': '06.03.2023',
+              'statistics': {'consumption': {'id': 'linznetz_energy:place_grid_consumption', 'hours': 3, 'from': '06.03.2023',
                                        'to': '13.10.2026 23:00', 'kwh': 7301.4, 'sources': {'portal': 2},
                                        'flagged': 1}},
               'last_import': {'at': '2026-10-14T15:00:00+00:00', 'lines': ['x.csv: 4 of 12 readings added']}}
     page = W.render_page(status)
-    assert 'linznetz:place_grid_energy_fused' in page and '7301.4 kWh' in page and '1 deviating hours' in page
+    assert 'linznetz_energy:place_grid_consumption' in page and '7301.4 kWh' in page and '1 deviating hours' in page
     assert 'x.csv: 4 of 12 readings added' in page and 'http-equiv="refresh"' not in page
     assert 'http-equiv="refresh"' in W.render_page({**status, 'phase': 'downloading'})
     assert '&lt;script&gt;' in W.render_page({'site': '<script>'})   # escaped

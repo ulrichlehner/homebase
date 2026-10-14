@@ -243,7 +243,7 @@ Clone this repo and create a `./.env` in the app folder with following content, 
 ```bash
 USERNAME=<LINZ NETZ portal login>
 PASSWORD=<LINZ NETZ portal password>
-METER_ID=<your metering point number, used as file name prefix>
+METER_ID=<your metering point number (Zählpunktnummer, 33 characters, not the meter number), used as file name prefix>
 TZ=Europe/Vienna
 DATA_DIR="/Users/<you>/Library/Mobile Documents/com~apple~CloudDocs/<folder>"  # optional, default ./data/databot
 # optional, only for `./homebase ha-spike` (Home Assistant statistics import test)

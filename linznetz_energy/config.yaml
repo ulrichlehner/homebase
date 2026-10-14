@@ -28,14 +28,14 @@ map:
   # import/ folder for older history, part of backups
   - addon_config:rw
 options:
-  username: ""
-  password: ""
-  meter_id: ""
+  portal_username: ""
+  portal_password: ""
+  metering_point: ""
   site: ""
   fetch_interval_hours: 12
 schema:
-  username: str
-  password: password
-  meter_id: match(^AT[0-9A-Z]{31}$)
+  portal_username: str
+  portal_password: password
+  metering_point: match(^AT[0-9A-Z]{31}$)
   site: match(^[a-z0-9_]+$)
   fetch_interval_hours: int(6,48)

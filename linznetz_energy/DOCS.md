@@ -15,9 +15,9 @@ writes them into Home Assistant as a long-term statistic for the Energy dashboar
 
 | Option                 | Meaning                                                                    |
 | ---------------------- | -------------------------------------------------------------------------- |
-| `username`             | portal login                                                               |
-| `password`             | portal password                                                            |
-| `meter_id`             | the 33-character metering point number (Zählpunktnummer), starts with `AT`  |
+| `portal_username`      | portal login                                                               |
+| `portal_password`      | portal password                                                            |
+| `metering_point`       | the 33-character metering point number (Zählpunktnummer, not the meter number), starts with `AT` |
 | `site`                 | short lowercase name of the place, part of the statistic ID                |
 | `fetch_interval_hours` | hours between two portal fetches (default 12, 6 to 48)                     |
 
@@ -34,10 +34,10 @@ Every hour, a few minutes past the full hour, the add-on
 3. imports two external statistics, rebuilt completely every time, so values the portal corrects
    later are corrected in Home Assistant too:
 
-   | Statistic                             | Content                                                      |
-   | ------------------------------------- | ------------------------------------------------------------ |
-   | `linznetz:<site>_grid_energy_portal`  | the portal readings only                                     |
-   | `linznetz:<site>_grid_energy_fused`   | the best source per hour: portal readings, then the imported reconstructed history; the live wM-Bus readings follow |
+   | Statistic                                         | Content                                          |
+   | ------------------------------------------------- | ------------------------------------------------ |
+   | `linznetz_energy:<site>_grid_consumption`         | "<Site> grid consumption": the best source per hour (portal readings, then the imported reconstructed history; the live wM-Bus readings follow). This is the one for the Energy dashboard |
+   | `linznetz_energy:<site>_grid_consumption_portal`  | "<Site> grid consumption (portal)": the portal readings only, to check the first one |
 
 Pick a statistic in a statistics graph card, or in the Energy dashboard as grid consumption.
 
@@ -50,7 +50,7 @@ the add-on's page inside Home Assistant. It shows
   while something runs, plus the last and next run and the portal login,
 - the data it has: portal readings and reconstructed history with their ranges,
 - both statistics with their range, total and sources (and deviating hours, once the live
-  readings are part of the fused statistic),
+  readings are part of the consumption statistic),
 - the result of the last import.
 
 ## Bringing older history
@@ -61,7 +61,7 @@ the add-on page under **Import older history** (the names start with your meteri
 - `<meterId>_readings.csv`: older portal readings. They are merged row by row; readings the add-on
   already has win, so the file can overlap with the portal.
 - `<meterId>_reconstructed_15min.csv`: the reconstructed history from `./homebase disaggregate`. It
-  replaces an earlier one and becomes part of the fused statistic.
+  replaces an earlier one and becomes part of the consumption statistic.
 
 The add-on imports the files right away, the page and a notification list what was imported.
 Importing the same file again changes nothing. Files that cannot be imported (another metering
@@ -77,4 +77,4 @@ The CSV files (readings, the reconstructed history and the raw portal exports) l
 configuration folder `/addon_configs/<id>_linznetz_energy/`, reachable with the Samba or SSH
 add-on, and are part of every Home Assistant backup that includes the add-on.
 
-To remove the statistic: Developer tools > Statistics, search `linznetz:`, delete.
+To remove the statistics: Developer tools > Statistics, search `linznetz_energy:`, delete.

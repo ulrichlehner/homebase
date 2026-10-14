@@ -12,9 +12,10 @@ Every hour, a few minutes past the full hour:
      config folder (part of every HA backup),
   3. rebuild the hourly statistics from the CSV files and import them completely (HA
      overwrites hours that already exist):
-       linznetz:<site>_grid_energy_portal   the portal readings only
-       linznetz:<site>_grid_energy_fused    the best source per hour: portal, then the
-                                            reconstructed history (RF follows in step 6)
+       linznetz_energy:<site>_grid_consumption          the best source per hour (portal, then
+                                                        the reconstructed history; RF follows),
+                                                        the one for the Energy dashboard
+       linznetz_energy:<site>_grid_consumption_portal   the portal readings only, for checks
 
 A rejected portal login raises a persistent notification in HA and the loop goes on;
 the notification disappears after the next successful login. Credentials never appear
@@ -59,21 +60,26 @@ DOWNLOAD_NOTIFICATION = 'linznetz_energy_download'
 IMPORT_DIR = 'import'
 
 
+STATISTIC_DOMAIN = 'linznetz_energy'   # = the add-on slug, the source of the external statistics
+
+
 @dataclass(frozen=True)
 class Options:
-    username: str
-    password: str
-    meter_id: str
+    portal_username: str
+    portal_password: str
+    metering_point: str          # the 33-character Zählpunktnummer (not the meter number)
     site: str
     fetch_interval_hours: int = 12
 
     @property
-    def portal_statistic(self) -> str:
-        return f'linznetz:{self.site}_grid_energy_portal'
+    def consumption_statistic(self) -> str:
+        """The statistic for the Energy dashboard: the best source per hour."""
+        return f'{STATISTIC_DOMAIN}:{self.site}_grid_consumption'
 
     @property
-    def fused_statistic(self) -> str:
-        return f'linznetz:{self.site}_grid_energy_fused'
+    def portal_statistic(self) -> str:
+        """The portal readings only, to check the consumption statistic."""
+        return f'{STATISTIC_DOMAIN}:{self.site}_grid_consumption_portal'
 
     @property
     def title(self) -> str:
@@ -82,13 +88,13 @@ class Options:
 
 def load_options(path: Path) -> Options:
     raw = json.loads(path.read_text())
-    missing = [k for k in ('username', 'password', 'meter_id', 'site') if not raw.get(k)]
+    missing = [k for k in ('portal_username', 'portal_password', 'metering_point', 'site') if not raw.get(k)]
     if missing:
         raise SystemExit(f'Missing add-on option(s): {", ".join(missing)}')
     site = raw['site'].strip().lower()
     if not site.replace('_', '').isalnum():
         raise SystemExit('Option site may only contain letters, digits and _')
-    return Options(raw['username'], raw['password'], raw['meter_id'].strip(), site,
+    return Options(raw['portal_username'], raw['portal_password'], raw['metering_point'].strip(), site,
                    int(raw.get('fetch_interval_hours') or 12))
 
 
@@ -125,10 +131,10 @@ def next_run(now: datetime) -> datetime:
 
 def fetch_portal(options: Options, store: Path, tz: str) -> None:
     """New readings from the portal into <meterId>_readings.csv (and the unified file)."""
-    readings.update_from_portal(options.username, options.password, options.meter_id, tz, store)
+    readings.update_from_portal(options.portal_username, options.portal_password, options.metering_point, tz, store)
 
 
-def import_history(store: Path, meter_id: str) -> list:
+def import_history(store: Path, metering_point: str) -> list:
     """Takes over the history files in <store>/import/ and returns what was done, one line
     per file. Readings are merged row by row (rows the add-on already has win, they are the
     newer portal values); the reconstructed quarter hours replace the previous ones. Files
@@ -138,10 +144,10 @@ def import_history(store: Path, meter_id: str) -> list:
     done = []
     for f in files:
         try:
-            if not f.name.startswith(meter_id + '_'):
-                raise ValueError(f'belongs to another meter, expected {meter_id[:6]}...{meter_id[-4:]}_*.csv')
+            if not f.name.startswith(metering_point + '_'):
+                raise ValueError(f'belongs to another metering point, expected {metering_point[:6]}...{metering_point[-4:]}_*.csv')
             if f.name.endswith('_readings.csv'):
-                target = store / f'{meter_id}_readings.csv'
+                target = store / f'{metering_point}_readings.csv'
                 try:
                     incoming = readings.read_csv_file(f)
                 except SystemExit as err:   # read_csv_file reports a wrong header this way
@@ -176,29 +182,29 @@ def to_stats(hours: list) -> list:
     return [{'start': h.start, 'sum': h.sum_wh / 1000, 'state': h.sum_wh / 1000} for h in hours]
 
 
-def portal_hours(store: Path, meter_id: str) -> list:
+def portal_hours(store: Path, metering_point: str) -> list:
     """Every hour the portal has (fusion.Hour), running sum in Wh."""
-    path = store / f'{meter_id}_readings.csv'
+    path = store / f'{metering_point}_readings.csv'
     if not path.exists():
         return []
     return fusion.fuse(fusion.read_portal(path), {}, {})
 
 
-def fused_hours(store: Path, meter_id: str) -> list:
+def fused_hours(store: Path, metering_point: str) -> list:
     """The best source per hour: portal readings, then the reconstructed history."""
-    path = store / f'{meter_id}_readings.csv'
+    path = store / f'{metering_point}_readings.csv'
     portal = fusion.read_portal(path) if path.exists() else {}
-    reconstructed = fusion.read_reconstructed(store / f'{meter_id}_reconstructed_15min.csv')
+    reconstructed = fusion.read_reconstructed(store / f'{metering_point}_reconstructed_15min.csv')
     return fusion.fuse(portal, {}, reconstructed)
 
 
-def portal_statistics(store: Path, meter_id: str) -> list:
+def portal_statistics(store: Path, metering_point: str) -> list:
     """[{'start', 'sum', 'state'}] of every hour the portal has, running sum in kWh."""
-    return to_stats(portal_hours(store, meter_id))
+    return to_stats(portal_hours(store, metering_point))
 
 
-def fused_statistics(store: Path, meter_id: str) -> list:
-    return to_stats(fused_hours(store, meter_id))
+def fused_statistics(store: Path, metering_point: str) -> list:
+    return to_stats(fused_hours(store, metering_point))
 
 
 def _range(times: list, zone: ZoneInfo, unit_fmt: str = '%d.%m.%Y %H:%M') -> Optional[dict]:
@@ -208,9 +214,9 @@ def _range(times: list, zone: ZoneInfo, unit_fmt: str = '%d.%m.%Y %H:%M') -> Opt
             'to': max(times).astimezone(zone).strftime(unit_fmt)}
 
 
-def data_status(store: Path, meter_id: str, zone: ZoneInfo) -> dict:
-    measured = readings.read_csv_file(readings.readings_path(store, meter_id))
-    reconstructed = fusion.read_reconstructed(store / f'{meter_id}_reconstructed_15min.csv')
+def data_status(store: Path, metering_point: str, zone: ZoneInfo) -> dict:
+    measured = readings.read_csv_file(readings.readings_path(store, metering_point))
+    reconstructed = fusion.read_reconstructed(store / f'{metering_point}_reconstructed_15min.csv')
     return {'readings': _range([datetime.fromtimestamp(t, UTC) for t in measured], zone),
             'reconstructed': _range(list(reconstructed), zone)}
 
@@ -255,7 +261,7 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime) -> Non
     zone = ZoneInfo(tz)
     if any((store / IMPORT_DIR).glob('*.csv')):
         web.write_status(store, phase='importing', detail='older history')
-    imported = import_history(store, options.meter_id)
+    imported = import_history(store, options.metering_point)
     if imported:
         web.write_status(store, last_import={'at': now.isoformat(), 'lines': imported})
         notify(hass, IMPORT_NOTIFICATION, 'LINZ NETZ energy: history imported',
@@ -263,7 +269,7 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime) -> Non
     web.write_status(store, import_pending=False)
     state = read_state(store)
     if portal_due(state, now, options.fetch_interval_hours):
-        readings_file = readings.readings_path(store, options.meter_id)
+        readings_file = readings.readings_path(store, options.metering_point)
         first_download = not readings_file.exists()
         web.write_status(store, phase='downloading',
                          detail='first download, about a minute' if first_download else 'new readings')
@@ -302,14 +308,16 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime) -> Non
         web.write_status(store, portal={'ok': state.get('portal_ok'),
                                         'login_failed': state.get('portal_login_failed')})
 
-    web.write_status(store, phase='statistics', detail='', data=data_status(store, options.meter_id, zone))
+    web.write_status(store, phase='statistics', detail='', data=data_status(store, options.metering_point, zone))
     written = {}
-    for key, statistic_id, hours in (
-            ('portal', options.portal_statistic, portal_hours(store, options.meter_id)),
-            ('fused', options.fused_statistic, fused_hours(store, options.meter_id))):
+    for key, statistic_id, name, hours in (
+            ('portal', options.portal_statistic, f'{options.title} grid consumption (portal)',
+             portal_hours(store, options.metering_point)),
+            ('consumption', options.consumption_statistic, f'{options.title} grid consumption',
+             fused_hours(store, options.metering_point))):
         if hours:
             stats = to_stats(hours)
-            import_statistic(hass, statistic_id, f'{options.title} grid energy ({key})', stats)
+            import_statistic(hass, statistic_id, name, stats)
             logger.info('Imported %s: %d hours %s to %s, %.3f kWh', statistic_id, len(stats),
                         stats[0]['start'].isoformat(), stats[-1]['start'].isoformat(), stats[-1]['sum'])
             written[key] = statistic_status(statistic_id, hours, zone)
@@ -338,8 +346,8 @@ def main(argv=None) -> int:
     options = load_options(Path(os.environ.get('ADDON_OPTIONS', '/data/options.json')))
     store = Path(os.environ.get('ADDON_STORE', '/config'))
     (store / IMPORT_DIR).mkdir(parents=True, exist_ok=True)
-    logger.info('Site %s, meter ...%s, data in %s', options.site, options.meter_id[-4:], store)
-    web.write_status(store, site=options.site, meter_suffix=options.meter_id[-4:], phase='starting', detail='')
+    logger.info('Site %s, metering point ...%s, data in %s', options.site, options.metering_point[-4:], store)
+    web.write_status(store, site=options.site, meter_suffix=options.metering_point[-4:], phase='starting', detail='')
 
     wake = threading.Event()   # set by an upload on the add-on page: run right away
     if not args.once:

@@ -16,7 +16,7 @@ NOW = datetime(2026, 10, 14, 12, 7, tzinfo=UTC)
 
 
 def options(**kw):
-    return addon.Options(**{'username': 'u', 'password': 'secret-pw', 'meter_id': METER, 'site': 'place', **kw})
+    return addon.Options(**{'portal_username': 'u', 'portal_password': 'secret-pw', 'metering_point': METER, 'site': 'place', **kw})
 
 
 class FakeHass:
@@ -51,13 +51,14 @@ def write_reconstructed(folder: Path, start: datetime, hours: int, name=None):
 
 def test_load_options(tmp_path):
     path = tmp_path / 'options.json'
-    path.write_text(json.dumps({'username': 'u', 'password': 'p', 'meter_id': f' {METER} ', 'site': 'Place_1'}))
+    path.write_text(json.dumps({'portal_username': 'u', 'portal_password': 'p', 'metering_point': f' {METER} ', 'site': 'Place_1'}))
     o = addon.load_options(path)
-    assert o.meter_id == METER and o.site == 'place_1' and o.fetch_interval_hours == 12
-    assert o.portal_statistic == 'linznetz:place_1_grid_energy_portal'
+    assert o.metering_point == METER and o.site == 'place_1' and o.fetch_interval_hours == 12
+    assert o.portal_statistic == 'linznetz_energy:place_1_grid_consumption_portal'
+    assert o.consumption_statistic == 'linznetz_energy:place_1_grid_consumption'
     assert o.title == 'Place 1'
-    path.write_text(json.dumps({'username': 'u', 'password': '', 'meter_id': METER, 'site': 'x'}))
-    with pytest.raises(SystemExit, match='password'):
+    path.write_text(json.dumps({'portal_username': 'u', 'portal_password': '', 'metering_point': METER, 'site': 'x'}))
+    with pytest.raises(SystemExit, match='portal_password'):
         addon.load_options(path)
 
 
@@ -85,11 +86,11 @@ def test_run_once_imports_the_portal_statistic_in_chunks(tmp_path, monkeypatch):
     assert len(fetched) == 1
     # portal and fused statistic, each in chunks of 5 hours
     assert [(m['statistic_id'], len(stats)) for m, stats in hass.imports] == \
-        [('linznetz:place_grid_energy_portal', 5)] * 2 + [('linznetz:place_grid_energy_portal', 2)] + \
-        [('linznetz:place_grid_energy_fused', 5)] * 2 + [('linznetz:place_grid_energy_fused', 2)]
+        [('linznetz_energy:place_grid_consumption_portal', 5)] * 2 + [('linznetz_energy:place_grid_consumption_portal', 2)] + \
+        [('linznetz_energy:place_grid_consumption', 5)] * 2 + [('linznetz_energy:place_grid_consumption', 2)]
     metadata = hass.imports[0][0]
-    assert metadata['source'] == 'linznetz' and metadata['name'] == 'Place grid energy (portal)'
-    assert hass.imports[3][0]['name'] == 'Place grid energy (fused)'
+    assert metadata['source'] == 'linznetz_energy' and metadata['name'] == 'Place grid consumption (portal)'
+    assert hass.imports[3][0]['name'] == 'Place grid consumption'
     last = hass.imports[-1][1][-1]
     assert last['sum'] == pytest.approx(4.8) and last['start'].minute == 0
     assert ('persistent_notification', 'dismiss', {'notification_id': addon.LOGIN_NOTIFICATION}) in hass.services
@@ -167,7 +168,7 @@ def test_fused_statistic_includes_the_reconstructed_history(tmp_path, monkeypatc
     by_id = {}
     for metadata, stats in hass.imports:
         by_id.setdefault(metadata['statistic_id'], []).extend(stats)
-    portal, fused = by_id['linznetz:place_grid_energy_portal'], by_id['linznetz:place_grid_energy_fused']
+    portal, fused = by_id['linznetz_energy:place_grid_consumption_portal'], by_id['linznetz_energy:place_grid_consumption']
     assert len(portal) == 2 and len(fused) == 5
     assert fused[0]['start'] == portal_start - timedelta(hours=3)
     assert fused[-1]['sum'] == pytest.approx(3 * 0.2 + 2 * 0.4)        # 3 reconstructed + 2 portal hours

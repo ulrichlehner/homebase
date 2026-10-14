@@ -43,12 +43,19 @@ files, HA statistics have no field for it.
 | What                         | ID                                         | Notes                                     |
 | ---------------------------- | ------------------------------------------ | ----------------------------------------- |
 | RF sensors (existing)        | `sensor.<place>_grid_*`                    | unchanged, stock amiplus entity names     |
-| portal only                  | `linznetz:<place>_grid_energy_portal`      | external statistic, kWh, `sum`            |
-| fused, used in the Energy tab | `linznetz:<place>_grid_energy_fused`       | external statistic, kWh, `sum`            |
-| fused power (optional)       | `linznetz:<place>_grid_power_fused`        | external statistic, kW, `mean`/`min`/`max` |
+| fused, used in the Energy tab | `linznetz_energy:<place>_grid_consumption`        | external statistic, kWh, `sum`, "<Place> grid consumption" |
+| portal only, for checks      | `linznetz_energy:<place>_grid_consumption_portal` | external statistic, kWh, `sum`, "<Place> grid consumption (portal)" |
+| feed-in (PV site, later)     | `linznetz_energy:<place>_grid_return`             | external statistic, kWh, `sum`            |
+| fused power (optional)       | `linznetz_energy:<place>_grid_power`              | external statistic, kW, `mean`/`min`/`max` |
 | RF vs portal deviation       | `sensor.<place>_grid_rf_deviation`         | MQTT discovery, published by the add-on   |
 
-The RF entities keep their IDs: renaming them gains nothing (the `linznetz:` prefix already
+The statistic domain is the add-on slug `linznetz_energy` (unique: `linznetz` is also the domain
+of the HACS integration ha_linznetz). The main statistic has the plain name, matching HA's term
+"grid consumption" and the RF sensor (`total_energy_consumption`); "fused" is an implementation
+detail. Add-on options: `portal_username`, `portal_password`, `metering_point` (the
+Zählpunktnummer, not the meter number), `site`, `fetch_interval_hours`.
+
+The RF entities keep their IDs: renaming them gains nothing (the `linznetz_energy:` prefix already
 separates the derived statistics) and every rename risks the existing history. The display names
 of the external statistics say `(portal)` / `(fused)` so the Energy tab never shows two entries
 that look the same. Everything takes the site as a parameter, a second site (with PV feed-in)
@@ -60,7 +67,7 @@ Each step ends with something that can be checked before the next one starts. St
 done in one branch (`fusion-disaggregate`, PR #13, step 5 pulled in so the first install starts with
 the full history), merged so the add-on installs from the plain repository URL. Steps 6 to 8 follow
 in one new branch and PR. Nothing touches the live
-HA setup before step 7, except the separate `…_grid_energy_portal` statistic.
+HA setup before step 7, except the separate `…_grid_consumption_portal` statistic.
 
 ### Step 0: Prerequisites
 
@@ -143,7 +150,7 @@ Done when the backtest error is acceptable and the source files are unchanged.
 - [x] Image per architecture (`aarch64`, `amd64`) built by GitHub Actions
       (`.github/workflows/addon-image.yml`), `ghcr.io/ulrichlehner/homebase-linznetz-energy-<arch>`
 - [x] CSV storage in the add-on config folder (`addon_config`, part of HA backups)
-- [x] Portal fetch every 12 hours, import of `…_grid_energy_portal` every hour (complete rebuild,
+- [x] Portal fetch every 12 hours, import of `…_grid_consumption_portal` every hour (complete rebuild,
       in chunks of 5000 rows)
 - [x] Login failure is its own state: HA notification, retry after the interval, the statistic is
       still imported from the CSV files; the notification disappears after the next good login
@@ -151,7 +158,7 @@ Done when the backtest error is acceptable and the source files are unchanged.
 - [ ] Portal client: tests against recorded, anonymized portal responses of each step of the
       form flow, so layout changes of the portal show up in the tests
 - [x] Tested from the Mac with the add-on image against HA: 27337 hours (6626.673 kWh) imported
-      as `linznetz:<place>_grid_energy_portal`, portal login and the login-failure notification
+      as `linznetz_energy:<place>_grid_consumption_portal`, portal login and the login-failure notification
       (created and dismissed again) work
 - [x] Image published and public on ghcr.io (both architectures, version 0.1.0)
 - [x] Versioning: starts at 0.1.0 (incomplete until step 7), release-please derives the next version from the
@@ -175,8 +182,8 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
       `import/failed/`; idempotent; HA notification with what was imported
 - [x] First download announced and reported with a notification (count and range; failure and
       "no data" too)
-- [x] New statistic `linznetz:<site>_grid_energy_fused` (portal, then reconstructed; RF in step 6),
-      `…_grid_energy_portal` stays portal only
+- [x] New statistic `linznetz_energy:<site>_grid_consumption` (portal, then reconstructed; RF in step 6),
+      `…_grid_consumption_portal` stays portal only
 - [x] Tested end to end with the add-on image against HA: 109348 readings and 17180
       reconstructed quarter hours imported; `…_portal` 27337 hours from 2023-09-01 (6626.673
       kWh), `…_fused` 31631 hours from 2023-03-06 (7301.395 kWh)
@@ -190,7 +197,7 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
 ### Step 6: Fusion live, running alongside the current setup
 
 - [ ] Hourly (a few minutes past the hour): read the RF counter history, rebuild and import
-      `…_grid_energy_fused`
+      `…_grid_consumption`
 - [x] Priority in `fusion.py` changed to RF primary: RF valid > portal measured > portal
       substitute > reconstructed > portal partial; deviating hours (more than 2 %, at least 20 Wh
       per hour) keep RF and are flagged in the fused CSV (`portal_kwh`, `flag`); dry run with the
@@ -207,7 +214,7 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
 
 ### Step 7: Switch the Energy tab
 
-- [ ] HA backup, then change the grid source to `…_grid_energy_fused` (reversible, the old
+- [ ] HA backup, then change the grid source to `…_grid_consumption` (reversible, the old
       statistics stay)
 - [ ] Optional: `…_grid_power_fused` for the power chart
 - [ ] Energy tab shows March 2023 to now, daily totals match the portal
@@ -273,9 +280,13 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
-- 2026-10-14: HA cleaned up after the tests: the statistics `…_grid_energy_portal` and
-  `…_grid_energy_fused` written by the local add-on test runs deleted (the installed add-on creates
-  them fresh), no `linznetz:` statistic, entity or notification left from the tests.
+- 2026-10-14: naming review before the first install: statistic domain `linznetz_energy` (= add-on
+  slug), `…_grid_consumption` (Energy dashboard) and `…_grid_consumption_portal`, options
+  `portal_username`, `portal_password`, `metering_point`.
+- 2026-10-14: HA cleaned up after the tests: the statistics `…_grid_consumption_portal` and
+  `…_grid_consumption` written by the local add-on test runs deleted (the installed add-on creates
+  them fresh), no `linznetz:` statistic, entity or notification left from the tests (since renamed to
+  `linznetz_energy:<site>_grid_consumption` and `…_grid_consumption_portal`).
 - 2026-10-14: code restructured for separation of concerns: `lib/homebase/` (library: portal,
   readings, disaggregate, fusion, hass), `databot/` (command line tools), `linznetz_energy/app/`
   (add-on: main, web). All derived files byte-identical before and after, add-on image tested
