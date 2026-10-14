@@ -7,7 +7,6 @@
       "package-name": "linznetz_energy",
       "include-component-in-tag": false,
       "changelog-path": "linznetz_energy/CHANGELOG.md",
-      "release-as": "0.1.0",
       "extra-files": [
         {
           "type": "yaml",

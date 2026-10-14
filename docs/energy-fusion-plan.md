@@ -222,7 +222,7 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
 ### Step 8: Docs and cleanup
 
 - [ ] Revoke the long-lived HA token used by `ha-spike` (profile > Security)
-- [ ] After the first release (v0.1.0): remove `release-as` from `release-please-config.json`,
+- [x] After the first release (v0.1.0): remove `release-as` from `release-please-config.json`,
       otherwise every release PR stays at 0.1.0
 - [ ] Release 1.0.0 deliberately (`release-as: 1.0.0`) once the Energy tab uses the fused statistic
 - [ ] Remove `stage: experimental` from `linznetz_energy/config.yaml` once the Energy tab uses
@@ -280,6 +280,9 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: first install: starting before configuring failed with a regex message. Onboarding
+  reworked (0.1.1): the add-on starts anyway and explains the missing settings, the metering point
+  accepts spaces and lowercase, `site` defaults to `home`. HA now calls add-ons "Apps".
 - 2026-10-14: naming review before the first install: statistic domain `linznetz_energy` (= add-on
   slug), `…_grid_consumption` (Energy dashboard) and `…_grid_consumption_portal`, options
   `portal_username`, `portal_password`, `metering_point`.
