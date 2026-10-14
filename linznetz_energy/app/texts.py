@@ -17,7 +17,7 @@ TEXTS = {
                                          'Please compare it with your bill (the Zählpunktnummer, not the meter number).',
         'problem.metering_point_prefix': 'The metering point has to start with AT. Please compare it with your bill '
                                          '(the Zählpunktnummer, not the meter number).',
-        'problem.site': 'The site may only contain letters, digits and _.',
+        'problem.site': 'The site needs at least one letter or digit.',
         # notifications
         'setup.title': 'LINZ NETZ Energy: setup needed',
         'setup.intro': 'The app needs a few settings before it can fetch anything:',
@@ -46,6 +46,8 @@ TEXTS = {
         'import.unknown_file': 'only <metering point>_readings.csv and <metering point>_reconstructed_15min.csv can be '
                                'imported',
         # page
+        'stat.consumption': '{site} grid consumption',
+        'stat.portal': '{site} grid consumption (portal)',
         'page.not_configured': 'Not configured yet',
         'page.site': 'Site {site} · metering point {metering_point}',
         'source.rf': 'radio (RF)',
@@ -113,7 +115,7 @@ TEXTS = {
                                          'Zählernummer).',
         'problem.metering_point_prefix': 'Der Zählpunkt muss mit AT beginnen. Bitte mit der Rechnung vergleichen '
                                          '(die Zählpunktnummer, nicht die Zählernummer).',
-        'problem.site': 'Der Standort darf nur Buchstaben, Ziffern und _ enthalten.',
+        'problem.site': 'Der Standort braucht mindestens einen Buchstaben oder eine Ziffer.',
         'setup.title': 'LINZ NETZ Energy: Einrichtung nötig',
         'setup.intro': 'Die App braucht noch ein paar Einstellungen, bevor sie Daten holen kann:',
         'setup.howto': 'Öffne in Home Assistant die App „LINZ NETZ Energy“, fülle im Tab Konfiguration die Felder aus '
@@ -140,6 +142,8 @@ TEXTS = {
         'import.other_meter': 'die Datei gehört zu einem anderen Zählpunkt',
         'import.bad_header': 'die Datei hat nicht die erwarteten Spalten',
         'import.unknown_file': 'importiert werden nur <Zählpunkt>_readings.csv und <Zählpunkt>_reconstructed_15min.csv',
+        'stat.consumption': '{site} Netzbezug',
+        'stat.portal': '{site} Netzbezug (Portal)',
         'page.not_configured': 'Noch nicht eingerichtet',
         'page.site': 'Standort {site} · Zählpunkt {metering_point}',
         'source.rf': 'Funk (RF)',

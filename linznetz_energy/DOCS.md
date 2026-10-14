@@ -32,7 +32,7 @@ notifications follow the language of Home Assistant (German and English; the log
 | `portal_username`      | portal login                                                               |
 | `portal_password`      | portal password                                                            |
 | `metering_point`       | the metering point number (Zählpunktnummer, not the meter number), 33 characters starting with `AT`; spaces, dots and lowercase letters are fine |
-| `site`                 | short name of the place, part of the statistic ID (default `home`)          |
+| `site`                 | name of the place, shown as you write it (default `Home`); the statistic IDs use a simplified form (`Zweitwohnsitz Linz` → `zweitwohnsitz_linz`) |
 | `fetch_interval_hours` | hours between two portal fetches (default 12, 6 to 48)                     |
 
 The portal shows a day only one to two days later, so fetching more often brings nothing new;
@@ -50,8 +50,8 @@ Every hour, a few minutes past the full hour, the add-on
 
    | Statistic                                         | Content                                          |
    | ------------------------------------------------- | ------------------------------------------------ |
-   | `linznetz_energy:<site>_grid_consumption`         | "<Site> grid consumption": the best source per hour (portal readings, then the imported reconstructed history; the live wM-Bus readings follow). This is the one for the Energy dashboard |
-   | `linznetz_energy:<site>_grid_consumption_portal`  | "<Site> grid consumption (portal)": the portal readings only, to check the first one |
+   | `linznetz_energy:<site>_grid_consumption`         | "<Site> grid consumption" (in German "<Site> Netzbezug"): the best source per hour (portal readings, then the imported reconstructed history; the live wM-Bus readings follow). This is the one for the Energy dashboard |
+   | `linznetz_energy:<site>_grid_consumption_portal`  | "<Site> grid consumption (portal)" ("<Site> Netzbezug (Portal)"): the portal readings only, to check the first one |
 
 Pick a statistic in a statistics graph card, or in the Energy dashboard as grid consumption.
 
