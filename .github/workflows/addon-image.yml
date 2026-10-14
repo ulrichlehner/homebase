@@ -32,7 +32,9 @@ jobs:
 
       - name: Read the add-on version
         id: version
-        run: echo "version=$(sed -nE 's/^version: *"?([^"]+)"?/\1/p' linznetz_energy/config.yaml)" >> "$GITHUB_OUTPUT"
+        run: |
+          version="$(sed -nE 's/^version: *"?([^"]+)"?/\1/p' linznetz_energy/config.yaml)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Log in to the Container registry
         uses: docker/login-action@v3
