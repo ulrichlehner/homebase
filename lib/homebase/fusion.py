@@ -1,21 +1,22 @@
-"""Fuses portal readings, live radio (RF) meter readings and the reconstructed history
-into one hourly consumption series, and validates RF against the portal.
+"""Fuses portal readings, the live meter counter and the reconstructed history into one
+hourly consumption series, and validates the live counter against the portal.
 
 Sources, best first, per UTC hour:
 
-  rf                  the RF meter counter (wM-Bus via Home Assistant), cleaned
+  live                the live meter counter in Home Assistant (e.g. wM-Bus radio), cleaned
   portal              all 4 quarter hours measured by LINZ NETZ
   portal_substitute   all 4 quarter hours present, but some are Ersatzwerte (estimates)
   reconstructed       the profile split of the old chart blocks (disaggregate.py)
   portal_partial      some quarter hours missing, the rest measured or substituted
 
-RF is the primary source: the portal verifies it and fills its gaps (missing or misread
-hours, and everything before RF readings exist). An RF hour whose complete portal value
-differs by more than the hourly tolerance keeps the RF value and is flagged `deviation`.
+The live counter is the primary source: the portal verifies it and fills its gaps (missing
+or misread hours, and everything before live readings exist). A live hour whose complete
+portal value differs by more than the hourly tolerance keeps the live value and is flagged
+`deviation`.
 An hour no source covers is left out (a gap), the running sum simply continues.
 All arithmetic is in integer Wh, so the running sum cannot drift.
 
-RF input is the raw counter (kWh total, as the HA history shows it), not HA's hourly
+The live input is the raw counter (kWh total, as the HA history shows it), not HA's hourly
 statistics: those already contain the spikes of misread telegrams. The counter is
 cleaned before use:
 
@@ -26,7 +27,7 @@ cleaned before use:
      order if they continue it plausibly; a misread phase (wrong scale, zeros) breaks
      that chain and is dropped,
   3. the counter at each full hour is interpolated between the accepted readings
-     around it, if they are at most `max_gap` (60 minutes) apart; otherwise the hour has no RF value.
+     around it, if they are at most `max_gap` (60 minutes) apart; otherwise the hour has no live value.
 
 Nothing is modified: the output is <meterId>_fused_1h.csv. The same inputs give the
 same file.
@@ -51,16 +52,16 @@ HOUR = timedelta(hours=1)
 QUARTER = timedelta(minutes=15)
 
 DEFAULT_MAX_KW = 20.0                       # above any household connection
-# Longest RF silence still interpolated. The meter has phases of about 30 minutes in which
+# Longest silence of the live counter still interpolated. The meter has phases of about 30 minutes in which
 # the driver discards the energy record; the counter on both sides is exact, a 60 minute
 # limit costs about 1 Wh per hour against the portal (2026-10 data).
 DEFAULT_MAX_GAP = timedelta(minutes=60)
-DEFAULT_DAY_TOLERANCE = 0.02                # RF vs portal per day, share of the portal value
+DEFAULT_DAY_TOLERANCE = 0.02                # live vs portal per day, share of the portal value
 DEFAULT_DAY_TOLERANCE_WH = 50               # ... but at least this much
-DEFAULT_HOUR_TOLERANCE = 0.02               # RF vs portal per hour, share of the portal value
-DEFAULT_HOUR_TOLERANCE_WH = 20              # ... but at least this much (RF and portal agree to ~1 Wh)
+DEFAULT_HOUR_TOLERANCE = 0.02               # live vs portal per hour, share of the portal value
+DEFAULT_HOUR_TOLERANCE_WH = 20              # ... but at least this much (live and portal agree to ~1 Wh)
 
-SOURCES = ('rf', 'portal', 'portal_substitute', 'reconstructed', 'portal_partial')
+SOURCES = ('live', 'portal', 'portal_substitute', 'reconstructed', 'portal_partial')
 OUTPUT_HEADER = ['start_local', 'start_utc', 'kwh', 'source', 'sum_kwh', 'portal_kwh', 'flag']
 
 
@@ -98,7 +99,7 @@ def read_reconstructed(path: Path) -> dict:
     return out
 
 
-def read_rf_history(path: Path, entity_id: Optional[str] = None) -> list:
+def read_counter_history(path: Path, entity_id: Optional[str] = None) -> list:
     """[(UTC time, Wh counter)] from a Home Assistant history download (CSV with the
     columns entity_id,state,last_changed). States that are no number (unavailable,
     unknown) are skipped. With several entities in the file, `entity_id` picks one."""
@@ -116,11 +117,11 @@ def read_rf_history(path: Path, entity_id: Optional[str] = None) -> list:
                 continue
             samples.append((t, wh(value)))
     if not entity_id and len(entities) > 1:
-        raise SystemExit(f'{path} has several entities {sorted(e for e in entities if e)}, pick one with --rf-entity')
+        raise SystemExit(f'{path} has several entities {sorted(e for e in entities if e)}, pick one with --live-entity')
     return sorted(samples)
 
 
-# -- RF cleaning --------------------------------------------------------------
+# -- Counter cleaning --------------------------------------------------------------
 
 def plausible(a: tuple, b: tuple, max_kw: float) -> bool:
     """Can the counter go from reading a to the later reading b?"""
@@ -202,7 +203,7 @@ def counter_at(accepted: list, times: list, t: datetime, max_gap: timedelta) -> 
     return va + (vb - va) * (t - ta).total_seconds() / (tb - ta).total_seconds()
 
 
-def rf_hourly(accepted: list, max_gap: timedelta = DEFAULT_MAX_GAP,
+def counter_hourly(accepted: list, max_gap: timedelta = DEFAULT_MAX_GAP,
               max_kw: float = DEFAULT_MAX_KW) -> dict:
     """{UTC hour start: Wh} from the cleaned counter."""
     if len(accepted) < 2:
@@ -229,12 +230,12 @@ class Hour:
     source: str
     sum_wh: int
     portal_wh: Optional[int] = None   # the complete portal value of the hour, if there is one
-    flag: str = ''                    # 'deviation': RF and portal differ beyond the tolerance
+    flag: str = ''                    # 'deviation': live and portal differ beyond the tolerance
 
 
-def deviates(rf_wh: int, portal_wh: int, tolerance: float = DEFAULT_HOUR_TOLERANCE,
+def deviates(live_wh: int, portal_wh: int, tolerance: float = DEFAULT_HOUR_TOLERANCE,
              tolerance_wh: int = DEFAULT_HOUR_TOLERANCE_WH) -> bool:
-    return abs(rf_wh - portal_wh) > max(tolerance * portal_wh, tolerance_wh)
+    return abs(live_wh - portal_wh) > max(tolerance * portal_wh, tolerance_wh)
 
 
 def portal_hours(portal: dict) -> dict:
@@ -258,18 +259,18 @@ def reconstructed_hours(quarters: dict) -> dict:
     return {h: v for h, (v, n) in acc.items() if n == 4}
 
 
-def fuse(portal: dict, rf: dict, reconstructed: dict) -> list:
+def fuse(portal: dict, live: dict, reconstructed: dict) -> list:
     """The fused hourly series, see the module docstring for the priorities."""
     ph = portal_hours(portal)
     rh = reconstructed_hours(reconstructed)
     out = []
     total = 0
-    for h in sorted(set(ph) | set(rf) | set(rh)):
+    for h in sorted(set(ph) | set(live) | set(rh)):
         p = ph.get(h)
         complete = p[0] if p and p[1] == 4 else None
         flag = ''
-        if h in rf:
-            value, source = rf[h], 'rf'
+        if h in live:
+            value, source = live[h], 'live'
             if complete is not None and not p[2] and deviates(value, complete):
                 flag = 'deviation'
         elif complete is not None and not p[2]:
@@ -292,28 +293,28 @@ class Validation:
     hours: int = 0
     mean_abs_wh: float = 0.0
     portal_wh: int = 0
-    rf_wh: int = 0
-    days: list = field(default_factory=list)       # (local date, portal Wh, RF Wh)
+    live_wh: int = 0
+    days: list = field(default_factory=list)       # (local date, portal Wh, live Wh)
     bad_days: list = field(default_factory=list)
 
 
-def validate(portal: dict, rf: dict, zone: ZoneInfo, tolerance: float = DEFAULT_DAY_TOLERANCE,
+def validate(portal: dict, live: dict, zone: ZoneInfo, tolerance: float = DEFAULT_DAY_TOLERANCE,
              tolerance_wh: int = DEFAULT_DAY_TOLERANCE_WH) -> Validation:
-    """RF against fully measured portal hours, per hour and per local day (only days on
+    """The live counter against fully measured portal hours, per hour and per local day (only days on
     which every hour has both)."""
     ph = {h: v for h, (v, n, sub) in portal_hours(portal).items() if n == 4 and not sub}
-    both = sorted(set(ph) & set(rf))
+    both = sorted(set(ph) & set(live))
     result = Validation(hours=len(both))
     if not both:
         return result
-    result.mean_abs_wh = sum(abs(rf[h] - ph[h]) for h in both) / len(both)
+    result.mean_abs_wh = sum(abs(live[h] - ph[h]) for h in both) / len(both)
     result.portal_wh = sum(ph[h] for h in both)
-    result.rf_wh = sum(rf[h] for h in both)
+    result.live_wh = sum(live[h] for h in both)
     per_day: dict = defaultdict(lambda: [0, 0, 0])
     for h in both:
         d = per_day[h.astimezone(zone).date()]
         d[0] += ph[h]
-        d[1] += rf[h]
+        d[1] += live[h]
         d[2] += 1
     for day in sorted(per_day):
         p, r, n = per_day[day]

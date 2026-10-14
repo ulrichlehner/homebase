@@ -17,8 +17,8 @@ def test_cli_subcommands():
     args = p.parse_args(['disaggregate', '--backtest', '--backtest-from', '2025-03-01'])
     assert args.command == 'disaggregate' and args.backtest and args.backtest_from == date(2025, 3, 1)
     assert args.profile_from == disaggregate.DEFAULT_PROFILE_FROM
-    args = p.parse_args(['fuse', '--rf', 'h.csv', '--max-gap-minutes', '30'])
-    assert args.command == 'fuse' and args.rf == 'h.csv' and args.max_gap_minutes == 30
+    args = p.parse_args(['fuse', '--live', 'h.csv', '--max-gap-minutes', '30'])
+    assert args.command == 'fuse' and args.live == 'h.csv' and args.max_gap_minutes == 30
 
 
 def test_login_is_only_needed_for_csv(monkeypatch):
@@ -33,3 +33,8 @@ def test_login_is_only_needed_for_csv(monkeypatch):
         assert 'USERNAME' in str(err)
     else:
         raise AssertionError('missing login not reported')
+
+
+def test_old_rf_options_still_work():
+    args = databot.build_parser().parse_args(['fuse', '--rf', 'h.csv', '--rf-entity', 'sensor.x'])
+    assert args.live == 'h.csv' and args.live_meter_entity == 'sensor.x'

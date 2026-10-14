@@ -9,7 +9,8 @@ Commands:
   merge         write <meterId>_all.csv (reconstructed history + measured quarter hours)
   check         report days with missing quarter-hour intervals in the readings file
   disaggregate  split the reconstructed 6-hour blocks into quarter hours by a typical profile
-  fuse          one hourly series from RF (HA history download), portal and reconstruction
+  fuse          one hourly series from the live meter counter (HA history download), portal
+                and reconstruction
 
 Raw portal exports are archived under <EXPORT_DIR>/csv/. Charts: render.py, the chart
 reconstruction: reconstruct.py, the Home Assistant import test: ha_spike.py.
@@ -153,28 +154,28 @@ def cmd_fuse(args, config: Config) -> int:
     portal = fusion.read_portal(readings_path)
     reconstructed = fusion.read_reconstructed(folder / f'{config.meter_id}_reconstructed_15min.csv')
 
-    rf: dict = {}
-    if args.rf:
-        samples = fusion.read_rf_history(Path(args.rf), args.rf_entity)
+    live: dict = {}
+    if args.live:
+        samples = fusion.read_counter_history(Path(args.live), args.live_meter_entity)
         cleaning = fusion.clean_counter(samples, args.max_kw)
-        rf = fusion.rf_hourly(cleaning.accepted, timedelta(minutes=args.max_gap_minutes), args.max_kw)
-        logger.info('RF: %d readings, %d rejected in %d dropped segment(s), %d hours with a value',
-                    len(samples), cleaning.rejected, len(cleaning.dropped_segments), len(rf))
+        live = fusion.counter_hourly(cleaning.accepted, timedelta(minutes=args.max_gap_minutes), args.max_kw)
+        logger.info('Live counter: %d readings, %d rejected in %d dropped segment(s), %d hours with a value',
+                    len(samples), cleaning.rejected, len(cleaning.dropped_segments), len(live))
         for first, last, n in cleaning.dropped_segments:
             logger.info('  dropped %s to %s (%d readings)', first.astimezone(zone).isoformat(timespec='minutes'),
                         last.astimezone(zone).isoformat(timespec='minutes'), n)
-        v = fusion.validate(portal, rf, zone)
+        v = fusion.validate(portal, live, zone)
         if v.hours:
-            logger.info('RF vs portal: %d hours, mean abs deviation %.0f Wh per hour, total %.3f vs %.3f kWh (%+.2f%%)',
-                        v.hours, v.mean_abs_wh, v.rf_wh / 1000, v.portal_wh / 1000,
-                        100 * (v.rf_wh - v.portal_wh) / v.portal_wh if v.portal_wh else 0)
+            logger.info('Live vs portal: %d hours, mean abs deviation %.0f Wh per hour, total %.3f vs %.3f kWh (%+.2f%%)',
+                        v.hours, v.mean_abs_wh, v.live_wh / 1000, v.portal_wh / 1000,
+                        100 * (v.live_wh - v.portal_wh) / v.portal_wh if v.portal_wh else 0)
             logger.info('  %d complete day(s) compared, %d outside the tolerance', len(v.days), len(v.bad_days))
             for day, p, r in v.bad_days:
-                logger.warning('  %s: RF %.3f kWh, portal %.3f kWh', day, r / 1000, p / 1000)
+                logger.warning('  %s: live %.3f kWh, portal %.3f kWh', day, r / 1000, p / 1000)
         else:
-            logger.info('RF vs portal: no common hours yet')
+            logger.info('Live vs portal: no common hours yet')
 
-    hours = fusion.fuse(portal, rf, reconstructed)
+    hours = fusion.fuse(portal, live, reconstructed)
     out = folder / f'{config.meter_id}_fused_1h.csv'
     fusion.write_fused(out, hours, zone)
     counts: dict = defaultdict(int)
@@ -186,9 +187,9 @@ def cmd_fuse(args, config: Config) -> int:
                 hours[-1].sum_wh / 1000 if hours else 0, out)
     flagged = [h for h in hours if h.flag]
     if flagged:
-        logger.warning('%d RF hour(s) deviate from the portal beyond the tolerance (RF kept):', len(flagged))
+        logger.warning('%d live hour(s) deviate from the portal beyond the tolerance (live value kept):', len(flagged))
         for h in flagged[:20]:
-            logger.warning('  %s: RF %.3f kWh, portal %.3f kWh', h.start.astimezone(zone).isoformat(timespec='minutes'),
+            logger.warning('  %s: live %.3f kWh, portal %.3f kWh', h.start.astimezone(zone).isoformat(timespec='minutes'),
                            h.wh / 1000, h.portal_wh / 1000)
     return 0
 
@@ -234,13 +235,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument('--backtest-from', type=date.fromisoformat, default=disaggregate.DEFAULT_BACKTEST_FROM)
     p.add_argument('--backtest-to', type=date.fromisoformat, default=disaggregate.DEFAULT_BACKTEST_TO)
 
-    p = sub.add_parser('fuse', help='fuse RF, portal and reconstructed readings into hours')
-    p.add_argument('--rf', help='Home Assistant history download of the RF energy sensor (CSV)')
-    p.add_argument('--rf-entity', help='entity ID in the history file, if it holds several')
+    p = sub.add_parser('fuse', help='fuse the live meter counter, portal and reconstructed readings into hours')
+    p.add_argument('--live', '--rf', dest='live', help='Home Assistant history download of the live energy counter (CSV)')
+    p.add_argument('--live-entity', '--rf-entity', dest='live_meter_entity',
+                   help='entity ID in the history file, if it holds several')
     p.add_argument('--max-kw', type=float, default=fusion.DEFAULT_MAX_KW,
                    help=f'fastest plausible consumption in kW (default {fusion.DEFAULT_MAX_KW:g})')
     p.add_argument('--max-gap-minutes', type=int, default=int(fusion.DEFAULT_MAX_GAP.total_seconds() // 60),
-                   help='longest RF silence that is still interpolated')
+                   help='longest silence of the live counter that is still interpolated')
     return parser
 
 

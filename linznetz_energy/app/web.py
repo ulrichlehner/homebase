@@ -177,7 +177,7 @@ def render_page(status: dict, message=None) -> str:
     values) pair shown on top, e.g. the result of an upload."""
     lang = language(status.get('language'))
     phase = status.get('phase', 'idle')
-    pill_class = {'idle': 'ok', 'importing': 'run', 'downloading': 'run', 'statistics': 'run', 'radio': 'run',
+    pill_class = {'idle': 'ok', 'importing': 'run', 'downloading': 'run', 'statistics': 'run', 'live': 'run',
                   'starting': 'run', 'setup': 'warn', 'error': 'err'}.get(phase, 'warn')
     pill_text = t(lang, f'phase.{phase}') if f'phase.{phase}' in TEXTS['en'] else phase
     detail = status.get('detail', '')
@@ -220,16 +220,16 @@ def render_page(status: dict, message=None) -> str:
             return f'<span class="muted">{t(lang, "page.none")}</span>'
         return html.escape(t(lang, 'page.quarter_hours', count=d['count'], first=d['from'], last=d['to']))
 
-    def rf_row(d: Optional[dict]) -> str:
+    def live_row(d: Optional[dict]) -> str:
         if not d:
             return f'<span class="muted">{t(lang, "page.none")}</span>'
-        return html.escape(t(lang, 'page.rf_hours', count=d['count'], first=d['from'], last=d['to']))
+        return html.escape(t(lang, 'page.live_hours', count=d['count'], first=d['from'], last=d['to']))
 
     def check_row() -> str:
-        c = status.get('rf_check') or {}
+        c = status.get('live_check') or {}
         if not c.get('last_day'):
-            return f'<span class="muted">{t(lang, "page.rf_check_none")}</span>'
-        line = html.escape(t(lang, 'page.rf_check_line', day=c['last_day'], percent=c['last_day_percent'],
+            return f'<span class="muted">{t(lang, "page.live_check_none")}</span>'
+        line = html.escape(t(lang, 'page.live_check_line', day=c['last_day'], percent=c['last_day_percent'],
                              hours=c['deviating_hours']))
         bad = (f' <span class="pill warn">{len(c["bad_days"])} × &gt; 2 %</span>' if c.get('bad_days') else '')
         return line + bad
@@ -281,8 +281,8 @@ def render_page(status: dict, message=None) -> str:
 <div class="card"><h2>{t(lang, 'page.data')}</h2><table>{_rows([
         (t(lang, 'page.readings'), range_row(data.get('readings'))),
         (t(lang, 'page.reconstructed'), range_row(data.get('reconstructed'))),
-    ] + ([(t(lang, 'page.rf'), rf_row(data.get('rf'))), (t(lang, 'page.rf_check'), check_row())]
-         if 'rf' in data and (data.get('rf') or status.get('rf_check')) else []))}</table></div>
+    ] + ([(t(lang, 'page.live'), live_row(data.get('live'))), (t(lang, 'page.live_check'), check_row())]
+         if 'live' in data and (data.get('live') or status.get('live_check')) else []))}</table></div>
 <div class="card"><h2>{t(lang, 'page.statistics')}</h2><table>{_rows([
         (t(lang, 'page.stat_consumption'), stat_row('consumption')),
     ])}</table></div>

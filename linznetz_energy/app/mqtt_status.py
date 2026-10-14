@@ -4,9 +4,9 @@ One device "LINZ NETZ Energy <site>" with a few entities for dashboards and auto
 
   sensor        last_portal_fetch      when the portal was fetched successfully the last time
   sensor        portal_data_until      the newest portal reading
-  sensor        rf_data_until          the newest hour with a radio (RF) value
-  sensor        rf_deviation           RF against the portal on the last day both have complete, in %
-  sensor        deviating_hours        RF hours of the last 7 days that differ from the portal
+  sensor        live_data_until          the newest hour with a value of the live counter
+  sensor        live_deviation           the live counter against the portal on the last complete day, in %
+  sensor        deviating_hours        live hours of the last 7 days that differ from the portal
   binary_sensor portal_login_problem   on while the portal rejects the login
 
 The broker comes from the Supervisor (`services: mqtt:want`): no credentials to enter. Without an
@@ -34,8 +34,8 @@ SUPERVISOR_MQTT = 'http://supervisor/services/mqtt'
 ENTITIES = {
     'last_portal_fetch': ('sensor', 'timestamp', None, None, True, None),
     'portal_data_until': ('sensor', 'timestamp', None, None, False, None),
-    'rf_data_until': ('sensor', 'timestamp', None, None, False, 'mdi:radio-tower'),
-    'rf_deviation': ('sensor', None, '%', 'measurement', False, 'mdi:compare-horizontal'),
+    'live_data_until': ('sensor', 'timestamp', None, None, False, 'mdi:meter-electric'),
+    'live_deviation': ('sensor', None, '%', 'measurement', False, 'mdi:compare-horizontal'),
     'deviating_hours': ('sensor', None, None, 'measurement', False, 'mdi:alert-circle-outline'),
     'portal_login_problem': ('binary_sensor', 'problem', None, None, True, None),
 }

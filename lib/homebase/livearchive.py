@@ -1,11 +1,12 @@
-"""The archive of the radio (RF) readings of the meter, kept outside Home Assistant's database.
+"""The archive of the live meter counter (e.g. the wM-Bus radio readings), kept outside Home
+Assistant's database.
 
-Home Assistant's recorder keeps raw states for `purge_keep_days` (10 by default), so the RF
+Home Assistant's recorder keeps raw states for `purge_keep_days` (10 by default), so the live
 readings are archived next to the portal readings:
 
-  <meterId>_rf_raw.csv      the raw counter readings (UTC time; Wh) as Home Assistant recorded
+  <meterId>_live_raw.csv      the raw counter readings (UTC time; Wh) as Home Assistant recorded
                             them, for the last `RAW_DAYS` days: enough to re-clean a misread phase
-  <meterId>_rf_hourly.csv   the cleaned hourly RF values (UTC hour; Wh), kept for good: about
+  <meterId>_live_hourly.csv   the cleaned hourly live values (UTC hour; Wh), kept for good: about
                             9000 rows a year
 
 Every update merges new raw readings, cleans the counter over the whole raw window again and
@@ -29,11 +30,11 @@ HOURLY_HEADER = ['start_utc', 'wh']
 
 
 def raw_path(folder: Path, meter_id: str) -> Path:
-    return folder / f'{meter_id}_rf_raw.csv'
+    return folder / f'{meter_id}_live_raw.csv'
 
 
 def hourly_path(folder: Path, meter_id: str) -> Path:
-    return folder / f'{meter_id}_rf_hourly.csv'
+    return folder / f'{meter_id}_live_hourly.csv'
 
 
 def _read(path: Path) -> dict:
@@ -66,7 +67,7 @@ def read_raw(folder: Path, meter_id: str) -> dict:
 
 
 def read_hourly(folder: Path, meter_id: str) -> dict:
-    """{UTC hour: Wh} of the cleaned hourly RF values."""
+    """{UTC hour: Wh} of the cleaned hourly live values."""
     return _read(hourly_path(folder, meter_id))
 
 
@@ -100,7 +101,7 @@ def update(folder: Path, meter_id: str, new_readings: dict, now: datetime,
     _write(raw_path(folder, meter_id), RAW_HEADER, raw)
 
     cleaning = fusion.clean_counter(sorted(raw.items()), max_kw)
-    fresh = fusion.rf_hourly(cleaning.accepted, max_gap, max_kw)
+    fresh = fusion.counter_hourly(cleaning.accepted, max_gap, max_kw)
     hourly = read_hourly(folder, meter_id)
     if raw:
         # hours fully inside the raw window are computed anew (a re-cleaned misread phase may remove

@@ -34,7 +34,7 @@ notifications follow the language of Home Assistant (German and English; the log
 | `metering_point`       | the metering point number (Zählpunktnummer, not the meter number), 33 characters starting with `AT`; spaces, dots and lowercase letters are fine |
 | `site`                 | name of the place, shown as you write it (default `Home`); the statistic IDs use a simplified form (`Zweitwohnsitz Linz` → `zweitwohnsitz_linz`) |
 | `fetch_interval_hours` | hours between two portal fetches (default 12, 6 to 48)                     |
-| `rf_entity`            | optional: the energy counter of the meter's radio (wM-Bus) readings in Home Assistant, e.g. `sensor.home_grid_total_energy_consumption` (see below) |
+| `live_meter_entity`    | optional: a live energy counter of the meter in Home Assistant (total in kWh), for example from the meter's wM-Bus radio: `sensor.home_grid_total_energy_consumption` (see below) |
 
 The portal shows a day only one to two days later, so fetching more often brings nothing new;
 the statistic is still rebuilt every hour from the files the add-on already has.
@@ -47,32 +47,33 @@ Every hour, a few minutes past the full hour, the add-on
 2. fetches new readings from the portal when `fetch_interval_hours` have passed since the last
    successful fetch (the first run downloads everything the portal still has, about three years),
 3. imports one external statistic, `linznetz_energy:<site>_grid_consumption`, shown as
-   "<Site> grid consumption" (in German "<Site> Netzbezug"): the best source per hour (the live radio
+   "<Site> grid consumption" (in German "<Site> Netzbezug"): the best source per hour (the live meter
    readings, then the portal readings, then the imported reconstructed history). It is rebuilt
    completely every time, so values the portal delivers or corrects later end up in Home Assistant
    too. This is the statistic for the Energy dashboard.
 
-Radio and portal are compared by the add-on itself (its page, the status entities and a
+The live meter and the portal are compared by the add-on itself (its page, the status entities and a
 notification), so there is no separate portal statistic; the one written by versions before 1.0.0
 is deleted once.
 
 Pick the statistic in a statistics graph card, or in the Energy dashboard as grid consumption.
 
-## Live readings from the meter's radio (optional)
+## Live meter readings (optional)
 
-With a wM-Bus receiver (for example the wmbusmeters add-on with the `amiplus_linznetz` driver of this
-repository) Home Assistant has the meter's energy counter live. Enter that entity as `rf_entity`, and
-the add-on
+Any entity in Home Assistant that has the meter's energy counter live (a total in kWh) can serve as
+the live source: for example the meter's wM-Bus radio received with the wmbusmeters add-on and the
+`amiplus_linznetz` driver of this repository, or a reader on the meter's customer interface. Enter
+that entity as `live_meter_entity`, and the add-on
 
 - reads the new counter readings every hour (only reads, nothing is changed in Home Assistant),
 - cleans them: repeated values count from their first occurrence, phases in which the meter sends
   wrong values (a tenth of the counter, near-zero values, spikes) are dropped, and an hour gets a
   value only if good readings at most 60 minutes apart surround both of its ends,
 - makes them the **primary source** of the consumption statistic: the hours since the last portal
-  day come from the radio right away, and where the radio has no value (a gap, a misread phase) the
+  day come from the live meter right away, and where it has no value (a gap, a misread phase) the
   portal fills in a day or two later,
-- compares the radio with the portal for every day both have complete, and sends a notification
-  when a day differs by more than 2 % (the radio value is kept),
+- compares the live meter with the portal for every day both have complete, and sends a notification
+  when a day differs by more than 2 % (the live value is kept),
 - archives the readings in its own folder: the raw readings of the last 90 days and the cleaned
   hourly values for good. Home Assistant's recorder drops raw states after 10 days by default; the
   archive is independent of that.
@@ -80,12 +81,12 @@ the add-on
 ## Switching the Energy dashboard
 
 The statistic "<Site> grid consumption" ("<Site> Netzbezug") is meant for the Energy dashboard: the
-whole history, the radio readings live, gaps filled by the portal. The add-on never changes the
+whole history, the live meter readings, gaps filled by the portal. The add-on never changes the
 dashboard itself; its page shows what the dashboard uses now and what to do:
 
 1. Make a backup (Settings > System > Backups).
 2. Open Settings > Dashboards > Energy. Under **grid consumption** add "<Site> grid consumption"
-   and remove the sensor used so far (for example the radio counter); keeping both counts the
+   and remove the sensor used so far (for example the live counter); keeping both counts the
    consumption twice.
 3. Check a few days in the Energy dashboard against your bill or the portal.
 
@@ -101,9 +102,9 @@ broker from Home Assistant):
 | --- | --- |
 | Last portal fetch | when the portal was fetched successfully the last time |
 | Portal data until | the end of the newest portal reading |
-| Radio data until | the end of the newest hour with a radio value |
-| Radio vs portal (last day) | the deviation on the last day both have complete, in % |
-| Deviating hours (7 days) | radio hours of the last 7 days that differ from the portal |
+| Live data until | the end of the newest hour with a live value |
+| Live vs portal (last day) | the deviation on the last day both have complete, in % |
+| Deviating hours (7 days) | live hours of the last 7 days that differ from the portal |
 | Portal login problem | on while the portal rejects the login |
 
 Without a broker the add-on works the same, only without these entities.
@@ -116,7 +117,7 @@ the add-on's page inside Home Assistant. It shows
 - what the add-on does right now (first download, import, writing statistics), refreshing itself
   while something runs, plus the last and next run and the portal login,
 - the data it has: portal readings and reconstructed history with their ranges,
-- the statistic with its range, total and sources, and the radio vs portal check,
+- the statistic with its range, total and sources, and the live vs portal check,
 - the result of the last import.
 
 ## Bringing older history

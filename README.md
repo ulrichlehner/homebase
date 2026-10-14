@@ -45,7 +45,7 @@ wrapper builds the image locally and rebuilds it automatically whenever the sour
 ./homebase check          # report incomplete days in the readings CSV
 ./homebase reconstruct    # reconstruct 6h values from archived chart PNGs (see below)
 ./homebase disaggregate   # split the reconstructed 6h values into quarter hours (see below)
-./homebase fuse           # one hourly series from portal, RF and reconstruction (see below)
+./homebase fuse           # one hourly series from live meter, portal and reconstruction (see below)
 ./homebase test           # run the unit tests
 ```
 
@@ -129,22 +129,23 @@ automatically.
   single hours are dominated by random appliance use, the profile gives a believable daily shape,
   not the real peaks. `./homebase disaggregate --backtest` only reports, it writes nothing.
 
-### Fusing portal, radio and reconstructed readings
+### Fusing live meter, portal and reconstructed readings
 
 `./homebase fuse` writes `<meterId>_fused_1h.csv`, one row per hour with the best source
-available. The radio (RF) readings of the meter in Home Assistant are the primary source; the
+available. A live meter reading in Home Assistant (for example the meter's wM-Bus radio) is the
+primary source; the
 portal verifies them and fills their gaps (fully measured hours first, then substitute values),
 the reconstructed quarter hours cover 2023. Columns:
 `start_local;start_utc;kwh;source;sum_kwh;portal_kwh;flag`: the running sum is computed in whole
 Wh, `portal_kwh` is the complete portal value of the hour (if any) and `flag` is `deviation` when
-an RF hour differs from it by more than 2 % (at least 20 Wh); the RF value is kept. It prepares
+a live hour differs from it by more than 2 % (at least 20 Wh); the live value is kept. It prepares
 the import into the Home Assistant Energy tab, see `docs/energy-fusion-plan.md`.
 
-RF readings come from a Home Assistant history download of the energy counter sensor (History,
-pick the sensor and the period, "Download data"): `./homebase fuse --rf ~/Downloads/history.csv`.
+Live readings come from a Home Assistant history download of the energy counter sensor (History,
+pick the sensor and the period, "Download data"): `./homebase fuse --live ~/Downloads/history.csv`.
 The counter is cleaned first: misread phases (wrong scale, near-zero values, spikes) break the
-plausible counter and are dropped, and an hour gets an RF value only if accepted readings at most
-60 minutes apart surround both of its ends. The run also compares RF with the portal per hour
+plausible counter and are dropped, and an hour gets a live value only if accepted readings at most
+60 minutes apart surround both of its ends. The run also compares the live meter with the portal per hour
 and per day and warns about days that differ by more than 2 %.
 
 ### One file with everything
@@ -173,7 +174,7 @@ to change how many days are requested from the portal per request, and `-d` for 
 The Home Assistant add-on in `linznetz_energy/` is versioned with [release-please](https://github.com/googleapis/release-please)
 from [conventional commits](https://www.conventionalcommits.org/): `fix:` gives a patch, `feat:` a minor
 and `feat!:` or a `BREAKING CHANGE:` footer a major release; `docs:`, `chore:`, `test:` and `refactor:`
-give none. It started at 0.1.0 and reached 1.0.0 once the add-on covered the whole plan (live radio readings,
+give none. It started at 0.1.0 and reached 1.0.0 once the add-on covered the whole plan (live meter readings,
 portal, history, the Energy dashboard). On every push to `main` release-please opens or updates a release PR with the next version
 in `linznetz_energy/config.yaml` and the new entries in `linznetz_energy/CHANGELOG.md`. Merging it
 creates the tag and the GitHub release, and the image workflow builds the images of that version.
@@ -192,7 +193,7 @@ run `./homebase assets` and commit the PNGs too; `./homebase assets --check` (an
 
 | Folder              | Content                                                                                  |
 | ------------------- | ---------------------------------------------------------------------------------------- |
-| `lib/homebase/`     | the shared library (Python package `homebase`), no command line, no add-on specifics: `portal` (LINZ NETZ client), `readings` (the CSV archive), `disaggregate`, `fusion`, `rfarchive` (the archive of the radio readings), `hass` (Home Assistant websocket client) |
+| `lib/homebase/`     | the shared library (Python package `homebase`), no command line, no add-on specifics: `portal` (LINZ NETZ client), `readings` (the CSV archive), `disaggregate`, `fusion`, `livearchive` (the archive of the radio readings), `hass` (Home Assistant websocket client) |
 | `databot/`          | the command line tools for Docker on the Mac: `databot.py` (`csv`, `merge`, `check`, `disaggregate`, `fuse`), `render.py` (charts), `reconstruct.py` (chart OCR), `ha_spike.py` (HA import test) |
 | `linznetz_energy/`  | the Home Assistant add-on: `app/main.py` (main loop), `app/web.py` (its page in HA), `config.yaml`, docs, assets |
 | `smartmeter/`       | the wM-Bus driver and MQTT discovery for the RF readings of the meter                    |
@@ -231,5 +232,5 @@ DATA_DIR="/Users/<you>/Library/Mobile Documents/com~apple~CloudDocs/<folder>"  #
 # optional, only for `./homebase ha-spike` (Home Assistant statistics import test)
 HA_URL=http://homeassistant.local:8123
 HA_TOKEN=<long-lived access token from your HA profile, Security tab>
-HA_RF_ENTITY=sensor.<place>_grid_total_energy_consumption
+HA_LIVE_ENTITY=sensor.<place>_grid_total_energy_consumption
 ```

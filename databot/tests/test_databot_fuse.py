@@ -1,4 +1,4 @@
-"""The fuse command on files: RF primary, the portal verifies, repeatable output."""
+"""The fuse command on files: the live counter is primary, the portal verifies, repeatable output."""
 import csv
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -34,13 +34,13 @@ def test_fuse_writes_a_repeatable_file(tmp_path, monkeypatch):
     monkeypatch.setenv('METER_ID', meter)
     monkeypatch.setenv('TZ', 'Europe/Vienna')
     monkeypatch.setenv('EXPORT_DIR', str(tmp_path))
-    args = ['fuse', '--rf', str(history)]
+    args = ['fuse', '--live', str(history)]
     assert databot.main(args) == 0
     out = tmp_path / f'{meter}_fused_1h.csv'
     first = out.read_bytes()
     assert databot.main(args) == 0 and out.read_bytes() == first
     rows = list(csv.DictReader(out.open(), delimiter=';'))
-    assert [r['source'] for r in rows] == ['rf', 'rf', 'rf', 'rf']           # RF primary
+    assert [r['source'] for r in rows] == ['live', 'live', 'live', 'live']   # the live counter is primary
     assert [r['portal_kwh'] for r in rows] == ['0.600', '0.600', '', '']   # the portal verifies
     assert [r['flag'] for r in rows] == [''] * 4
     assert [r['sum_kwh'] for r in rows] == ['0.600', '1.200', '1.800', '2.400']

@@ -195,10 +195,10 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
 
 ### Step 6: Fusion live, running alongside the current setup
 
-- [x] Option `rf_entity` (the RF energy counter, e.g. `sensor.<place>_grid_total_energy_consumption`);
+- [x] Option `live_meter_entity` (the RF energy counter, e.g. `sensor.<place>_grid_total_energy_consumption`);
       empty means portal only
 - [x] Hourly: read the new RF counter states from HA (`history/history_during_period`, read only),
-      archive them (`lib/homebase/rfarchive.py`: raw readings 90 days, cleaned hourly values for
+      archive them (`lib/homebase/livearchive.py`: raw readings 90 days, cleaned hourly values for
       good), re-clean the raw window, rebuild `…_grid_consumption` with RF as the primary source
 - [x] Counter cleaning: repeated values count from their first occurrence (a repeated value with a
       later timestamp made the next step look like 35 kW and cut off a whole evening, found in the
@@ -207,10 +207,10 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
       add-on page
 - [x] Status entities over MQTT discovery (`services: mqtt:want`, broker from the Supervisor): device
       "LINZ NETZ Energy <site>", entities `sensor.<site>_linznetz_last_portal_fetch`,
-      `…_portal_data_until`, `…_rf_data_until`, `…_rf_deviation`, `…_deviating_hours`,
+      `…_portal_data_until`, `…_live_data_until`, `…_live_deviation`, `…_deviating_hours`,
       `binary_sensor.<site>_linznetz_portal_login_problem`; tested with a local Mosquitto
 - [x] Tested read-only against HA: 57 RF hours up to the current hour, 13.10. RF vs portal 0.0 %
-- [ ] Release, set `rf_entity` on the installed add-on, check the entities in HA
+- [ ] Release, set `live_meter_entity` on the installed add-on, check the entities in HA
 - [ ] About 2 weeks in parallel while the Energy tab still uses the RF sensor, compare daily
 
 ### Step 7: Switch the Energy tab
@@ -281,6 +281,9 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: `rf_entity` renamed to `live_meter_entity` before 1.0.0 (any live counter of the meter
+  works, wM-Bus radio is one example); entities `…_live_data_until`, `…_live_deviation`, archive
+  `…_live_raw.csv`/`…_live_hourly.csv`, module `livearchive`; CLI `--live` (`--rf` stays as alias).
 - 2026-10-14: the portal-only statistic `…_grid_consumption_portal` is dropped in 1.0.0 (the add-on
   compares radio and portal itself) and deleted once on the first start; GitHub: squash merges only,
   PR title as commit message, branches deleted after merging (no duplicate changelog entries).

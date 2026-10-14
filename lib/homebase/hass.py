@@ -8,7 +8,7 @@ the project needs:
   recorder/statistics_during_period   read statistics back
   recorder/get_statistics_metadata    find statistics by ID
   recorder/clear_statistics           delete statistics
-  history/history_during_period       raw states of an entity (the RF counter)
+  history/history_during_period       raw states of an entity (the live meter counter)
   call_service                        notifications
 """
 
