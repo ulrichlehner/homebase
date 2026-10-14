@@ -82,3 +82,10 @@ def test_only_the_ingress_proxy_may_connect(tmp_path, monkeypatch):
         assert err.value.code == 403
     finally:
         srv.shutdown()
+
+
+def test_page_explains_the_setup():
+    page = W.render_page({'phase': 'setup', 'setup': ['Portal password: missing.']})
+    assert 'Setup needed' in page and 'Portal password: missing.' in page and 'Not configured yet' in page
+    assert 'http-equiv="refresh"' not in page          # nothing changes until HA restarts the add-on
+    assert 'not tried yet' in page and 'pill ok">ok' not in page

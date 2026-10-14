@@ -6,10 +6,10 @@ configuration:
     name: Portal-Passwort
   metering_point:
     name: Zählpunkt
-    description: Die 33-stellige Zählpunktnummer (nicht die Zählernummer), beginnt mit AT.
+    description: Die Zählpunktnummer (nicht die Zählernummer) wie auf der Rechnung oder im Portal, 33 Zeichen, beginnt mit AT. Leerzeichen sind erlaubt.
   site:
     name: Standort
-    description: Kurzer Name des Orts in Kleinbuchstaben, Teil der Statistik-IDs (linznetz_energy:<standort>_grid_consumption).
+    description: Kurzer Name des Orts, Teil der Statistik-IDs (linznetz_energy:<standort>_grid_consumption). "home" lassen, außer bei mehreren Standorten.
   fetch_interval_hours:
     name: Abrufintervall Portal (Stunden)
     description: Wie oft neue Werte vom Portal geholt werden. Das Portal zeigt einen Tag erst ein bis zwei Tage später, 12 Stunden reichen.

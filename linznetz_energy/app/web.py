@@ -101,6 +101,7 @@ tr:last-child td, tr:last-child th { border-bottom: 0; }
 .pill { display: inline-block; border-radius: 10px; padding: 0 8px; font-size: 12px; color: #fff; }
 .ok { background: var(--ok); } .warn { background: var(--warn); } .err { background: var(--err); }
 .run { background: var(--primary); }
+.setup { border-left: 4px solid var(--warn); }
 input[type=file] { display: block; margin: 8px 0 12px; color: var(--text); }
 button { background: var(--primary); color: #fff; border: 0; border-radius: 4px; padding: 8px 16px;
          font: inherit; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; cursor: pointer; }
@@ -127,12 +128,25 @@ def render_page(status: dict, message: str = '') -> str:
     phase = status.get('phase', 'idle')
     pill = {'idle': ('ok', 'up to date'), 'importing': ('run', 'importing'),
             'downloading': ('run', 'downloading from the portal'), 'statistics': ('run', 'writing statistics'),
-            'error': ('err', 'error')}.get(phase, ('warn', phase))
-    refresh = '<meta http-equiv="refresh" content="5">' if phase != 'idle' or status.get('import_pending') else ''
+            'setup': ('warn', 'setup needed'), 'error': ('err', 'error')}.get(phase, ('warn', phase))
+    busy = phase not in ('idle', 'setup') or status.get('import_pending')
+    refresh = '<meta http-equiv="refresh" content="5">' if busy else ''
+    setup = status.get('setup') or []
+    setup_html = ''
+    if setup:
+        items = ''.join(f'<li>{html.escape(line)}</li>' for line in setup)
+        setup_html = (f'<div class="card setup"><h2>Setup needed</h2><ul>{items}</ul>'
+                      '<p>Open <strong>Settings &gt; Apps (formerly Add-ons) &gt; LINZ NETZ energy &gt; Configuration</strong>, '
+                      'fill in the fields and save. Home Assistant then restarts the add-on and the first '
+                      'download starts.</p></div>')
 
     portal = status.get('portal', {})
-    login = ('<span class="pill err">login rejected</span> ' + _fmt_time(portal.get('login_failed'))
-             if portal.get('login_failed') else '<span class="pill ok">ok</span>')
+    if portal.get('login_failed'):
+        login = '<span class="pill err">login rejected</span> ' + _fmt_time(portal.get('login_failed'))
+    elif portal.get('ok'):
+        login = '<span class="pill ok">ok</span>'
+    else:
+        login = '<span class="muted">not tried yet</span>'
     data = status.get('data', {})
     stats = status.get('statistics', {})
 
@@ -158,13 +172,15 @@ def render_page(status: dict, message: str = '') -> str:
     pending = ('<p><span class="pill run">import pending</span> the files are imported in a moment.</p>'
                if status.get('import_pending') else '')
 
+    site_line = (f'Site {html.escape(status["site"])} · metering point …{html.escape(status.get("meter_suffix", ""))}'
+                 if status.get('site') else 'Not configured yet')
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 {refresh}<title>LINZ NETZ energy</title><style>{STYLE}</style></head>
 <body><main>
-<div><h1>LINZ NETZ energy</h1><p class="muted">Site {html.escape(status.get('site', '?'))} ·
-metering point …{html.escape(status.get('meter_suffix', ''))}</p></div>
+<div><h1>LINZ NETZ energy</h1><p class="muted">{site_line}</p></div>
 {note}
+{setup_html}
 <div class="card"><h2>Status</h2><table>{_rows([
         ('State', f'<span class="pill {pill[0]}">{pill[1]}</span> {html.escape(status.get("detail", ""))}'),
         ('Last run', _fmt_time(status.get('last_run'))),

@@ -33,6 +33,7 @@ import csv
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 import threading
@@ -57,6 +58,9 @@ IMPORT_CHUNK = 5000              # rows per import call, keeps websocket message
 LOGIN_NOTIFICATION = 'linznetz_energy_login'
 IMPORT_NOTIFICATION = 'linznetz_energy_import'
 DOWNLOAD_NOTIFICATION = 'linznetz_energy_download'
+SETUP_NOTIFICATION = 'linznetz_energy_setup'
+METERING_POINT = re.compile(r'^AT[0-9A-Z]{31}$')
+DEFAULT_SITE = 'home'
 IMPORT_DIR = 'import'
 
 
@@ -86,16 +90,44 @@ class Options:
         return self.site.replace('_', ' ').capitalize()
 
 
-def load_options(path: Path) -> Options:
-    raw = json.loads(path.read_text())
-    missing = [k for k in ('portal_username', 'portal_password', 'metering_point', 'site') if not raw.get(k)]
-    if missing:
-        raise SystemExit(f'Missing add-on option(s): {", ".join(missing)}')
-    site = raw['site'].strip().lower()
-    if not site.replace('_', '').isalnum():
-        raise SystemExit('Option site may only contain letters, digits and _')
-    return Options(raw['portal_username'], raw['portal_password'], raw['metering_point'].strip(), site,
-                   int(raw.get('fetch_interval_hours') or 12))
+def normalize_metering_point(value: str) -> str:
+    """As printed on bills and in the portal: spaces, dots and dashes are dropped,
+    lowercase letters raised."""
+    return re.sub(r'[\s.\-]', '', value or '').upper()
+
+
+def normalize_site(value: str) -> str:
+    """Lowercase, spaces and dashes become _; empty means the default."""
+    return re.sub(r'[\s\-]+', '_', (value or '').strip().lower()) or DEFAULT_SITE
+
+
+def load_options(path: Path) -> tuple:
+    """(Options, []) when the configuration is complete, else (None, problems): one line per
+    problem in plain words, for the log, the notification and the add-on page."""
+    try:
+        raw = json.loads(path.read_text())
+    except (FileNotFoundError, ValueError):
+        raw = {}
+    problems = []
+    username = (raw.get('portal_username') or '').strip()
+    password = raw.get('portal_password') or ''
+    metering_point = normalize_metering_point(raw.get('metering_point', ''))
+    site = normalize_site(raw.get('site', ''))
+    if not username:
+        problems.append('Portal username: missing (the login of the LINZ NETZ service portal).')
+    if not password:
+        problems.append('Portal password: missing.')
+    if not metering_point:
+        problems.append('Metering point: missing (the Zählpunktnummer, 33 characters, starts with AT; '
+                        'spaces are fine).')
+    elif not METERING_POINT.match(metering_point):
+        problems.append(f'Metering point: {len(metering_point)} characters after removing spaces, expected 33 '
+                        f'starting with AT (the Zählpunktnummer, not the meter number).')
+    if not re.fullmatch(r'[a-z0-9_]+', site):
+        problems.append('Site: only letters, digits and _ (it becomes part of the statistic ID).')
+    if problems:
+        return None, problems
+    return Options(username, password, metering_point, site, int(raw.get('fetch_interval_hours') or 12)), []
 
 
 # -- State ----------------------------------------------------------------------
@@ -324,6 +356,31 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime) -> Non
     web.write_status(store, phase='idle', detail='', statistics=written, last_run=now.isoformat())
 
 
+def announce_setup(store: Path, problems: list) -> None:
+    """Explains an incomplete configuration in the log, on the add-on page and as a
+    notification; dismisses that notification once the configuration is complete."""
+    if problems:
+        logger.warning('The add-on is not configured yet:')
+        for line in problems:
+            logger.warning('  %s', line)
+        logger.warning('Fill in the Configuration tab of the add-on and save; Home Assistant restarts it.')
+        web.write_status(store, phase='setup', detail='', setup=problems)
+    try:
+        hass = connect()
+    except (HomeAssistantError, SystemExit) as err:
+        logger.warning('Could not reach Home Assistant for the setup notification: %s', err)
+        return
+    try:
+        notify(hass, SETUP_NOTIFICATION, 'LINZ NETZ energy: setup needed',
+               'The add-on needs its configuration before it can fetch anything:\n'
+               + '\n'.join(f'- {line}' for line in problems)
+               + '\n\nOpen Settings > Apps (formerly Add-ons) > LINZ NETZ energy > Configuration, fill in the fields '
+                 'and save. '
+                 'Home Assistant then restarts the add-on.' if problems else None)
+    finally:
+        hass.close()
+
+
 def connect() -> HomeAssistant:
     url = os.environ.get('HA_URL', SUPERVISOR_WS)
     token = os.environ.get('HA_TOKEN') or os.environ.get('SUPERVISOR_TOKEN')
@@ -343,15 +400,22 @@ def main(argv=None) -> int:
                         format='[ %(asctime)s %(levelname)s ] %(message)s')
     logging.getLogger('urllib3').setLevel(logging.WARNING)
 
-    options = load_options(Path(os.environ.get('ADDON_OPTIONS', '/data/options.json')))
     store = Path(os.environ.get('ADDON_STORE', '/config'))
     (store / IMPORT_DIR).mkdir(parents=True, exist_ok=True)
-    logger.info('Site %s, metering point ...%s, data in %s', options.site, options.metering_point[-4:], store)
-    web.write_status(store, site=options.site, meter_suffix=options.metering_point[-4:], phase='starting', detail='')
-
     wake = threading.Event()   # set by an upload on the add-on page: run right away
     if not args.once:
         web.start(store, wake)
+
+    options, problems = load_options(Path(os.environ.get('ADDON_OPTIONS', '/data/options.json')))
+    announce_setup(store, problems)
+    if problems:
+        if args.once:
+            return 1
+        # HA restarts the add-on when the configuration is saved; until then only the page runs
+        threading.Event().wait()
+    logger.info('Site %s, metering point ...%s, data in %s', options.site, options.metering_point[-4:], store)
+    web.write_status(store, site=options.site, meter_suffix=options.metering_point[-4:], phase='starting',
+                     detail='', setup=[])
     while True:
         wake.clear()
         try:

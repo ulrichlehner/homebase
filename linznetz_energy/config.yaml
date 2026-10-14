@@ -27,15 +27,18 @@ map:
   # the add-on's own config folder (/addon_configs/<id>_linznetz_energy): CSV files, the
   # import/ folder for older history, part of backups
   - addon_config:rw
+# The schema only checks types: the add-on starts with an empty configuration too, then
+# explains on its page, in a notification and in the log what is missing (spaces and
+# lowercase in the metering point are fine, it normalizes them).
 options:
   portal_username: ""
   portal_password: ""
   metering_point: ""
-  site: ""
+  site: home
   fetch_interval_hours: 12
 schema:
-  portal_username: str
-  portal_password: password
-  metering_point: match(^AT[0-9A-Z]{31}$)
-  site: match(^[a-z0-9_]+$)
+  portal_username: str?
+  portal_password: password?
+  metering_point: str?
+  site: str?
   fetch_interval_hours: int(6,48)
