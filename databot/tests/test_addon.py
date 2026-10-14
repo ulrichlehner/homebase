@@ -9,6 +9,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import addon  # noqa: E402
+import databot  # noqa: E402
+import disaggregate  # noqa: E402
 import linznetz  # noqa: E402
 
 UTC = ZoneInfo('UTC')
@@ -33,13 +35,22 @@ class FakeHass:
         self.services.append((domain, service, data))
 
 
-def write_readings(store: Path, hours: int):
-    start = datetime(2026, 10, 1, tzinfo=ZONE).astimezone(UTC)
-    with (store / f'{METER}_readings.csv').open('w') as fh:
+def write_readings(store: Path, hours: int, start=None, kwh='0.100', name=None):
+    start = start or datetime(2026, 10, 1, tzinfo=ZONE).astimezone(UTC)
+    with (store / (name or f'{METER}_readings.csv')).open('w') as fh:
         fh.write('start_local;start_utc;kwh;kw;substitute\n')
         for i in range(hours * 4):
             q = start + timedelta(minutes=15 * i)
-            fh.write(f'{q.astimezone(ZONE).isoformat()};{q.strftime("%Y-%m-%dT%H:%M:%SZ")};0.100;0.400;false\n')
+            fh.write(f'{q.astimezone(ZONE).isoformat()};{q.strftime("%Y-%m-%dT%H:%M:%SZ")};{kwh};0.400;false\n')
+
+
+def write_reconstructed(folder: Path, start: datetime, hours: int, name=None):
+    with (folder / (name or f'{METER}_reconstructed_15min.csv')).open('w') as fh:
+        fh.write(';'.join(disaggregate.OUTPUT_HEADER) + '\n')
+        for i in range(hours * 4):
+            q = start + timedelta(minutes=15 * i)
+            fh.write(f'{q.astimezone(ZONE).isoformat()};{(q + timedelta(minutes=15)).astimezone(ZONE).isoformat()};'
+                     f'0.050;chart_ocr;profile;synthetic\n')
 
 
 def test_load_options(tmp_path):
@@ -76,17 +87,20 @@ def test_run_once_imports_the_portal_statistic_in_chunks(tmp_path, monkeypatch):
     hass = FakeHass()
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW)
     assert len(fetched) == 1
-    assert [len(stats) for _, stats in hass.imports] == [5, 5, 2]
+    # portal and fused statistic, each in chunks of 5 hours
+    assert [(m['statistic_id'], len(stats)) for m, stats in hass.imports] == \
+        [('linznetz:place_grid_energy_portal', 5)] * 2 + [('linznetz:place_grid_energy_portal', 2)] + \
+        [('linznetz:place_grid_energy_fused', 5)] * 2 + [('linznetz:place_grid_energy_fused', 2)]
     metadata = hass.imports[0][0]
-    assert metadata['statistic_id'] == 'linznetz:place_grid_energy_portal' and metadata['source'] == 'linznetz'
-    assert metadata['name'] == 'Place grid energy (portal)'
+    assert metadata['source'] == 'linznetz' and metadata['name'] == 'Place grid energy (portal)'
+    assert hass.imports[3][0]['name'] == 'Place grid energy (fused)'
     last = hass.imports[-1][1][-1]
     assert last['sum'] == pytest.approx(4.8) and last['start'].minute == 0
     assert ('persistent_notification', 'dismiss', {'notification_id': addon.LOGIN_NOTIFICATION}) in hass.services
     assert 'portal_ok' in addon.read_state(tmp_path)
     # the next hour: no portal fetch, the statistic is imported again
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW + timedelta(hours=1))
-    assert len(fetched) == 1 and len(hass.imports) == 6
+    assert len(fetched) == 1 and len(hass.imports) == 12
 
 
 def test_rejected_login_notifies_and_keeps_going(tmp_path, monkeypatch, caplog):
@@ -99,7 +113,7 @@ def test_rejected_login_notifies_and_keeps_going(tmp_path, monkeypatch, caplog):
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW)
     created = [s for s in hass.services if s[1] == 'create']
     assert created and created[0][2]['notification_id'] == addon.LOGIN_NOTIFICATION
-    assert len(hass.imports) == 1   # the existing readings are still imported
+    assert len(hass.imports) == 2   # the existing readings are still imported (portal and fused)
     assert 'portal_login_failed' in addon.read_state(tmp_path)
     assert 'secret-pw' not in caplog.text and 'secret-pw' not in json.dumps(hass.services)
 
@@ -112,3 +126,54 @@ def test_other_portal_errors_retry_next_hour(tmp_path, monkeypatch):
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW)
     assert hass.services == [] and hass.imports == []
     assert addon.portal_due(addon.read_state(tmp_path), NOW + timedelta(hours=1), 12)
+
+
+# -- History import (step 5) --------------------------------------------------------
+
+def test_import_merges_readings_and_existing_rows_win(tmp_path):
+    early = datetime(2023, 9, 1, tzinfo=ZONE).astimezone(UTC)
+    write_readings(tmp_path, hours=2, start=early + timedelta(hours=1), kwh='0.200')   # the add-on's file
+    (tmp_path / 'import').mkdir()
+    write_readings(tmp_path / 'import', hours=3, start=early, kwh='0.100')            # older archive
+    lines = addon.import_history(tmp_path, METER)
+    assert lines == [f'{METER}_readings.csv: 4 of 12 readings added']
+    rows = databot.read_csv_file(tmp_path / f'{METER}_readings.csv')
+    assert len(rows) == 12
+    values = [rows[k][2] for k in sorted(rows)]
+    assert values[:4] == ['0.100'] * 4 and values[4:] == ['0.200'] * 8   # overlap: existing wins
+    assert (tmp_path / 'import' / 'done' / f'{METER}_readings.csv').exists()
+    assert addon.import_history(tmp_path, METER) == []                   # nothing left: idempotent
+
+
+def test_import_rejects_other_meters_and_bad_files(tmp_path):
+    folder = tmp_path / 'import'
+    folder.mkdir()
+    other = 'AT0000000000000000000000000000099'
+    write_readings(folder, hours=1, name=f'{other}_readings.csv')
+    (folder / f'{METER}_readings.csv').write_text('a;b\n1;2\n')
+    (folder / f'{METER}_all.csv').write_text('x\n')
+    lines = addon.import_history(tmp_path, METER)
+    assert len(lines) == 3 and all('NOT imported' in line for line in lines)
+    assert sorted(p.name for p in (folder / 'failed').iterdir()) == sorted(
+        [f'{other}_readings.csv', f'{METER}_readings.csv', f'{METER}_all.csv'])
+    assert not (tmp_path / f'{METER}_readings.csv').exists()
+
+
+def test_fused_statistic_includes_the_reconstructed_history(tmp_path, monkeypatch):
+    monkeypatch.setattr(addon, 'fetch_portal', lambda *a: None)
+    portal_start = datetime(2023, 9, 1, tzinfo=ZONE).astimezone(UTC)
+    write_readings(tmp_path, hours=2, start=portal_start)
+    (tmp_path / 'import').mkdir()
+    write_reconstructed(tmp_path / 'import', portal_start - timedelta(hours=3), hours=3)
+    hass = FakeHass()
+    addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW)
+    by_id = {}
+    for metadata, stats in hass.imports:
+        by_id.setdefault(metadata['statistic_id'], []).extend(stats)
+    portal, fused = by_id['linznetz:place_grid_energy_portal'], by_id['linznetz:place_grid_energy_fused']
+    assert len(portal) == 2 and len(fused) == 5
+    assert fused[0]['start'] == portal_start - timedelta(hours=3)
+    assert fused[-1]['sum'] == pytest.approx(3 * 0.2 + 2 * 0.4)        # 3 reconstructed + 2 portal hours
+    created = [s for s in hass.services if s[1] == 'create']
+    assert created and created[0][2]['notification_id'] == addon.IMPORT_NOTIFICATION
+    assert '12 reconstructed quarter hours taken over' in created[0][2]['message']

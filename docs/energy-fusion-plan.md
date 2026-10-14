@@ -48,9 +48,10 @@ can be added later.
 
 ## Steps and progress
 
-Each step ends with something that can be checked before the next one starts. Steps 0 to 4 were
-done in one branch (`fusion-disaggregate`, PR #13), merged after step 4 so the add-on installs from
-the plain repository URL. Steps 5 to 8 follow in one new branch and PR. Nothing touches the live
+Each step ends with something that can be checked before the next one starts. Steps 0 to 5 were
+done in one branch (`fusion-disaggregate`, PR #13, step 5 pulled in so the first install starts with
+the full history), merged so the add-on installs from the plain repository URL. Steps 6 to 8 follow
+in one new branch and PR. Nothing touches the live
 HA setup before step 7, except the separate `…_grid_energy_portal` statistic.
 
 ### Step 0: Prerequisites
@@ -159,9 +160,17 @@ Done when the backtest error is acceptable and the source files are unchanged.
 The portal keeps about 36 months: on 2026-10-14 it starts at 2023-10-01, September 2023 exists only
 in the CSV archive. Without this step the add-on's statistic starts at whatever the portal still has.
 
-- [ ] Existing CSV files (readings and `reconstructed_15min`) copied to `/share` once, the add-on
-      merges them into its storage (idempotent)
-- [ ] `…_grid_energy_portal` and the reconstructed history reach back to March 2023
+- [x] `import/` folder in the add-on config folder (reachable over Samba, created on start; the
+      `share` mapping is gone): `<meterId>_readings.csv` is merged row by row (rows the add-on
+      already has win), `<meterId>_reconstructed_15min.csv` replaces the previous one; processed
+      files move to `import/done/`, rejected ones (other meter, wrong header, other file) to
+      `import/failed/`; idempotent; HA notification with what was imported
+- [x] New statistic `linznetz:<site>_grid_energy_fused` (portal, then reconstructed; RF in step 6),
+      `…_grid_energy_portal` stays portal only
+- [x] Tested end to end with the add-on image against HA: 109348 readings and 17180
+      reconstructed quarter hours imported; `…_portal` 27337 hours from 2023-09-01 (6626.673
+      kWh), `…_fused` 31631 hours from 2023-03-06 (7301.395 kWh)
+- [ ] On the installed add-on: copy both files into `import/` before the first start
 
 ### Step 6: Fusion live, running alongside the current setup
 
@@ -242,6 +251,8 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: step 5 done ahead of the rest (in PR #13, so the first install starts with the full
+  history): `import/` folder in the add-on, fused statistic with the reconstructed history.
 - 2026-10-14: add-on versioning switched to 1.0.0 with release-please (standard-version is
   deprecated); maintainer email in `repository.yaml`.
 - 2026-10-14: the portal now starts at 2023-10-01 (checked with a full download into a scratch

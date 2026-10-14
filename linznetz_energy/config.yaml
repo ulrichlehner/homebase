@@ -19,10 +19,9 @@ image: ghcr.io/ulrichlehner/homebase-linznetz-energy-{arch}
 # websocket access to the HA core through the Supervisor (statistics, notifications)
 homeassistant_api: true
 map:
-  # the add-on's own config folder (/addon_configs/<slug>): CSV files, part of backups
+  # the add-on's own config folder (/addon_configs/<id>_linznetz_energy): CSV files, the
+  # import/ folder for older history, part of backups
   - addon_config:rw
-  # one-time import of an existing CSV archive (step 5)
-  - share:ro
 options:
   username: ""
   password: ""
