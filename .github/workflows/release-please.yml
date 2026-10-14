@@ -1,0 +1,23 @@
+# Opens and updates the release PR: next version from the conventional commits since the
+# last release (fix: patch, feat: minor, feat!/BREAKING CHANGE: major), written into
+# linznetz_energy/config.yaml and linznetz_energy/CHANGELOG.md. Merging that PR creates
+# the tag and the GitHub release; addon-image.yml then builds the images of the new version.
+
+name: Release
+
+on:
+  push:
+    branches: ['main']
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

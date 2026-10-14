@@ -145,6 +145,9 @@ Done when the backtest error is acceptable and the source files are unchanged.
       as `linznetz:<place>_grid_energy_portal`, portal login and the login-failure notification
       (created and dismissed again) work
 - [x] Image published and public on ghcr.io (both architectures, version 0.1.0)
+- [x] Versioning: starts at 1.0.0, release-please derives the next version from the
+      conventional commits (release PR, tag, changelog); version images are immutable, `main`
+      only builds a version that has no image yet, other branches push `dev`
 - [x] Store presentation: `icon.png`, `logo.png` (readable in light and dark mode), `CHANGELOG.md`,
       `stage: experimental`, minimum HA version 2026.10.0 (the tested one)
 - [ ] Installs from the repo URL on HA OS (`https://github.com/ulrichlehner/homebase`, after the
@@ -181,6 +184,8 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
 ### Step 8: Docs and cleanup
 
 - [ ] Revoke the long-lived HA token used by `ha-spike` (profile > Security)
+- [ ] After the first release (v1.0.0): remove `release-as` from `release-please-config.json`,
+      otherwise every release PR stays at 1.0.0
 - [ ] Remove `stage: experimental` from `linznetz_energy/config.yaml` once the Energy tab uses
       the fused statistic
 - [ ] Add-on README with the prerequisites: quarter-hour analysis ("Viertelstundenauswertung")
@@ -236,6 +241,8 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: add-on versioning switched to 1.0.0 with release-please (standard-version is
+  deprecated); maintainer email in `repository.yaml`.
 - 2026-10-14: the portal now starts at 2023-10-01 (checked with a full download into a scratch
   folder): September 2023 is gone from the portal and exists only in the CSV archive. The user
   decided to merge after step 4 and install the add-on from `main`.
