@@ -47,7 +47,6 @@ TEXTS = {
                                'imported',
         # page
         'stat.consumption': '{site} grid consumption',
-        'stat.portal': '{site} grid consumption (portal)',
         'problem.rf_entity': 'The radio meter counter "{value}" is not an entity ID like sensor.home_grid_total_energy_consumption.',
         'deviation.title': 'LINZ NETZ Energy: radio and portal differ',
         'deviation.text': 'On these days the radio readings of the meter differ from the portal by more than 2 % '
@@ -98,7 +97,6 @@ TEXTS = {
         'page.quarter_hours': '{count} quarter hours, {first} to {last}',
         'page.statistics': 'Statistics',
         'page.stat_consumption': 'Grid consumption (for the Energy dashboard)',
-        'page.stat_portal': 'Portal readings only (for checks)',
         'page.not_written': 'not written yet',
         'page.stat_line': '{hours} hours, {first} to {last}, {kwh} kWh',
         'page.deviating': '{count} deviating hours',
@@ -168,7 +166,6 @@ TEXTS = {
         'import.bad_header': 'die Datei hat nicht die erwarteten Spalten',
         'import.unknown_file': 'importiert werden nur <Zählpunkt>_readings.csv und <Zählpunkt>_reconstructed_15min.csv',
         'stat.consumption': '{site} Netzbezug',
-        'stat.portal': '{site} Netzbezug (Portal)',
         'problem.rf_entity': 'Der Funk-Zählerstand „{value}“ ist keine Entitäts-ID wie sensor.home_grid_total_energy_consumption.',
         'deviation.title': 'LINZ NETZ Energy: Funk und Portal weichen ab',
         'deviation.text': 'An diesen Tagen weichen die Funkwerte des Zählers um mehr als 2 % vom Portal ab '
@@ -219,7 +216,6 @@ TEXTS = {
         'page.quarter_hours': '{count} Viertelstunden, {first} bis {last}',
         'page.statistics': 'Statistiken',
         'page.stat_consumption': 'Netzbezug (für das Energie-Dashboard)',
-        'page.stat_portal': 'Nur Portalwerte (zur Kontrolle)',
         'page.not_written': 'noch nicht geschrieben',
         'page.stat_line': '{hours} Stunden, {first} bis {last}, {kwh} kWh',
         'page.deviating': '{count} abweichende Stunden',

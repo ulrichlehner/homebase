@@ -46,15 +46,17 @@ Every hour, a few minutes past the full hour, the add-on
 1. takes over history files you dropped into its `import/` folder (see below),
 2. fetches new readings from the portal when `fetch_interval_hours` have passed since the last
    successful fetch (the first run downloads everything the portal still has, about three years),
-3. imports two external statistics, rebuilt completely every time, so values the portal corrects
-   later are corrected in Home Assistant too:
+3. imports one external statistic, `linznetz_energy:<site>_grid_consumption`, shown as
+   "<Site> grid consumption" (in German "<Site> Netzbezug"): the best source per hour (the live radio
+   readings, then the portal readings, then the imported reconstructed history). It is rebuilt
+   completely every time, so values the portal delivers or corrects later end up in Home Assistant
+   too. This is the statistic for the Energy dashboard.
 
-   | Statistic                                         | Content                                          |
-   | ------------------------------------------------- | ------------------------------------------------ |
-   | `linznetz_energy:<site>_grid_consumption`         | "<Site> grid consumption" (in German "<Site> Netzbezug"): the best source per hour (portal readings, then the imported reconstructed history; the live wM-Bus readings follow). This is the one for the Energy dashboard |
-   | `linznetz_energy:<site>_grid_consumption_portal`  | "<Site> grid consumption (portal)" ("<Site> Netzbezug (Portal)"): the portal readings only, to check the first one |
+Radio and portal are compared by the add-on itself (its page, the status entities and a
+notification), so there is no separate portal statistic; the one written by versions before 1.0.0
+is deleted once.
 
-Pick a statistic in a statistics graph card, or in the Energy dashboard as grid consumption.
+Pick the statistic in a statistics graph card, or in the Energy dashboard as grid consumption.
 
 ## Live readings from the meter's radio (optional)
 
@@ -114,8 +116,7 @@ the add-on's page inside Home Assistant. It shows
 - what the add-on does right now (first download, import, writing statistics), refreshing itself
   while something runs, plus the last and next run and the portal login,
 - the data it has: portal readings and reconstructed history with their ranges,
-- both statistics with their range, total and sources (and deviating hours, once the live
-  readings are part of the consumption statistic),
+- the statistic with its range, total and sources, and the radio vs portal check,
 - the result of the last import.
 
 ## Bringing older history

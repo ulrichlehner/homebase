@@ -30,6 +30,15 @@ class FakeHass:
     def call_service(self, domain, service, data=None):
         self.services.append((domain, service, data))
 
+    existing_statistics = ()
+    cleared = ()
+
+    def statistics_metadata(self, statistic_ids):
+        return [{'statistic_id': i} for i in statistic_ids if i in self.existing_statistics]
+
+    def clear_statistics(self, statistic_ids):
+        self.cleared = tuple(self.cleared) + tuple(statistic_ids)
+
     def call(self, type_, **payload):
         if type_ == 'energy/get_prefs':
             return self.energy_prefs
@@ -133,7 +142,7 @@ def test_next_run():
     assert addon.next_run(datetime(2026, 10, 14, 12, 7, tzinfo=UTC)) == datetime(2026, 10, 14, 13, 7, tzinfo=UTC)
 
 
-def test_run_once_imports_the_portal_statistic_in_chunks(tmp_path, monkeypatch):
+def test_run_once_imports_the_consumption_statistic_in_chunks(tmp_path, monkeypatch):
     write_readings(tmp_path, hours=12)
     monkeypatch.setattr(addon, 'IMPORT_CHUNK', 5)
     fetched = []
@@ -141,22 +150,20 @@ def test_run_once_imports_the_portal_statistic_in_chunks(tmp_path, monkeypatch):
     hass = FakeHass()
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW)
     assert len(fetched) == 1
-    # portal and fused statistic, each in chunks of 5 hours
+    # one statistic, in chunks of 5 hours
     assert [(m['statistic_id'], len(stats)) for m, stats in hass.imports] == \
-        [('linznetz_energy:place_grid_consumption_portal', 5)] * 2 + [('linznetz_energy:place_grid_consumption_portal', 2)] + \
         [('linznetz_energy:place_grid_consumption', 5)] * 2 + [('linznetz_energy:place_grid_consumption', 2)]
     metadata = hass.imports[0][0]
-    assert metadata['source'] == 'linznetz_energy' and metadata['name'] == 'Place grid consumption (portal)'
-    assert hass.imports[3][0]['name'] == 'Place grid consumption'
+    assert metadata['source'] == 'linznetz_energy' and metadata['name'] == 'Place grid consumption'
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW + timedelta(minutes=1), 'de')
-    assert {m['name'] for m, _ in hass.imports[-6:]} == {'Place Netzbezug', 'Place Netzbezug (Portal)'}
+    assert {m['name'] for m, _ in hass.imports[-3:]} == {'Place Netzbezug'}
     last = hass.imports[-1][1][-1]
     assert last['sum'] == pytest.approx(4.8) and last['start'].minute == 0
     assert ('persistent_notification', 'dismiss', {'notification_id': addon.LOGIN_NOTIFICATION}) in hass.services
     assert 'portal_ok' in addon.read_state(tmp_path)
     # the next hour: no portal fetch, the statistic is imported again
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW + timedelta(hours=1))
-    assert len(fetched) == 1 and len(hass.imports) == 18   # three runs, 6 import calls each
+    assert len(fetched) == 1 and len(hass.imports) == 9    # three runs, 3 import calls each
 
 
 def test_rejected_login_notifies_and_keeps_going(tmp_path, monkeypatch, caplog):
@@ -169,7 +176,7 @@ def test_rejected_login_notifies_and_keeps_going(tmp_path, monkeypatch, caplog):
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW)
     created = [s for s in hass.services if s[1] == 'create']
     assert created and created[0][2]['notification_id'] == addon.LOGIN_NOTIFICATION
-    assert len(hass.imports) == 2   # the existing readings are still imported (portal and fused)
+    assert len(hass.imports) == 1   # the existing readings are still imported
     assert 'portal_login_failed' in addon.read_state(tmp_path)
     assert 'secret-pw' not in caplog.text and 'secret-pw' not in json.dumps(hass.services)
 
@@ -231,8 +238,9 @@ def test_fused_statistic_includes_the_reconstructed_history(tmp_path, monkeypatc
     by_id = {}
     for metadata, stats in hass.imports:
         by_id.setdefault(metadata['statistic_id'], []).extend(stats)
-    portal, fused = by_id['linznetz_energy:place_grid_consumption_portal'], by_id['linznetz_energy:place_grid_consumption']
-    assert len(portal) == 2 and len(fused) == 5
+    assert list(by_id) == ['linznetz_energy:place_grid_consumption']
+    fused = by_id['linznetz_energy:place_grid_consumption']
+    assert len(fused) == 5
     assert fused[0]['start'] == portal_start - timedelta(hours=3)
     assert fused[-1]['sum'] == pytest.approx(3 * 0.2 + 2 * 0.4)        # 3 reconstructed + 2 portal hours
     created = [s for s in hass.services if s[1] == 'create']
@@ -375,3 +383,17 @@ def test_energy_status_reads_the_grid_sources():
     hass.energy_prefs = {'energy_sources': [{'type': 'grid', 'flow_from': [
         {'stat_energy_from': 'linznetz_energy:place_grid_consumption'}]}]}
     assert addon.energy_status(hass, options())['uses_consumption'] is True
+
+
+
+def test_the_portal_statistic_of_earlier_versions_is_deleted_once(tmp_path, monkeypatch):
+    monkeypatch.setattr(addon, 'fetch_portal', lambda *a: None)
+    write_readings(tmp_path, hours=2)
+    hass = FakeHass()
+    hass.existing_statistics = ('linznetz_energy:place_grid_consumption_portal',)
+    addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW)
+    assert hass.cleared == ('linznetz_energy:place_grid_consumption_portal',)
+    assert addon.read_state(tmp_path)['portal_statistic_removed'] is True
+    addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW + timedelta(hours=1))
+    assert hass.cleared == ('linznetz_energy:place_grid_consumption_portal',)       # only once
+    assert all(m['statistic_id'] == 'linznetz_energy:place_grid_consumption' for m, _ in hass.imports)

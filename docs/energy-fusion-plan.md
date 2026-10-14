@@ -44,7 +44,6 @@ files, HA statistics have no field for it.
 | ---------------------------- | ------------------------------------------ | ----------------------------------------- |
 | RF sensors (existing)        | `sensor.<place>_grid_*`                    | unchanged, stock amiplus entity names     |
 | fused, used in the Energy tab | `linznetz_energy:<place>_grid_consumption`        | external statistic, kWh, `sum`, "<Place> grid consumption" |
-| portal only, for checks      | `linznetz_energy:<place>_grid_consumption_portal` | external statistic, kWh, `sum`, "<Place> grid consumption (portal)" |
 | feed-in (PV site, later)     | `linznetz_energy:<place>_grid_return`             | external statistic, kWh, `sum`            |
 | fused power (optional)       | `linznetz_energy:<place>_grid_power`              | external statistic, kW, `mean`/`min`/`max` |
 | RF vs portal deviation       | `sensor.<place>_grid_rf_deviation`         | MQTT discovery, published by the add-on   |
@@ -282,6 +281,9 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: the portal-only statistic `…_grid_consumption_portal` is dropped in 1.0.0 (the add-on
+  compares radio and portal itself) and deleted once on the first start; GitHub: squash merges only,
+  PR title as commit message, branches deleted after merging (no duplicate changelog entries).
 - 2026-10-14: step 7 prepared (Energy dashboard card, docs) and step 8 done in the same PR as
   step 6 (#23); the add-on becomes 1.0.0. The switch of the Energy tab stays the user's click.
 - 2026-10-14: step 6 implemented (RF archive and fusion, deviation notification, MQTT status entities).

@@ -12,10 +12,11 @@ Every hour, a few minutes past the full hour:
      config folder (part of every HA backup),
   3. rebuild the hourly statistics from the CSV files and import them completely (HA
      overwrites hours that already exist):
-       linznetz_energy:<site>_grid_consumption          the best source per hour (portal, then
-                                                        the reconstructed history; RF follows),
-                                                        the one for the Energy dashboard
-       linznetz_energy:<site>_grid_consumption_portal   the portal readings only, for checks
+       linznetz_energy:<site>_grid_consumption   the best source per hour (radio readings,
+                                                 portal, reconstructed history), the one for
+                                                 the Energy dashboard
+     The add-on compares radio and portal itself (page, status entities, notification); the
+     portal-only statistic of versions before 1.0.0 is deleted once.
 
 A rejected portal login raises a persistent notification in HA and the loop goes on;
 the notification disappears after the next successful login. Credentials never appear
@@ -94,7 +95,8 @@ class Options:
 
     @property
     def portal_statistic(self) -> str:
-        """The portal readings only, to check the consumption statistic."""
+        """The portal-only statistic of versions before 1.0.0, deleted once (see
+        remove_portal_statistic)."""
         return f'{STATISTIC_DOMAIN}:{self.site_id}_grid_consumption_portal'
 
 
@@ -292,11 +294,6 @@ def compare_rf(store: Path, metering_point: str, zone: ZoneInfo, now: datetime) 
     }
 
 
-def portal_statistics(store: Path, metering_point: str) -> list:
-    """[{'start', 'sum', 'state'}] of every hour the portal has, running sum in kWh."""
-    return to_stats(portal_hours(store, metering_point))
-
-
 def fused_statistics(store: Path, metering_point: str) -> list:
     return to_stats(fused_hours(store, metering_point))
 
@@ -417,12 +414,11 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
 
     web.write_status(store, phase='statistics', detail='', data=data_status(store, options.metering_point, zone),
                      rf_check=check)
+    remove_portal_statistic(hass, options, store, state)
     written = {}
     for key, statistic_id, name, hours in (
-            ('portal', options.portal_statistic, t(lang, 'stat.portal', site=options.site),
-             portal_hours(store, options.metering_point)),
             ('consumption', options.consumption_statistic, t(lang, 'stat.consumption', site=options.site),
-             fused_hours(store, options.metering_point))):
+             fused_hours(store, options.metering_point)),):
         if hours:
             stats = to_stats(hours)
             import_statistic(hass, statistic_id, name, stats)
@@ -432,6 +428,23 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
     web.write_status(store, phase='idle', detail='', statistics=written, last_run=now.isoformat())
     web.write_status(store, energy=energy_status(hass, options))
     publish_status(options, store, lang, state, check, zone)
+
+
+def remove_portal_statistic(hass, options: Options, store: Path, state: dict) -> None:
+    """Versions before 1.0.0 also wrote a portal-only statistic. The add-on compares radio and
+    portal itself now, so that statistic only took up room in every picker: it is deleted once
+    (it is the add-on's own; the portal readings stay in its CSV files)."""
+    if state.get('portal_statistic_removed'):
+        return
+    try:
+        if hass.statistics_metadata([options.portal_statistic]):
+            hass.clear_statistics([options.portal_statistic])
+            logger.info('Deleted the portal-only statistic %s of earlier versions', options.portal_statistic)
+    except HomeAssistantError as err:
+        logger.warning('Could not delete the old statistic %s: %s', options.portal_statistic, err)
+        return
+    state['portal_statistic_removed'] = True
+    write_state(store, state)
 
 
 def energy_status(hass, options: Options) -> Optional[dict]:

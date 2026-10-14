@@ -285,7 +285,6 @@ def render_page(status: dict, message=None) -> str:
          if 'rf' in data and (data.get('rf') or status.get('rf_check')) else []))}</table></div>
 <div class="card"><h2>{t(lang, 'page.statistics')}</h2><table>{_rows([
         (t(lang, 'page.stat_consumption'), stat_row('consumption')),
-        (t(lang, 'page.stat_portal'), stat_row('portal')),
     ])}</table></div>
 {energy_html}
 <div class="card"><h2>{t(lang, 'page.import_title')}</h2>
