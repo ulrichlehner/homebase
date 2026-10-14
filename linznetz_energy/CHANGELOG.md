@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.1](https://github.com/ulrichlehner/homebase/compare/v0.2.0...v0.2.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* add-on name "LINZ NETZ Energy", note that it is not affiliated with LINZ NETZ ([5ea195b](https://github.com/ulrichlehner/homebase/commit/5ea195bbfe61eb9a7a3e6baa3dd24de16222314e))
+* add-on page fits phone screens ([dc6655f](https://github.com/ulrichlehner/homebase/commit/dc6655fd4865fec6d5d9edb9b804d587b86744f2))
+* add-on page fits phone screens, name "LINZ NETZ Energy", disclaimer ([2285b4b](https://github.com/ulrichlehner/homebase/commit/2285b4b5288362203c17294822eb0666943af287))
+* site is a free-text name, statistic names in the language of HA ([d5ba135](https://github.com/ulrichlehner/homebase/commit/d5ba135d39c11e485a48a26c58c6dac53f7a9e70))
+
 ## [0.2.0](https://github.com/ulrichlehner/homebase/compare/v0.1.1...v0.2.0) (2026-10-14)
 
 
