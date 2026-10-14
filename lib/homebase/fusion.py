@@ -27,7 +27,9 @@ cleaned before use:
      order if they continue it plausibly; a misread phase (wrong scale, zeros) breaks
      that chain and is dropped,
   3. the counter at each full hour is interpolated between the accepted readings
-     around it, if they are at most `max_gap` (60 minutes) apart; otherwise the hour has no live value.
+     around it, if they are at most `max_gap` (60 minutes) apart or the counter barely moved
+     in between (`FLAT_WH`, e.g. hours of PV export, where Home Assistant records no new
+     state); otherwise the hour has no live value.
 
 Nothing is modified: the output is <meterId>_fused_1h.csv. The same inputs give the
 same file.
@@ -56,6 +58,9 @@ DEFAULT_MAX_KW = 20.0                       # above any household connection
 # the driver discards the energy record; the counter on both sides is exact, a 60 minute
 # limit costs about 1 Wh per hour against the portal (2026-10 data).
 DEFAULT_MAX_GAP = timedelta(minutes=60)
+# A longer silence is still interpolated if the counter moved at most this much: whatever
+# happened in between, no hour can be off by more.
+FLAT_WH = 10
 DEFAULT_DAY_TOLERANCE = 0.02                # live vs portal per day, share of the portal value
 DEFAULT_DAY_TOLERANCE_WH = 50               # ... but at least this much
 DEFAULT_HOUR_TOLERANCE = 0.02               # live vs portal per hour, share of the portal value
@@ -198,7 +203,7 @@ def counter_at(accepted: list, times: list, t: datetime, max_gap: timedelta) -> 
     if i == 0 or i == len(times):
         return None
     (ta, va), (tb, vb) = accepted[i - 1], accepted[i]
-    if tb - ta > max_gap:
+    if tb - ta > max_gap and vb - va > FLAT_WH:
         return None
     return va + (vb - va) * (t - ta).total_seconds() / (tb - ta).total_seconds()
 

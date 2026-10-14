@@ -53,6 +53,17 @@ def test_a_long_misread_phase_leaves_a_gap():
     assert hours == {T0 + 2 * F.HOUR: 600}
 
 
+def test_a_flat_counter_bridges_a_long_silence():
+    """PV export: the consumption counter does not move for hours, so Home Assistant records
+    no new state. The hours in between are 0 Wh, not missing."""
+    before = counter(60)
+    t, v = before[-1]
+    after = counter(60, start=t + 4 * F.HOUR, base=v + 1)        # 1 Wh somewhere in the silence
+    hours = F.counter_hourly(F.clean_counter(before + after).accepted)
+    assert hours[T0] == 600 and hours[T0 + 2 * F.HOUR] == 0 and hours[T0 + 5 * F.HOUR] == 600
+    assert len(hours) == 6
+
+
 def test_a_bad_first_reading_does_not_poison_the_series():
     samples = counter(120)
     samples[0] = (samples[0][0], 5)

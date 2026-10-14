@@ -159,3 +159,10 @@ def test_page_offers_removal_and_after_it_reactivation():
     assert 'Aus Home Assistant entfernt' in done and 'action="resume"' in done and 'action="remove"' not in done
     refused = W.render_page({'language': 'de', 'removal': {'state': 'refused'}})
     assert 'nutzt die Statistik noch' in refused
+    failed = W.render_page({'language': 'en', 'removal': {'state': 'failed', 'error': 'energy/get_prefs'}})
+    assert 'Removing did not work (energy/get_prefs)' in failed
+
+
+def test_the_confirm_dialog_text_stays_inside_its_attribute():
+    page = W.render_page({'language': 'en'})
+    assert 'onsubmit="return confirm(&quot;Delete the statistic, the device and the notifications of the add-on?&quot;)"' in page

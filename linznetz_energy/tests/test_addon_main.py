@@ -41,6 +41,8 @@ class FakeHass:
 
     def call(self, type_, **payload):
         if type_ == 'energy/get_prefs':
+            if isinstance(self.energy_prefs, Exception):
+                raise self.energy_prefs
             return self.energy_prefs
         assert type_ == 'get_config'
         return {'language': self.language, 'time_zone': 'Europe/Vienna'}
@@ -351,7 +353,8 @@ def test_status_entities_over_mqtt(tmp_path, monkeypatch):
     monkeypatch.setattr(addon.mqtt_status, 'broker', lambda: {'host': 'core-mosquitto'})
     monkeypatch.setattr(addon.mqtt_status, 'publish', lambda *a: published.append(a) or True)
     write_readings(tmp_path, hours=2)
-    addon.publish_status(options(), tmp_path, 'de', {'portal_ok': '2026-10-14T12:00:00+00:00'}, None, ZONE)
+    addon.publish_status(options(), addon.Inputs.read(tmp_path, METER), 'de',
+                         {'portal_ok': '2026-10-14T12:00:00+00:00'}, None)
     connection, site, site_id, lang, version, values = published[0]
     assert (site, site_id, lang) == ('Place', 'place', 'de')
     assert values['portal_data_until'] == '2026-10-01T00:00:00+00:00'                 # end of the last quarter hour
@@ -412,6 +415,29 @@ def test_removal_is_refused_while_the_energy_dashboard_uses_the_statistic(tmp_pa
     assert not addon.read_state(tmp_path).get('removed')
 
 
+def test_removal_is_refused_when_the_energy_dashboard_cannot_be_read(tmp_path):
+    hass = FakeHass()
+    hass.energy_prefs = addon.HomeAssistantError('energy/get_prefs: unknown_error: boom')
+    hass.existing_statistics = ('linznetz_energy:place_grid_consumption',)
+    addon.web.write_status(tmp_path, removal_request='remove')
+    addon.handle_removal_request(hass, options(), tmp_path)
+    assert hass.cleared == () and addon.web.read_status(tmp_path)['removal']['state'] == 'failed'
+    # never set up: nothing uses the statistic
+    hass.energy_prefs = addon.HomeAssistantError('energy/get_prefs: not_found: No prefs')
+    assert addon.energy_status(hass, options())['uses_consumption'] is False
+
+
+def test_a_failed_removal_is_reported_and_nothing_is_paused(tmp_path, monkeypatch):
+    monkeypatch.setattr(addon.mqtt_status, 'broker', lambda: {'host': 'core-mosquitto'})
+    monkeypatch.setattr(addon.mqtt_status, 'remove', lambda conn, site_id: False)
+    hass = FakeHass()
+    addon.web.write_status(tmp_path, removal_request='remove')
+    addon.handle_removal_request(hass, options(), tmp_path)
+    status = addon.web.read_status(tmp_path)
+    assert status['removal']['state'] == 'failed' and status['phase'] == 'idle' and not status.get('removal_request')
+    assert not addon.read_state(tmp_path).get('removed')
+
+
 def test_remove_everything_then_reactivate(tmp_path, monkeypatch):
     removed_devices = []
     monkeypatch.setattr(addon.mqtt_status, 'broker', lambda: {'host': 'core-mosquitto'})
@@ -440,6 +466,8 @@ def test_mqtt_remove_sends_empty_retained_messages(monkeypatch):
 
     class Result:
         def wait_for_publish(self, timeout=None):
+            pass
+        def is_published(self):
             return True
 
     class Client:

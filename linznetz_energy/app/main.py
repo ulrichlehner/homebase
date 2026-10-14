@@ -247,21 +247,25 @@ def to_stats(hours: list) -> list:
     return [{'start': h.start, 'sum': h.sum_wh / 1000, 'state': h.sum_wh / 1000} for h in hours]
 
 
-def portal_hours(store: Path, metering_point: str) -> list:
-    """Every hour the portal has (fusion.Hour), running sum in Wh."""
-    path = store / f'{metering_point}_readings.csv'
-    if not path.exists():
-        return []
-    return fusion.fuse(fusion.read_portal(path), {}, {})
+@dataclass
+class Inputs:
+    """The add-on's files, read once per run: portal {UTC quarter: (Wh, substitute)}, the
+    reconstructed history {UTC quarter: Wh} and the live hours {UTC hour: Wh}."""
+    portal: dict
+    reconstructed: dict
+    live: dict
 
+    @classmethod
+    def read(cls, store: Path, metering_point: str) -> 'Inputs':
+        path = readings.readings_path(store, metering_point)
+        return cls(portal=fusion.read_portal(path) if path.exists() else {},
+                   reconstructed=fusion.read_reconstructed(store / f'{metering_point}_reconstructed_15min.csv'),
+                   live=livearchive.read_hourly(store, metering_point))
 
-def fused_hours(store: Path, metering_point: str) -> list:
-    """The best source per hour: the live counter (primary), then portal readings, then the reconstructed
-    history (fusion.fuse)."""
-    path = store / f'{metering_point}_readings.csv'
-    portal = fusion.read_portal(path) if path.exists() else {}
-    reconstructed = fusion.read_reconstructed(store / f'{metering_point}_reconstructed_15min.csv')
-    return fusion.fuse(portal, livearchive.read_hourly(store, metering_point), reconstructed)
+    def fused(self) -> list:
+        """The best source per hour: the live counter (primary), then portal readings, then the
+        reconstructed history (fusion.fuse)."""
+        return fusion.fuse(self.portal, self.live, self.reconstructed)
 
 
 def update_live(hass, options: Options, store: Path, now: datetime) -> dict:
@@ -276,26 +280,19 @@ def update_live(hass, options: Options, store: Path, now: datetime) -> dict:
     return summary
 
 
-def compare_live(store: Path, metering_point: str, zone: ZoneInfo, now: datetime) -> dict:
+def compare_live(inputs: Inputs, zone: ZoneInfo, now: datetime) -> dict:
     """The live counter against the portal: the last complete day both have, the days of the last
     `CHECK_DAYS` outside the tolerance, and the deviating hours in that span."""
-    path = readings.readings_path(store, metering_point)
-    portal = fusion.read_portal(path) if path.exists() else {}
-    live = livearchive.read_hourly(store, metering_point)
-    result = fusion.validate(portal, live, zone)
+    result = fusion.validate(inputs.portal, inputs.live, zone)
     since = (now - timedelta(days=CHECK_DAYS)).astimezone(zone).date()
     last = result.days[-1] if result.days else None
-    hours = fusion.fuse(portal, live, {})
+    hours = fusion.fuse(inputs.portal, inputs.live, {})
     return {
         'last_day': last[0].isoformat() if last else None,
         'last_day_percent': round(100 * (last[2] - last[1]) / last[1], 2) if last and last[1] else None,
         'bad_days': [(d.isoformat(), p, r) for d, p, r in result.bad_days if d >= since],
         'deviating_hours': sum(1 for h in hours if h.flag and h.start.astimezone(zone).date() >= since),
     }
-
-
-def fused_statistics(store: Path, metering_point: str) -> list:
-    return to_stats(fused_hours(store, metering_point))
 
 
 def _range(times: list, zone: ZoneInfo, unit_fmt: str = '%d.%m.%Y %H:%M') -> Optional[dict]:
@@ -305,12 +302,10 @@ def _range(times: list, zone: ZoneInfo, unit_fmt: str = '%d.%m.%Y %H:%M') -> Opt
             'to': max(times).astimezone(zone).strftime(unit_fmt)}
 
 
-def data_status(store: Path, metering_point: str, zone: ZoneInfo) -> dict:
-    measured = readings.read_csv_file(readings.readings_path(store, metering_point))
-    reconstructed = fusion.read_reconstructed(store / f'{metering_point}_reconstructed_15min.csv')
-    return {'readings': _range([datetime.fromtimestamp(t, UTC) for t in measured], zone),
-            'reconstructed': _range(list(reconstructed), zone),
-            'live': _range(list(livearchive.read_hourly(store, metering_point)), zone)}
+def data_status(inputs: Inputs, zone: ZoneInfo) -> dict:
+    return {'readings': _range(list(inputs.portal), zone),
+            'reconstructed': _range(list(inputs.reconstructed), zone),
+            'live': _range(list(inputs.live), zone)}
 
 
 def statistic_status(statistic_id: str, hours: list, zone: ZoneInfo) -> dict:
@@ -396,14 +391,14 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
         web.write_status(store, portal={'ok': state.get('portal_ok'),
                                         'login_failed': state.get('portal_login_failed')})
 
-    live = None
     if options.live_meter_entity:
         web.write_status(store, phase='live', detail='')
         try:
-            live = update_live(hass, options, store, now)
+            update_live(hass, options, store, now)
         except HomeAssistantError as err:
             logger.warning('Could not read the live counter %s: %s', options.live_meter_entity, err)
-    check = compare_live(store, options.metering_point, zone, now) if options.live_meter_entity else None
+    inputs = Inputs.read(store, options.metering_point)
+    check = compare_live(inputs, zone, now) if options.live_meter_entity else None
     if check and check['bad_days']:
         new = [d for d in check['bad_days'] if d[0] not in state.get('deviation_notified', [])]
         if new:
@@ -412,13 +407,13 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
             state['deviation_notified'] = sorted(set(state.get('deviation_notified', [])) | {d for d, _, _ in new})[-60:]
             write_state(store, state)
 
-    web.write_status(store, phase='statistics', detail='', data=data_status(store, options.metering_point, zone),
+    web.write_status(store, phase='statistics', detail='', data=data_status(inputs, zone),
                      live_check=check)
     remove_portal_statistic(hass, options, store, state)
     written = {}
     for key, statistic_id, name, hours in (
             ('consumption', options.consumption_statistic, t(lang, 'stat.consumption', site=options.site),
-             fused_hours(store, options.metering_point)),):
+             inputs.fused()),):
         if hours:
             stats = to_stats(hours)
             import_statistic(hass, statistic_id, name, stats)
@@ -427,7 +422,7 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
             written[key] = statistic_status(statistic_id, hours, zone)
     web.write_status(store, phase='idle', detail='', statistics=written, last_run=now.isoformat())
     web.write_status(store, energy=energy_status(hass, options))
-    publish_status(options, store, lang, state, check, zone)
+    publish_status(options, inputs, lang, state, check)
 
 
 def remove_portal_statistic(hass, options: Options, store: Path, state: dict) -> None:
@@ -466,11 +461,21 @@ def handle_removal_request(hass, options: Options, store: Path) -> None:
         return
     web.write_status(store, phase='removing', detail='')
     energy = energy_status(hass, options)
-    if energy and energy.get('uses_consumption'):
+    if energy is None:
+        logger.warning('Not removed: the Energy dashboard settings cannot be read')
+        web.write_status(store, removal_request=None, phase='idle',
+                         removal={'state': 'failed', 'error': 'energy/get_prefs'})
+        return
+    if energy.get('uses_consumption'):
         logger.warning('Not removed: the Energy dashboard still uses %s', options.consumption_statistic)
         web.write_status(store, removal_request=None, removal={'state': 'refused'}, phase='idle', energy=energy)
         return
-    remove_all(hass, options)
+    try:
+        remove_all(hass, options)
+    except (HomeAssistantError, RuntimeError) as err:
+        logger.error('Removing from Home Assistant failed, nothing is paused: %s', err)
+        web.write_status(store, removal_request=None, removal={'state': 'failed', 'error': str(err)}, phase='idle')
+        return
     state['removed'] = True
     write_state(store, state)
     web.write_status(store, removal_request=None, removal={'state': 'done'}, phase='removed', detail='',
@@ -485,8 +490,8 @@ def remove_all(hass, options: Options) -> None:
     if existing:
         hass.clear_statistics(existing)
     connection = mqtt_status.broker()
-    if connection:
-        mqtt_status.remove(connection, options.site_id)
+    if connection and not mqtt_status.remove(connection, options.site_id):
+        raise RuntimeError('the MQTT broker did not take the removal of the device')
     for notification_id in ALL_NOTIFICATIONS:
         notify(hass, notification_id, '', None)
     logger.info('Removed from Home Assistant: statistics %s, the MQTT device, the notifications; the add-on is paused',
@@ -498,8 +503,10 @@ def energy_status(hass, options: Options) -> Optional[dict]:
     card on the add-on page that explains the switch (step 7). None if it cannot be read."""
     try:
         prefs = hass.call('energy/get_prefs') or {}
-    except HomeAssistantError:
-        return None
+    except HomeAssistantError as err:
+        if ': not_found:' not in str(err):   # not_found: the Energy dashboard was never set up
+            return None
+        prefs = {}
     grid_from = []
 
     def collect(node):
@@ -517,19 +524,15 @@ def energy_status(hass, options: Options) -> Optional[dict]:
             'uses_consumption': options.consumption_statistic in grid_from}
 
 
-def publish_status(options: Options, store: Path, lang: str, state: dict, check: Optional[dict],
-                   zone: ZoneInfo) -> None:
+def publish_status(options: Options, inputs: Inputs, lang: str, state: dict, check: Optional[dict]) -> None:
     """The status entities over MQTT (see mqtt_status), if there is a broker."""
     connection = mqtt_status.broker()
     if not connection:
         return
-    portal_rows = readings.read_csv_file(readings.readings_path(store, options.metering_point))
-    live = livearchive.read_hourly(store, options.metering_point)
     values = {
         'last_portal_fetch': state.get('portal_ok'),
-        'portal_data_until': (datetime.fromtimestamp(max(portal_rows), UTC) + timedelta(minutes=15)).isoformat()
-                             if portal_rows else None,
-        'live_data_until': (max(live) + fusion.HOUR).isoformat() if live else None,
+        'portal_data_until': (max(inputs.portal) + fusion.QUARTER).isoformat() if inputs.portal else None,
+        'live_data_until': (max(inputs.live) + fusion.HOUR).isoformat() if inputs.live else None,
         'live_deviation': check['last_day_percent'] if check else None,
         'deviating_hours': check['deviating_hours'] if check else None,
         'portal_login_problem': bool(state.get('portal_login_failed')),

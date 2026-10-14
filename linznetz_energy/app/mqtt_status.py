@@ -92,9 +92,9 @@ def messages(site: str, site_id: str, lang: str, version: str, values: dict) -> 
     return out
 
 
-def publish(connection: dict, site: str, site_id: str, lang: str, version: str, values: dict) -> bool:
-    """Publishes discovery and state (retained). Returns False when the broker cannot be reached;
-    the add-on goes on without the entities."""
+def _send(connection: dict, site_id: str, messages: list) -> None:
+    """Publishes (topic, payload) pairs retained with QoS 1 and waits until the broker has each
+    one; raises OSError, ValueError or RuntimeError if not."""
     import paho.mqtt.client as mqtt   # only in the add-on image
 
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f'linznetz_energy_{site_id}')
@@ -105,39 +105,36 @@ def publish(connection: dict, site: str, site_id: str, lang: str, version: str, 
     try:
         client.connect(connection['host'], int(connection.get('port') or 1883), keepalive=30)
         client.loop_start()
-        for topic, payload in messages(site, site_id, lang, version, values):
-            client.publish(topic, payload, qos=1, retain=True).wait_for_publish(timeout=10)
+        for topic, payload in messages:
+            info = client.publish(topic, payload, qos=1, retain=True)
+            info.wait_for_publish(timeout=10)
+            if not info.is_published():
+                raise RuntimeError(f'no acknowledgement for {topic} (login rejected?)')
+    finally:
+        client.loop_stop()
+        client.disconnect()
+
+
+def publish(connection: dict, site: str, site_id: str, lang: str, version: str, values: dict) -> bool:
+    """Publishes discovery and state (retained). Returns False when the broker cannot be reached;
+    the add-on goes on without the entities."""
+    try:
+        _send(connection, site_id, messages(site, site_id, lang, version, values))
         return True
     except (OSError, ValueError, RuntimeError) as err:
         logger.warning('MQTT broker %s not reachable, no status entities this time: %s', connection.get('host'), err)
         return False
-    finally:
-        client.loop_stop()
-        client.disconnect()
 
 
 def remove(connection: dict, site_id: str) -> bool:
     """Removes the device: an empty retained discovery config deletes an entity in Home Assistant,
     an empty retained state clears the broker."""
-    import paho.mqtt.client as mqtt   # only in the add-on image
-
     node = f'linznetz_energy_{site_id}'
     topics = [f'{DISCOVERY_PREFIX}/{component}/{node}/{key}/config' for key, (component, *_) in ENTITIES.items()]
     topics.append(f'linznetz_energy/{site_id}/state')
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f'linznetz_energy_{site_id}')
-    if connection.get('username'):
-        client.username_pw_set(connection['username'], connection.get('password'))
-    if connection.get('ssl'):
-        client.tls_set()
     try:
-        client.connect(connection['host'], int(connection.get('port') or 1883), keepalive=30)
-        client.loop_start()
-        for topic in topics:
-            client.publish(topic, '', qos=1, retain=True).wait_for_publish(timeout=10)
+        _send(connection, site_id, [(topic, '') for topic in topics])
         return True
     except (OSError, ValueError, RuntimeError) as err:
         logger.warning('MQTT broker %s not reachable, the device could not be removed: %s', connection.get('host'), err)
         return False
-    finally:
-        client.loop_stop()
-        client.disconnect()

@@ -250,11 +250,12 @@ def render_page(status: dict, message=None) -> str:
                        f'<form method="post" action="resume"><button type="submit" class="secondary">'
                        f'{t(lang, "page.resume")}</button></form></div>')
     else:
-        refused = (f'<p><span class="pill warn">!</span> {html.escape(t(lang, "page.remove_refused"))}</p>'
-                   if removal.get('state') == 'refused' else '')
+        problem = {'refused': t(lang, 'page.remove_refused'),
+                   'failed': t(lang, 'page.remove_failed', error=removal.get('error', ''))}.get(removal.get('state'))
+        refused = f'<p><span class="pill warn">!</span> {html.escape(problem)}</p>' if problem else ''
         remove_html = (f'<div class="card danger"><h2>{t(lang, "page.remove_title")}</h2>'
                        f'<p>{html.escape(t(lang, "page.remove_text"))}</p>{refused}'
-                       f'<form method="post" action="remove" onsubmit="return confirm({json.dumps(t(lang, "page.remove_confirm"))})">'
+                       f'<form method="post" action="remove" onsubmit="return confirm({html.escape(json.dumps(t(lang, "page.remove_confirm")))})">'
                        f'<label class="check"><input type="checkbox" name="confirm" value="yes" required> '
                        f'{html.escape(t(lang, "page.remove_check"))}</label>'
                        f'<button type="submit" class="danger">{t(lang, "page.remove_button")}</button></form></div>')

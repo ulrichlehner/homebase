@@ -9,8 +9,9 @@ readings are archived next to the portal readings:
   <meterId>_live_hourly.csv   the cleaned hourly live values (UTC hour; Wh), kept for good: about
                             9000 rows a year
 
-Every update merges new raw readings, cleans the counter over the whole raw window again and
-replaces the hourly values inside that window; older hourly values stay as they are.
+Every update merges new raw readings, cleans the counter of the last `CLEAN_DAYS` days again and
+replaces the hourly values inside that window; older hourly values stay as they are. The rest of
+the raw window is there to re-clean further back by hand (`update(..., clean_days=RAW_DAYS)`).
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from . import fusion
 
 UTC = ZoneInfo('UTC')
 RAW_DAYS = 90
+CLEAN_DAYS = 14   # re-cleaned every hour: long enough for the longest segment to be the real counter
 RAW_HEADER = ['time_utc', 'wh']
 HOURLY_HEADER = ['start_utc', 'wh']
 
@@ -61,6 +63,13 @@ def _write(path: Path, header: list, rows: dict) -> None:
     tmp.replace(path)
 
 
+def _append(path: Path, rows: dict) -> None:
+    with path.open('a', newline='') as fh:
+        writer = csv.writer(fh, delimiter=';', lineterminator='\n')
+        for t in sorted(rows):
+            writer.writerow([t.strftime('%Y-%m-%dT%H:%M:%SZ'), rows[t]])
+
+
 def read_raw(folder: Path, meter_id: str) -> dict:
     """{UTC time: Wh counter} of the archived raw readings."""
     return _read(raw_path(folder, meter_id))
@@ -89,24 +98,34 @@ def last_raw_time(folder: Path, meter_id: str) -> Optional[datetime]:
 
 
 def update(folder: Path, meter_id: str, new_readings: dict, now: datetime,
-           max_kw: float = fusion.DEFAULT_MAX_KW, max_gap: timedelta = fusion.DEFAULT_MAX_GAP) -> dict:
+           max_kw: float = fusion.DEFAULT_MAX_KW, max_gap: timedelta = fusion.DEFAULT_MAX_GAP,
+           clean_days: int = CLEAN_DAYS) -> dict:
     """Merges `new_readings` ({UTC time: Wh}) into the raw archive, prunes it to `RAW_DAYS`,
-    re-cleans the whole raw window and replaces the hourly values inside it. Returns a summary
+    re-cleans the last `clean_days` and replaces the hourly values inside them. Returns a summary
     for the log and the status: raw readings, rejected readings, dropped segments, hourly
     values, the newest hour."""
     raw = read_raw(folder, meter_id)
-    raw.update(new_readings)
+    latest = max(raw) if raw else None
+    changed = {t: v for t, v in new_readings.items() if raw.get(t) != v}
+    raw.update(changed)
     cutoff = now - timedelta(days=RAW_DAYS)
-    raw = {t: v for t, v in raw.items() if t >= cutoff}
-    _write(raw_path(folder, meter_id), RAW_HEADER, raw)
+    if latest and min(raw) >= cutoff - timedelta(days=1) and all(t > latest for t in changed):
+        # the usual hour: only newer readings, pruning is due once a day; the file is large
+        if changed:
+            _append(raw_path(folder, meter_id), changed)
+    else:
+        raw = {t: v for t, v in raw.items() if t >= cutoff}
+        _write(raw_path(folder, meter_id), RAW_HEADER, raw)
 
-    cleaning = fusion.clean_counter(sorted(raw.items()), max_kw)
+    clean_from = now - timedelta(days=clean_days)
+    window = sorted((t, v) for t, v in raw.items() if t >= clean_from)
+    cleaning = fusion.clean_counter(window, max_kw)
     fresh = fusion.counter_hourly(cleaning.accepted, max_gap, max_kw)
     hourly = read_hourly(folder, meter_id)
-    if raw:
-        # hours fully inside the raw window are computed anew (a re-cleaned misread phase may remove
-        # a value); the first, partial hour and everything before keep their archived value
-        window_start = fusion.hour_of(min(raw)) + fusion.HOUR
+    if window:
+        # hours fully inside the cleaned window are computed anew (a re-cleaned misread phase may
+        # remove a value); the first, partial hour and everything before keep their archived value
+        window_start = fusion.hour_of(window[0][0]) + fusion.HOUR
         hourly = {h: v for h, v in hourly.items() if h < window_start}
     hourly.update(fresh)
     _write(hourly_path(folder, meter_id), HOURLY_HEADER, hourly)

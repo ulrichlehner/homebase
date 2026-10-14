@@ -68,7 +68,8 @@ that entity as `live_meter_entity`, and the add-on
 - reads the new counter readings every hour (only reads, nothing is changed in Home Assistant),
 - cleans them: repeated values count from their first occurrence, phases in which the meter sends
   wrong values (a tenth of the counter, near-zero values, spikes) are dropped, and an hour gets a
-  value only if good readings at most 60 minutes apart surround both of its ends,
+  value only if good readings at most 60 minutes apart surround both of its ends (or the counter
+  did not move in between, as during hours of PV export),
 - makes them the **primary source** of the consumption statistic: the hours since the last portal
   day come from the live meter right away, and where it has no value (a gap, a misread phase) the
   portal fills in a day or two later,

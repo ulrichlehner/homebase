@@ -84,6 +84,8 @@ TEXTS = {
         'page.remove_requested': 'Removing, the page updates itself.',
         'page.remove_refused': 'The Energy dashboard still uses the statistic. Remove it there first '
                                '(Settings > Dashboards > Energy), then try again.',
+        'page.remove_failed': 'Removing did not work ({error}), nothing is paused. Details are in the log; '
+                              'try again later.',
         'page.removed_title': 'Removed from Home Assistant',
         'page.removed_text': 'The statistic, the device and the notifications are gone, and the add-on is paused. Now '
                              'uninstall it and tick "delete data" to remove its files too. Changed your mind? '
@@ -223,6 +225,8 @@ TEXTS = {
         'page.remove_requested': 'Wird entfernt, die Seite aktualisiert sich selbst.',
         'page.remove_refused': 'Das Energie-Dashboard nutzt die Statistik noch. Bitte dort zuerst entfernen '
                                '(Einstellungen > Dashboards > Energie), dann nochmals versuchen.',
+        'page.remove_failed': 'Entfernen hat nicht geklappt ({error}), nichts ist pausiert. Details stehen im Protokoll; '
+                              'bitte später nochmals versuchen.',
         'page.removed_title': 'Aus Home Assistant entfernt',
         'page.removed_text': 'Statistik, Gerät und Benachrichtigungen sind weg, die App ist pausiert. Jetzt deinstallieren '
                              'und „Daten löschen“ anhaken, damit auch ihre Dateien weg sind. Doch nicht? Reaktivieren: '
