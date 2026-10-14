@@ -48,9 +48,10 @@ can be added later.
 
 ## Steps and progress
 
-Each step ends with something that can be checked before the next one starts. All steps live in
-one branch (`fusion-disaggregate`) and one PR (#13), merged once at the end, no intermediate
-merges. Nothing touches the live HA setup before step 7.
+Each step ends with something that can be checked before the next one starts. Steps 0 to 4 were
+done in one branch (`fusion-disaggregate`, PR #13), merged after step 4 so the add-on installs from
+the plain repository URL. Steps 5 to 8 follow in one new branch and PR. Nothing touches the live
+HA setup before step 7, except the separate `…_grid_energy_portal` statistic.
 
 ### Step 0: Prerequisites
 
@@ -144,10 +145,13 @@ Done when the backtest error is acceptable and the source files are unchanged.
       as `linznetz:<place>_grid_energy_portal`, portal login and the login-failure notification
       (created and dismissed again) work
 - [x] Image published and public on ghcr.io (both architectures, version 0.1.0)
-- [ ] Installs from the repo URL on HA OS (`https://github.com/ulrichlehner/homebase#fusion-disaggregate`),
-      survives a restart, no credentials in the logs
+- [ ] Installs from the repo URL on HA OS (`https://github.com/ulrichlehner/homebase`, after the
+      merge of #13), survives a restart, no credentials in the logs
 
 ### Step 5: Load the history once
+
+The portal keeps about 36 months: on 2026-10-14 it starts at 2023-10-01, September 2023 exists only
+in the CSV archive. Without this step the add-on's statistic starts at whatever the portal still has.
 
 - [ ] Existing CSV files (readings and `reconstructed_15min`) copied to `/share` once, the add-on
       merges them into its storage (idempotent)
@@ -228,6 +232,9 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-14: the portal now starts at 2023-10-01 (checked with a full download into a scratch
+  folder): September 2023 is gone from the portal and exists only in the CSV archive. The user
+  decided to merge after step 4 and install the add-on from `main`.
 - 2026-10-14: step 3 done (visual check OK, test statistic deleted). Step 4 add-on written and
   tested from the Mac against HA; next: publish the image and install it on HA.
 - 2026-10-14: step 3 run against HA 2026.10.1 (backup "Before HA Energy Add-on" taken first):

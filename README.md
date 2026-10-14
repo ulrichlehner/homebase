@@ -53,6 +53,11 @@ iCloud folder so nothing is lost when the machine dies; the default is `./data/d
 `csv` run downloads the complete history the portal offers (about three years), later runs take a
 few seconds.
 
+The portal only keeps about 36 months and drops the oldest month every month, so older readings
+exist only in `<meterId>_readings.csv`. Never delete it: if the folder was emptied, restore the
+CSV files (and `original_charts/`) from a backup before running `csv`, otherwise the first run
+starts a new file with whatever the portal still has.
+
 ## Commands
 
 All commands read the configuration from `.env` (see [App setup](#app)).
