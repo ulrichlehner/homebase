@@ -103,9 +103,14 @@ The statistic has one value per hour. For every hour the add-on takes the best s
 | --- | --- | --- |
 | 1 | Live meter | the hour has good live readings; available right after the hour |
 | 2 | Portal, measured | the portal has all four quarter hours of the hour (one to two days later) |
-| 3 | Portal, substitute values | all four quarter hours, but LINZ NETZ estimated some of them (Ersatzwerte) |
+| 3 | Portal, substitute values | all four quarter hours, but some are substitute values (see below) |
 | 4 | Reconstructed history | your imported `_reconstructed_15min.csv`, for months the portal no longer has |
 | 5 | Portal, incomplete | some quarter hours are missing; the ones that are there |
+
+**Substitute values** (Ersatzwerte): when LINZ NETZ receives no reading from the meter for a quarter
+hour (for example after a transmission fault or a meter change), it calculates one so the bill has
+no hole, and marks it in the portal's "Ersatzwert" column. It may replace it with the real reading
+later. Such hours rank below measured ones, and they are not used to check the live meter.
 
 A few rules on top:
 
