@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/ulrichlehner/homebase/compare/v1.0.0...v1.1.0) (2026-10-15)
+
+
+### Features
+
+* pick the live meter on the add-on page ([#27](https://github.com/ulrichlehner/homebase/issues/27)) ([2212448](https://github.com/ulrichlehner/homebase/commit/2212448c38f9887e6a51565c6bad2a74674398d9))
+
 ## [1.0.0](https://github.com/ulrichlehner/homebase/compare/v0.2.2...v1.0.0) (2026-10-15)
 
 
