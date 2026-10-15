@@ -5,7 +5,6 @@
 
 ### Bug Fixes
 
-* add-on page scrolls in the Home Assistant app on iOS ([162f649](https://github.com/ulrichlehner/homebase/commit/162f649040f6efd7d3287d997478ce542a6c058b))
 * add-on page scrolls in the Home Assistant app on iOS ([3c38ca4](https://github.com/ulrichlehner/homebase/commit/3c38ca43c1aedb7d9bdfa48f02d82e408b34054e))
 
 ## [0.2.1](https://github.com/ulrichlehner/homebase/compare/v0.2.0...v0.2.1) (2026-10-14)
@@ -15,7 +14,6 @@
 
 * add-on name "LINZ NETZ Energy", note that it is not affiliated with LINZ NETZ ([5ea195b](https://github.com/ulrichlehner/homebase/commit/5ea195bbfe61eb9a7a3e6baa3dd24de16222314e))
 * add-on page fits phone screens ([dc6655f](https://github.com/ulrichlehner/homebase/commit/dc6655fd4865fec6d5d9edb9b804d587b86744f2))
-* add-on page fits phone screens, name "LINZ NETZ Energy", disclaimer ([2285b4b](https://github.com/ulrichlehner/homebase/commit/2285b4b5288362203c17294822eb0666943af287))
 * site is a free-text name, statistic names in the language of HA ([d5ba135](https://github.com/ulrichlehner/homebase/commit/d5ba135d39c11e485a48a26c58c6dac53f7a9e70))
 
 ## [0.2.0](https://github.com/ulrichlehner/homebase/compare/v0.1.1...v0.2.0) (2026-10-14)
@@ -23,7 +21,6 @@
 
 ### Features
 
-* add-on texts in the language of Home Assistant, clearer upload ([86084d5](https://github.com/ulrichlehner/homebase/commit/86084d5c5bfd42478ccd21bcd5803133cd25447c))
 * add-on texts in the language of Home Assistant, clearer upload ([fa7b6a2](https://github.com/ulrichlehner/homebase/commit/fa7b6a21bb8f4d56cb18fc5eb9ffdb265903e49f))
 
 ## [0.1.1](https://github.com/ulrichlehner/homebase/compare/v0.1.0...v0.1.1) (2026-10-14)
@@ -50,7 +47,6 @@
 * rename the add-on option to fetch_interval_hours, German translation ([9b96e05](https://github.com/ulrichlehner/homebase/commit/9b96e05be6ce1467ecf66bbe7cc1b771a326c059))
 * RF readings are the primary source, the portal verifies and fills gaps ([8a9b9c3](https://github.com/ulrichlehner/homebase/commit/8a9b9c3e8289d1fcd3e2ac17d97c91fe879c2132))
 * split the reconstructed 6h blocks into quarter hours ([ec4f78f](https://github.com/ulrichlehner/homebase/commit/ec4f78fb4fb8fc3a21517c259fc3514e6d8cbf39))
-* split the reconstructed 6h blocks into quarter hours (WIP) ([a22544e](https://github.com/ulrichlehner/homebase/commit/a22544e731e2a66216e4da6d0fdb3dd72d4166d5))
 
 
 ### Bug Fixes
@@ -59,7 +55,3 @@
 * the first-download notification points to the add-on page for older history ([e2a43fa](https://github.com/ulrichlehner/homebase/commit/e2a43fa59e22c39f5d9a4df7ff64c91b941570c7))
 * valid YAML in the add-on image workflow ([995e14b](https://github.com/ulrichlehner/homebase/commit/995e14b2b165711c02dff0250c7fcde5f72f1958))
 * wait for the asynchronous statistics import before reading back ([c45c50e](https://github.com/ulrichlehner/homebase/commit/c45c50e34423b6f7538ffb7cb0cba14286e960fb))
-
-## Changelog
-
-Written by release-please from the conventional commits (see the README, "Releases").

@@ -122,3 +122,47 @@ def test_page_scrolls_inside_the_ios_app_frame():
     page = W.render_page({})
     assert 'html { height: 100%; overflow: hidden; }' in page
     assert 'overflow-y: auto; -webkit-overflow-scrolling: touch' in page
+
+
+
+def test_energy_card_explains_the_switch_and_double_counting():
+    base = {'language': 'de', 'site': 'Lakeside'}
+    switch = W.render_page({**base, 'energy': {'grid_from': ['sensor.lakeside_grid_total_energy_consumption'],
+                                               'consumption_statistic': 'linznetz_energy:lakeside_grid_consumption',
+                                               'uses_consumption': False}})
+    assert '<h2>Energie-Dashboard</h2>' in switch and '„Lakeside Netzbezug“ hinzufügen' in switch
+    assert 'sensor.lakeside_grid_total_energy_consumption entfernen' in switch
+    double = W.render_page({**base, 'energy': {'grid_from': ['linznetz_energy:lakeside_grid_consumption', 'sensor.x'],
+                                               'consumption_statistic': 'linznetz_energy:lakeside_grid_consumption',
+                                               'uses_consumption': True}})
+    assert 'Nutzt „Lakeside Netzbezug“ als Netzbezug.' in double and 'doppelt gezählt' in double
+    assert '<h2>Energie-Dashboard</h2>' not in W.render_page(base)   # no card before the first run
+
+
+def test_remove_needs_the_confirmation_box(server):
+    url, store, wake = server
+    req = urllib.request.Request(url + '/remove', data=b'', method='POST')
+    with pytest.raises(urllib.error.HTTPError) as err:
+        urllib.request.urlopen(req)
+    assert err.value.code == 400 and not wake.is_set()
+    req = urllib.request.Request(url + '/remove', data=b'confirm=yes', method='POST',
+                                 headers={'Content-Type': 'application/x-www-form-urlencoded'})
+    page = urllib.request.urlopen(req).read().decode()
+    assert 'Removing, the page updates itself.' in page and wake.is_set()
+    assert W.read_status(store)['removal_request'] == 'remove'
+
+
+def test_page_offers_removal_and_after_it_reactivation():
+    page = W.render_page({'language': 'de'})
+    assert 'Alles aus Home Assistant entfernen' in page and 'name="confirm" value="yes" required' in page
+    done = W.render_page({'language': 'de', 'removal': {'state': 'done'}})
+    assert 'Aus Home Assistant entfernt' in done and 'action="resume"' in done and 'action="remove"' not in done
+    refused = W.render_page({'language': 'de', 'removal': {'state': 'refused'}})
+    assert 'nutzt die Statistik noch' in refused
+    failed = W.render_page({'language': 'en', 'removal': {'state': 'failed', 'error': 'energy/get_prefs'}})
+    assert 'Removing did not work (energy/get_prefs)' in failed
+
+
+def test_the_confirm_dialog_text_stays_inside_its_attribute():
+    page = W.render_page({'language': 'en'})
+    assert 'onsubmit="return confirm(&quot;Delete the statistic, the device and the notifications of the add-on?&quot;)"' in page

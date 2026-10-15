@@ -274,6 +274,11 @@ Preferred: no custom code.
 
 3. **Energy dashboard:** configure grid consumption and feed-in.
 
+   Better: the add-on in [`linznetz_energy/`](../linznetz_energy) takes this counter as its live
+   source, cleans misread phases (wrong scale, near-zero values, repeated values), fills gaps from
+   the LINZ NETZ portal and writes one statistic with the whole history for the Energy dashboard. A
+   guard sensor in Home Assistant against the misread spikes is not needed then.
+
 Fallbacks if the HA host is out of range: an ESP32 plus SX1276/SX1262 as a remote receiver → MQTT →
 wmbusmeters bridge add-on, or the Smart-Meter-Adapter, variant MBUS (xDevelop, about 150 €, WLAN/MQTT).
 If HA runs as a container, run wmbusmeters as its own container next to it.

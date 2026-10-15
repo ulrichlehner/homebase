@@ -30,11 +30,27 @@ class FakeHass:
     def call_service(self, domain, service, data=None):
         self.services.append((domain, service, data))
 
+    existing_statistics = ()
+    cleared = ()
+
+    def statistics_metadata(self, statistic_ids):
+        return [{'statistic_id': i} for i in statistic_ids if i in self.existing_statistics]
+
+    def clear_statistics(self, statistic_ids):
+        self.cleared = tuple(self.cleared) + tuple(statistic_ids)
+
     def call(self, type_, **payload):
+        if type_ == 'energy/get_prefs':
+            if isinstance(self.energy_prefs, Exception):
+                raise self.energy_prefs
+            return self.energy_prefs
         assert type_ == 'get_config'
         return {'language': self.language, 'time_zone': 'Europe/Vienna'}
 
     language = 'en'
+    energy_prefs = {'energy_sources': [{'type': 'grid', 'flow_from': [
+        {'stat_energy_from': 'sensor.place_grid_total_energy_consumption'}], 'flow_to': []},
+        {'type': 'solar', 'stat_energy_from': 'sensor.pv'}]}
 
 
 def write_readings(store: Path, hours: int, start=None, kwh='0.100', name=None):
@@ -128,7 +144,7 @@ def test_next_run():
     assert addon.next_run(datetime(2026, 10, 14, 12, 7, tzinfo=UTC)) == datetime(2026, 10, 14, 13, 7, tzinfo=UTC)
 
 
-def test_run_once_imports_the_portal_statistic_in_chunks(tmp_path, monkeypatch):
+def test_run_once_imports_the_consumption_statistic_in_chunks(tmp_path, monkeypatch):
     write_readings(tmp_path, hours=12)
     monkeypatch.setattr(addon, 'IMPORT_CHUNK', 5)
     fetched = []
@@ -136,22 +152,20 @@ def test_run_once_imports_the_portal_statistic_in_chunks(tmp_path, monkeypatch):
     hass = FakeHass()
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW)
     assert len(fetched) == 1
-    # portal and fused statistic, each in chunks of 5 hours
+    # one statistic, in chunks of 5 hours
     assert [(m['statistic_id'], len(stats)) for m, stats in hass.imports] == \
-        [('linznetz_energy:place_grid_consumption_portal', 5)] * 2 + [('linznetz_energy:place_grid_consumption_portal', 2)] + \
         [('linznetz_energy:place_grid_consumption', 5)] * 2 + [('linznetz_energy:place_grid_consumption', 2)]
     metadata = hass.imports[0][0]
-    assert metadata['source'] == 'linznetz_energy' and metadata['name'] == 'Place grid consumption (portal)'
-    assert hass.imports[3][0]['name'] == 'Place grid consumption'
+    assert metadata['source'] == 'linznetz_energy' and metadata['name'] == 'Place grid consumption'
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW + timedelta(minutes=1), 'de')
-    assert {m['name'] for m, _ in hass.imports[-6:]} == {'Place Netzbezug', 'Place Netzbezug (Portal)'}
+    assert {m['name'] for m, _ in hass.imports[-3:]} == {'Place Netzbezug'}
     last = hass.imports[-1][1][-1]
     assert last['sum'] == pytest.approx(4.8) and last['start'].minute == 0
     assert ('persistent_notification', 'dismiss', {'notification_id': addon.LOGIN_NOTIFICATION}) in hass.services
     assert 'portal_ok' in addon.read_state(tmp_path)
     # the next hour: no portal fetch, the statistic is imported again
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW + timedelta(hours=1))
-    assert len(fetched) == 1 and len(hass.imports) == 18   # three runs, 6 import calls each
+    assert len(fetched) == 1 and len(hass.imports) == 9    # three runs, 3 import calls each
 
 
 def test_rejected_login_notifies_and_keeps_going(tmp_path, monkeypatch, caplog):
@@ -164,7 +178,7 @@ def test_rejected_login_notifies_and_keeps_going(tmp_path, monkeypatch, caplog):
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW)
     created = [s for s in hass.services if s[1] == 'create']
     assert created and created[0][2]['notification_id'] == addon.LOGIN_NOTIFICATION
-    assert len(hass.imports) == 2   # the existing readings are still imported (portal and fused)
+    assert len(hass.imports) == 1   # the existing readings are still imported
     assert 'portal_login_failed' in addon.read_state(tmp_path)
     assert 'secret-pw' not in caplog.text and 'secret-pw' not in json.dumps(hass.services)
 
@@ -226,8 +240,9 @@ def test_fused_statistic_includes_the_reconstructed_history(tmp_path, monkeypatc
     by_id = {}
     for metadata, stats in hass.imports:
         by_id.setdefault(metadata['statistic_id'], []).extend(stats)
-    portal, fused = by_id['linznetz_energy:place_grid_consumption_portal'], by_id['linznetz_energy:place_grid_consumption']
-    assert len(portal) == 2 and len(fused) == 5
+    assert list(by_id) == ['linznetz_energy:place_grid_consumption']
+    fused = by_id['linznetz_energy:place_grid_consumption']
+    assert len(fused) == 5
     assert fused[0]['start'] == portal_start - timedelta(hours=3)
     assert fused[-1]['sum'] == pytest.approx(3 * 0.2 + 2 * 0.4)        # 3 reconstructed + 2 portal hours
     created = [s for s in hass.services if s[1] == 'create']
@@ -272,3 +287,206 @@ def test_site_without_letters_is_a_problem(tmp_path):
     path = tmp_path / 'options.json'
     path.write_text(json.dumps({'portal_username': 'u', 'portal_password': 'p', 'metering_point': METER, 'site': '***'}))
     assert addon.load_options(path)[1] == [('problem.site', {})]
+
+
+# -- Step 6: live meter readings, comparison and status entities ------------------------------------------
+
+class FakeHassWithHistory(FakeHass):
+    def __init__(self, states):
+        super().__init__()
+        self.states = states
+        self.history_calls = []
+
+    def history(self, entity_id, start, end=None):
+        self.history_calls.append((entity_id, start))
+        return [(t, s) for t, s in self.states if t >= start]
+
+
+def live_states(start, hours, watts=400, base=12_000_000):
+    return [(start + timedelta(minutes=m), f'{(base + round(watts * m / 60)) / 1000:.3f}') for m in range(0, hours * 60 + 1)]
+
+
+def test_live_counter_becomes_the_primary_source_and_is_checked(tmp_path, monkeypatch):
+    monkeypatch.setattr(addon, 'fetch_portal', lambda *a: None)
+    monkeypatch.setattr(addon.mqtt_status, 'broker', lambda: None)
+    start = datetime(2026, 10, 1, tzinfo=ZONE).astimezone(UTC)
+    write_readings(tmp_path, hours=48, start=start)               # portal: 400 Wh per hour, two full days
+    hass = FakeHassWithHistory(live_states(start, 50))             # live counter: the same, two hours further
+    o = options(live_meter_entity='sensor.place_grid_total_energy_consumption')
+    addon.run_once(hass, o, tmp_path, 'Europe/Vienna', start + timedelta(hours=50, minutes=7))
+    assert hass.history_calls[0][0] == 'sensor.place_grid_total_energy_consumption'
+    consumption = [stats for m, stats in hass.imports if m['statistic_id'].endswith('_grid_consumption')]
+    hours = [s for chunk in consumption for s in chunk]
+    assert len(hours) == 50 and hours[-1]['sum'] == pytest.approx(50 * 0.4)   # the live counter covers the two extra hours
+    status = addon.web.read_status(tmp_path)
+    assert status['live_check']['last_day'] == '2026-10-02' and status['live_check']['last_day_percent'] == 0.0
+    assert status['live_check']['bad_days'] == [] and status['data']['live']['count'] == 50
+    # the next run only asks HA for what is new
+    addon.run_once(hass, o, tmp_path, 'Europe/Vienna', start + timedelta(hours=51, minutes=7))
+    assert hass.history_calls[1][1] == start + timedelta(hours=49)   # last raw reading minus one hour
+
+
+def test_a_deviating_day_is_notified_once(tmp_path, monkeypatch):
+    monkeypatch.setattr(addon, 'fetch_portal', lambda *a: None)
+    monkeypatch.setattr(addon.mqtt_status, 'broker', lambda: None)
+    start = datetime(2026, 10, 1, tzinfo=ZONE).astimezone(UTC)
+    write_readings(tmp_path, hours=24, start=start)               # portal: 9.6 kWh that day
+    hass = FakeHassWithHistory(live_states(start, 24, watts=500))    # live counter: 12 kWh, 25 % more
+    o = options(live_meter_entity='sensor.place_grid_total_energy_consumption')
+    now = start + timedelta(hours=26)
+    addon.run_once(hass, o, tmp_path, 'Europe/Vienna', now)
+    notes = [s[2] for s in hass.services if s[2].get('notification_id') == addon.DEVIATION_NOTIFICATION]
+    assert len(notes) == 1 and '2026-10-01: 12.00 / 9.60 kWh' in notes[0]['message']
+    addon.run_once(hass, o, tmp_path, 'Europe/Vienna', now + timedelta(hours=1))
+    assert len([s for s in hass.services if s[2].get('notification_id') == addon.DEVIATION_NOTIFICATION]) == 1
+
+
+def test_live_meter_entity_must_look_like_an_entity(tmp_path):
+    path = tmp_path / 'options.json'
+    path.write_text(json.dumps({'portal_username': 'u', 'portal_password': 'p', 'metering_point': METER,
+                                'live_meter_entity': 'Lakeside grid'}))
+    assert addon.load_options(path)[1] == [('problem.live_meter_entity', {'value': 'Lakeside grid'})]
+
+
+def test_status_entities_over_mqtt(tmp_path, monkeypatch):
+    published = []
+    monkeypatch.setattr(addon.mqtt_status, 'broker', lambda: {'host': 'core-mosquitto'})
+    monkeypatch.setattr(addon.mqtt_status, 'publish', lambda *a: published.append(a) or True)
+    write_readings(tmp_path, hours=2)
+    addon.publish_status(options(), addon.Inputs.read(tmp_path, METER), 'de',
+                         {'portal_ok': '2026-10-14T12:00:00+00:00'}, None)
+    connection, site, site_id, lang, version, values = published[0]
+    assert (site, site_id, lang) == ('Place', 'place', 'de')
+    assert values['portal_data_until'] == '2026-10-01T00:00:00+00:00'                 # end of the last quarter hour
+    assert values['portal_login_problem'] is False and values['live_deviation'] is None
+
+
+def test_mqtt_messages():
+    import mqtt_status
+    msgs = dict(mqtt_status.messages('Lakeside', 'lakeside', 'de', '0.3.0', {'live_deviation': 0.4}))
+    config = json.loads(msgs['homeassistant/sensor/linznetz_energy_lakeside/live_deviation/config'])
+    assert config['name'] == 'Live-Abweichung letzter Tag' and config['unit_of_measurement'] == '%'
+    assert config['default_entity_id'] == 'sensor.lakeside_linznetz_live_deviation'
+    assert config['unique_id'] == 'linznetz_energy_lakeside_live_deviation'
+    assert config['device']['name'] == 'LINZ NETZ Energy Lakeside'
+    problem = json.loads(msgs['homeassistant/binary_sensor/linznetz_energy_lakeside/portal_login_problem/config'])
+    assert problem['device_class'] == 'problem' and problem['entity_category'] == 'diagnostic'
+    state = json.loads(msgs['linznetz_energy/lakeside/state'])
+    assert state['live_deviation'] == 0.4 and state['last_portal_fetch'] is None
+
+
+
+# -- Step 7: the Energy dashboard -------------------------------------------------------------------
+
+def test_energy_status_reads_the_grid_sources():
+    hass = FakeHass()
+    status = addon.energy_status(hass, options())
+    assert status == {'grid_from': ['sensor.place_grid_total_energy_consumption'],   # solar is ignored
+                      'consumption_statistic': 'linznetz_energy:place_grid_consumption', 'uses_consumption': False}
+    hass.energy_prefs = {'energy_sources': [{'type': 'grid', 'flow_from': [
+        {'stat_energy_from': 'linznetz_energy:place_grid_consumption'}]}]}
+    assert addon.energy_status(hass, options())['uses_consumption'] is True
+
+
+
+def test_the_portal_statistic_of_earlier_versions_is_deleted_once(tmp_path, monkeypatch):
+    monkeypatch.setattr(addon, 'fetch_portal', lambda *a: None)
+    write_readings(tmp_path, hours=2)
+    hass = FakeHass()
+    hass.existing_statistics = ('linznetz_energy:place_grid_consumption_portal',)
+    addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW)
+    assert hass.cleared == ('linznetz_energy:place_grid_consumption_portal',)
+    assert addon.read_state(tmp_path)['portal_statistic_removed'] is True
+    addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW + timedelta(hours=1))
+    assert hass.cleared == ('linznetz_energy:place_grid_consumption_portal',)       # only once
+    assert all(m['statistic_id'] == 'linznetz_energy:place_grid_consumption' for m, _ in hass.imports)
+
+
+# -- Remove everything from Home Assistant ------------------------------------------------------------
+
+def test_removal_is_refused_while_the_energy_dashboard_uses_the_statistic(tmp_path, monkeypatch):
+    hass = FakeHass()
+    hass.energy_prefs = {'energy_sources': [{'type': 'grid', 'flow_from': [
+        {'stat_energy_from': 'linznetz_energy:place_grid_consumption'}]}]}
+    hass.existing_statistics = ('linznetz_energy:place_grid_consumption',)
+    addon.web.write_status(tmp_path, removal_request='remove')
+    addon.handle_removal_request(hass, options(), tmp_path)
+    assert hass.cleared == () and addon.web.read_status(tmp_path)['removal'] == {'state': 'refused'}
+    assert not addon.read_state(tmp_path).get('removed')
+
+
+def test_removal_is_refused_when_the_energy_dashboard_cannot_be_read(tmp_path):
+    hass = FakeHass()
+    hass.energy_prefs = addon.HomeAssistantError('energy/get_prefs: unknown_error: boom')
+    hass.existing_statistics = ('linznetz_energy:place_grid_consumption',)
+    addon.web.write_status(tmp_path, removal_request='remove')
+    addon.handle_removal_request(hass, options(), tmp_path)
+    assert hass.cleared == () and addon.web.read_status(tmp_path)['removal']['state'] == 'failed'
+    # never set up: nothing uses the statistic
+    hass.energy_prefs = addon.HomeAssistantError('energy/get_prefs: not_found: No prefs')
+    assert addon.energy_status(hass, options())['uses_consumption'] is False
+
+
+def test_a_failed_removal_is_reported_and_nothing_is_paused(tmp_path, monkeypatch):
+    monkeypatch.setattr(addon.mqtt_status, 'broker', lambda: {'host': 'core-mosquitto'})
+    monkeypatch.setattr(addon.mqtt_status, 'remove', lambda conn, site_id: False)
+    hass = FakeHass()
+    addon.web.write_status(tmp_path, removal_request='remove')
+    addon.handle_removal_request(hass, options(), tmp_path)
+    status = addon.web.read_status(tmp_path)
+    assert status['removal']['state'] == 'failed' and status['phase'] == 'idle' and not status.get('removal_request')
+    assert not addon.read_state(tmp_path).get('removed')
+
+
+def test_remove_everything_then_reactivate(tmp_path, monkeypatch):
+    removed_devices = []
+    monkeypatch.setattr(addon.mqtt_status, 'broker', lambda: {'host': 'core-mosquitto'})
+    monkeypatch.setattr(addon.mqtt_status, 'remove', lambda conn, site_id: removed_devices.append(site_id) or True)
+    monkeypatch.setattr(addon, 'fetch_portal', lambda *a: None)
+    hass = FakeHass()
+    hass.existing_statistics = ('linznetz_energy:place_grid_consumption', 'linznetz_energy:place_grid_consumption_portal')
+    addon.web.write_status(tmp_path, removal_request='remove')
+    addon.handle_removal_request(hass, options(), tmp_path)
+    assert set(hass.cleared) == set(hass.existing_statistics) and removed_devices == ['place']
+    dismissed = {s[2]['notification_id'] for s in hass.services if s[1] == 'dismiss'}
+    assert dismissed == set(addon.ALL_NOTIFICATIONS)
+    status = addon.web.read_status(tmp_path)
+    assert status['removal'] == {'state': 'done'} and status['phase'] == 'removed' and not status.get('removal_request')
+    assert addon.read_state(tmp_path)['removed'] is True
+    # reactivate
+    addon.web.write_status(tmp_path, removal_request='resume')
+    addon.handle_removal_request(hass, options(), tmp_path)
+    assert 'removed' not in addon.read_state(tmp_path) and addon.web.read_status(tmp_path)['removal'] == {}
+
+
+def test_mqtt_remove_sends_empty_retained_messages(monkeypatch):
+    import sys, types
+    import mqtt_status
+    sent = []
+
+    class Result:
+        def wait_for_publish(self, timeout=None):
+            pass
+        def is_published(self):
+            return True
+
+    class Client:
+        def __init__(self, *a, **kw): pass
+        def username_pw_set(self, *a): pass
+        def connect(self, *a, **kw): pass
+        def loop_start(self): pass
+        def loop_stop(self): pass
+        def disconnect(self): pass
+        def publish(self, topic, payload, qos=0, retain=False):
+            sent.append((topic, payload, retain))
+            return Result()
+
+    fake = types.ModuleType('paho.mqtt.client')
+    fake.Client = Client
+    fake.CallbackAPIVersion = types.SimpleNamespace(VERSION2=2)
+    monkeypatch.setitem(sys.modules, 'paho', types.ModuleType('paho'))
+    monkeypatch.setitem(sys.modules, 'paho.mqtt', types.ModuleType('paho.mqtt'))
+    monkeypatch.setitem(sys.modules, 'paho.mqtt.client', fake)
+    assert mqtt_status.remove({'host': 'h'}, 'lakeside') is True
+    assert len(sent) == len(mqtt_status.ENTITIES) + 1 and all(p == '' and r for _, p, r in sent)
+    assert ('homeassistant/binary_sensor/linznetz_energy_lakeside/portal_login_problem/config', '', True) in sent

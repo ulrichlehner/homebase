@@ -12,10 +12,11 @@ Every hour, a few minutes past the full hour:
      config folder (part of every HA backup),
   3. rebuild the hourly statistics from the CSV files and import them completely (HA
      overwrites hours that already exist):
-       linznetz_energy:<site>_grid_consumption          the best source per hour (portal, then
-                                                        the reconstructed history; RF follows),
-                                                        the one for the Energy dashboard
-       linznetz_energy:<site>_grid_consumption_portal   the portal readings only, for checks
+       linznetz_energy:<site>_grid_consumption   the best source per hour (live meter counter,
+                                                 portal, reconstructed history), the one for
+                                                 the Energy dashboard
+     The add-on compares the live counter and the portal itself (page, status entities, notification); the
+     portal-only statistic of versions before 1.0.0 is deleted once.
 
 A rejected portal login raises a persistent notification in HA and the loop goes on;
 the notification disappears after the next successful login. Credentials never appear
@@ -44,10 +45,11 @@ from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from homebase import disaggregate, fusion, readings
+from homebase import disaggregate, fusion, readings, livearchive
 from homebase.hass import HomeAssistant, HomeAssistantError
 from homebase.portal import LinzNetzError, LoginError
 
+import mqtt_status
 import web
 from texts import t
 
@@ -61,6 +63,9 @@ LOGIN_NOTIFICATION = 'linznetz_energy_login'
 IMPORT_NOTIFICATION = 'linznetz_energy_import'
 DOWNLOAD_NOTIFICATION = 'linznetz_energy_download'
 SETUP_NOTIFICATION = 'linznetz_energy_setup'
+DEVIATION_NOTIFICATION = 'linznetz_energy_deviation'
+LIVE_HISTORY_DAYS = 10            # how far back the first read of the live counter goes (HA's default purge_keep_days)
+CHECK_DAYS = 7                  # days of live/portal comparison for the status and the notification
 METERING_POINT = re.compile(r'^AT[0-9A-Z]{31}$')
 DEFAULT_SITE = 'Home'
 IMPORT_DIR = 'import'
@@ -76,6 +81,7 @@ class Options:
     metering_point: str          # the 33-character Zählpunktnummer (not the meter number)
     site: str                    # the name of the place as entered, e.g. "Zweitwohnsitz Linz"
     fetch_interval_hours: int = 12
+    live_meter_entity: str = ''          # the live energy counter of the meter in HA (kWh total), empty: portal only
 
     @property
     def site_id(self) -> str:
@@ -89,7 +95,8 @@ class Options:
 
     @property
     def portal_statistic(self) -> str:
-        """The portal readings only, to check the consumption statistic."""
+        """The portal-only statistic of versions before 1.0.0, deleted once (see
+        remove_portal_statistic)."""
         return f'{STATISTIC_DOMAIN}:{self.site_id}_grid_consumption_portal'
 
 
@@ -139,9 +146,13 @@ def load_options(path: Path) -> tuple:
         problems.append(('problem.metering_point_prefix', {}))
     if not site_id(site):
         problems.append(('problem.site', {}))
+    live_meter_entity = (raw.get('live_meter_entity') or '').strip()
+    if live_meter_entity and not re.fullmatch(r'sensor\.[a-z0-9_]+', live_meter_entity):
+        problems.append(('problem.live_meter_entity', {'value': live_meter_entity}))
     if problems:
         return None, problems
-    return Options(username, password, metering_point, site, int(raw.get('fetch_interval_hours') or 12)), []
+    return Options(username, password, metering_point, site, int(raw.get('fetch_interval_hours') or 12),
+                   live_meter_entity), []
 
 
 # -- State ----------------------------------------------------------------------
@@ -236,29 +247,52 @@ def to_stats(hours: list) -> list:
     return [{'start': h.start, 'sum': h.sum_wh / 1000, 'state': h.sum_wh / 1000} for h in hours]
 
 
-def portal_hours(store: Path, metering_point: str) -> list:
-    """Every hour the portal has (fusion.Hour), running sum in Wh."""
-    path = store / f'{metering_point}_readings.csv'
-    if not path.exists():
-        return []
-    return fusion.fuse(fusion.read_portal(path), {}, {})
+@dataclass
+class Inputs:
+    """The add-on's files, read once per run: portal {UTC quarter: (Wh, substitute)}, the
+    reconstructed history {UTC quarter: Wh} and the live hours {UTC hour: Wh}."""
+    portal: dict
+    reconstructed: dict
+    live: dict
+
+    @classmethod
+    def read(cls, store: Path, metering_point: str) -> 'Inputs':
+        path = readings.readings_path(store, metering_point)
+        return cls(portal=fusion.read_portal(path) if path.exists() else {},
+                   reconstructed=fusion.read_reconstructed(store / f'{metering_point}_reconstructed_15min.csv'),
+                   live=livearchive.read_hourly(store, metering_point))
+
+    def fused(self) -> list:
+        """The best source per hour: the live counter (primary), then portal readings, then the
+        reconstructed history (fusion.fuse)."""
+        return fusion.fuse(self.portal, self.live, self.reconstructed)
 
 
-def fused_hours(store: Path, metering_point: str) -> list:
-    """The best source per hour: portal readings, then the reconstructed history."""
-    path = store / f'{metering_point}_readings.csv'
-    portal = fusion.read_portal(path) if path.exists() else {}
-    reconstructed = fusion.read_reconstructed(store / f'{metering_point}_reconstructed_15min.csv')
-    return fusion.fuse(portal, {}, reconstructed)
+def update_live(hass, options: Options, store: Path, now: datetime) -> dict:
+    """New raw states of the live counter from HA into the live archive (see homebase.livearchive)."""
+    last = livearchive.last_raw_time(store, options.metering_point)
+    since = last - timedelta(hours=1) if last else now - timedelta(days=LIVE_HISTORY_DAYS)
+    states = hass.history(options.live_meter_entity, since)
+    summary = livearchive.update(store, options.metering_point, livearchive.parse_states(states), now)
+    logger.info('Live counter %s: %d new states, archive %d raw readings (%d rejected, %d misread phase(s)), %d hours up to %s',
+                options.live_meter_entity, len(states), summary['raw'], summary['rejected'], summary['dropped_segments'],
+                summary['hours'], summary['last_hour'])
+    return summary
 
 
-def portal_statistics(store: Path, metering_point: str) -> list:
-    """[{'start', 'sum', 'state'}] of every hour the portal has, running sum in kWh."""
-    return to_stats(portal_hours(store, metering_point))
-
-
-def fused_statistics(store: Path, metering_point: str) -> list:
-    return to_stats(fused_hours(store, metering_point))
+def compare_live(inputs: Inputs, zone: ZoneInfo, now: datetime) -> dict:
+    """The live counter against the portal: the last complete day both have, the days of the last
+    `CHECK_DAYS` outside the tolerance, and the deviating hours in that span."""
+    result = fusion.validate(inputs.portal, inputs.live, zone)
+    since = (now - timedelta(days=CHECK_DAYS)).astimezone(zone).date()
+    last = result.days[-1] if result.days else None
+    hours = fusion.fuse(inputs.portal, inputs.live, {})
+    return {
+        'last_day': last[0].isoformat() if last else None,
+        'last_day_percent': round(100 * (last[2] - last[1]) / last[1], 2) if last and last[1] else None,
+        'bad_days': [(d.isoformat(), p, r) for d, p, r in result.bad_days if d >= since],
+        'deviating_hours': sum(1 for h in hours if h.flag and h.start.astimezone(zone).date() >= since),
+    }
 
 
 def _range(times: list, zone: ZoneInfo, unit_fmt: str = '%d.%m.%Y %H:%M') -> Optional[dict]:
@@ -268,11 +302,10 @@ def _range(times: list, zone: ZoneInfo, unit_fmt: str = '%d.%m.%Y %H:%M') -> Opt
             'to': max(times).astimezone(zone).strftime(unit_fmt)}
 
 
-def data_status(store: Path, metering_point: str, zone: ZoneInfo) -> dict:
-    measured = readings.read_csv_file(readings.readings_path(store, metering_point))
-    reconstructed = fusion.read_reconstructed(store / f'{metering_point}_reconstructed_15min.csv')
-    return {'readings': _range([datetime.fromtimestamp(t, UTC) for t in measured], zone),
-            'reconstructed': _range(list(reconstructed), zone)}
+def data_status(inputs: Inputs, zone: ZoneInfo) -> dict:
+    return {'readings': _range(list(inputs.portal), zone),
+            'reconstructed': _range(list(inputs.reconstructed), zone),
+            'live': _range(list(inputs.live), zone)}
 
 
 def statistic_status(statistic_id: str, hours: list, zone: ZoneInfo) -> dict:
@@ -358,13 +391,29 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
         web.write_status(store, portal={'ok': state.get('portal_ok'),
                                         'login_failed': state.get('portal_login_failed')})
 
-    web.write_status(store, phase='statistics', detail='', data=data_status(store, options.metering_point, zone))
+    if options.live_meter_entity:
+        web.write_status(store, phase='live', detail='')
+        try:
+            update_live(hass, options, store, now)
+        except HomeAssistantError as err:
+            logger.warning('Could not read the live counter %s: %s', options.live_meter_entity, err)
+    inputs = Inputs.read(store, options.metering_point)
+    check = compare_live(inputs, zone, now) if options.live_meter_entity else None
+    if check and check['bad_days']:
+        new = [d for d in check['bad_days'] if d[0] not in state.get('deviation_notified', [])]
+        if new:
+            details = ', '.join(f'{d}: {r / 1000:.2f} / {p / 1000:.2f} kWh' for d, p, r in new)
+            notify(hass, DEVIATION_NOTIFICATION, t(lang, 'deviation.title'), t(lang, 'deviation.text', details=details))
+            state['deviation_notified'] = sorted(set(state.get('deviation_notified', [])) | {d for d, _, _ in new})[-60:]
+            write_state(store, state)
+
+    web.write_status(store, phase='statistics', detail='', data=data_status(inputs, zone),
+                     live_check=check)
+    remove_portal_statistic(hass, options, store, state)
     written = {}
     for key, statistic_id, name, hours in (
-            ('portal', options.portal_statistic, t(lang, 'stat.portal', site=options.site),
-             portal_hours(store, options.metering_point)),
             ('consumption', options.consumption_statistic, t(lang, 'stat.consumption', site=options.site),
-             fused_hours(store, options.metering_point))):
+             inputs.fused()),):
         if hours:
             stats = to_stats(hours)
             import_statistic(hass, statistic_id, name, stats)
@@ -372,6 +421,123 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
                         stats[0]['start'].isoformat(), stats[-1]['start'].isoformat(), stats[-1]['sum'])
             written[key] = statistic_status(statistic_id, hours, zone)
     web.write_status(store, phase='idle', detail='', statistics=written, last_run=now.isoformat())
+    web.write_status(store, energy=energy_status(hass, options))
+    publish_status(options, inputs, lang, state, check)
+
+
+def remove_portal_statistic(hass, options: Options, store: Path, state: dict) -> None:
+    """Versions before 1.0.0 also wrote a portal-only statistic. The add-on compares the live
+    counter and the portal itself now, so that statistic only took up room in every picker: it is deleted once
+    (it is the add-on's own; the portal readings stay in its CSV files)."""
+    if state.get('portal_statistic_removed'):
+        return
+    try:
+        if hass.statistics_metadata([options.portal_statistic]):
+            hass.clear_statistics([options.portal_statistic])
+            logger.info('Deleted the portal-only statistic %s of earlier versions', options.portal_statistic)
+    except HomeAssistantError as err:
+        logger.warning('Could not delete the old statistic %s: %s', options.portal_statistic, err)
+        return
+    state['portal_statistic_removed'] = True
+    write_state(store, state)
+
+
+ALL_NOTIFICATIONS = (LOGIN_NOTIFICATION, IMPORT_NOTIFICATION, DOWNLOAD_NOTIFICATION, SETUP_NOTIFICATION,
+                     DEVIATION_NOTIFICATION)
+
+
+def handle_removal_request(hass, options: Options, store: Path) -> None:
+    """Carries out "remove everything" or "reactivate" from the add-on page (web.py only records
+    the request, the connection to HA is here)."""
+    request = web.read_status(store).get('removal_request')
+    if not request:
+        return
+    state = read_state(store)
+    if request == 'resume':
+        state.pop('removed', None)
+        write_state(store, state)
+        web.write_status(store, removal_request=None, removal={}, phase='starting', detail='')
+        logger.info('Reactivated on the add-on page')
+        return
+    web.write_status(store, phase='removing', detail='')
+    energy = energy_status(hass, options)
+    if energy is None:
+        logger.warning('Not removed: the Energy dashboard settings cannot be read')
+        web.write_status(store, removal_request=None, phase='idle',
+                         removal={'state': 'failed', 'error': 'energy/get_prefs'})
+        return
+    if energy.get('uses_consumption'):
+        logger.warning('Not removed: the Energy dashboard still uses %s', options.consumption_statistic)
+        web.write_status(store, removal_request=None, removal={'state': 'refused'}, phase='idle', energy=energy)
+        return
+    try:
+        remove_all(hass, options)
+    except (HomeAssistantError, RuntimeError) as err:
+        logger.error('Removing from Home Assistant failed, nothing is paused: %s', err)
+        web.write_status(store, removal_request=None, removal={'state': 'failed', 'error': str(err)}, phase='idle')
+        return
+    state['removed'] = True
+    write_state(store, state)
+    web.write_status(store, removal_request=None, removal={'state': 'done'}, phase='removed', detail='',
+                     statistics={}, energy=None)
+
+
+def remove_all(hass, options: Options) -> None:
+    """Deletes what the add-on created in Home Assistant: its statistics, the MQTT device and its
+    notifications. Its own files stay (they go when it is uninstalled with "delete data")."""
+    ids = [options.consumption_statistic, options.portal_statistic]
+    existing = [m['statistic_id'] for m in hass.statistics_metadata(ids)]
+    if existing:
+        hass.clear_statistics(existing)
+    connection = mqtt_status.broker()
+    if connection and not mqtt_status.remove(connection, options.site_id):
+        raise RuntimeError('the MQTT broker did not take the removal of the device')
+    for notification_id in ALL_NOTIFICATIONS:
+        notify(hass, notification_id, '', None)
+    logger.info('Removed from Home Assistant: statistics %s, the MQTT device, the notifications; the add-on is paused',
+                ', '.join(existing) or '(none)')
+
+
+def energy_status(hass, options: Options) -> Optional[dict]:
+    """What the Energy dashboard uses as grid consumption (read only, `energy/get_prefs`), for the
+    card on the add-on page that explains the switch (step 7). None if it cannot be read."""
+    try:
+        prefs = hass.call('energy/get_prefs') or {}
+    except HomeAssistantError as err:
+        if ': not_found:' not in str(err):   # not_found: the Energy dashboard was never set up
+            return None
+        prefs = {}
+    grid_from = []
+
+    def collect(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == 'stat_energy_from' and isinstance(value, str):
+                    grid_from.append(value)
+                else:
+                    collect(value)
+        elif isinstance(node, list):
+            for item in node:
+                collect(item)
+    collect([s for s in prefs.get('energy_sources', []) if s.get('type') == 'grid'])
+    return {'grid_from': grid_from, 'consumption_statistic': options.consumption_statistic,
+            'uses_consumption': options.consumption_statistic in grid_from}
+
+
+def publish_status(options: Options, inputs: Inputs, lang: str, state: dict, check: Optional[dict]) -> None:
+    """The status entities over MQTT (see mqtt_status), if there is a broker."""
+    connection = mqtt_status.broker()
+    if not connection:
+        return
+    values = {
+        'last_portal_fetch': state.get('portal_ok'),
+        'portal_data_until': (max(inputs.portal) + fusion.QUARTER).isoformat() if inputs.portal else None,
+        'live_data_until': (max(inputs.live) + fusion.HOUR).isoformat() if inputs.live else None,
+        'live_deviation': check['last_day_percent'] if check else None,
+        'deviating_hours': check['deviating_hours'] if check else None,
+        'portal_login_problem': bool(state.get('portal_login_failed')),
+    }
+    mqtt_status.publish(connection, options.site, options.site_id, lang, os.environ.get('ADDON_VERSION', ''), values)
 
 
 def announce_setup(store: Path, problems: list) -> None:
@@ -450,7 +616,12 @@ def main(argv=None) -> int:
             try:
                 config = hass.call('get_config') or {}
                 tz = config.get('time_zone') or 'Europe/Vienna'
-                run_once(hass, options, store, tz, datetime.now(UTC), config.get('language') or 'en')
+                handle_removal_request(hass, options, store)
+                if read_state(store).get('removed'):
+                    # paused after "remove everything": nothing is created again until reactivated
+                    web.write_status(store, phase='removed', detail='', language=config.get('language') or 'en')
+                else:
+                    run_once(hass, options, store, tz, datetime.now(UTC), config.get('language') or 'en')
             finally:
                 hass.close()
         except HomeAssistantError as err:
@@ -462,7 +633,7 @@ def main(argv=None) -> int:
         web.write_status(store, next_run=at.isoformat())
         logger.debug('Next run at %s', at.isoformat())
         if wake.wait(max(1.0, (at - datetime.now(UTC)).total_seconds())):
-            logger.info('Woken up by an upload')
+            logger.info('Woken up by the add-on page')
 
 
 if __name__ == '__main__':

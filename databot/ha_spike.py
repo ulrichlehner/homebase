@@ -3,10 +3,10 @@
 
 Imports one week of fused hours as the external statistic `linznetz_energy:test_grid`, reads
 it back, checks that a second import overwrites instead of duplicating, and reads the
-raw history of the RF energy counter. Only touches `linznetz_energy:test_grid`; `clear`
+raw history of the live energy counter. Only touches `linznetz_energy:test_grid`; `clear`
 deletes it again. Needs HA_URL and HA_TOKEN (a long-lived access token) in .env.
 
-  info      HA version, the test statistic (if any), the last day of RF counter states
+  info      HA version, the test statistic (if any), the last day of live counter states
   import    import the last 7 complete days, read back, overwrite test
   clear     delete linznetz_energy:test_grid
 """
@@ -117,13 +117,13 @@ def cmd_info(hass: HomeAssistant, args, zone: ZoneInfo) -> int:
     logger.info('Home Assistant %s at %s', hass.version, hass.url)
     meta = hass.statistics_metadata([STATISTIC_ID])
     logger.info('%s: %s', STATISTIC_ID, meta[0] if meta else 'does not exist')
-    if args.rf_entity:
+    if args.live_meter_entity:
         since = datetime.now(UTC) - timedelta(days=1)
-        states = hass.history(args.rf_entity, since)
+        states = hass.history(args.live_meter_entity, since)
         numeric = [s for _, s in states if s.replace('.', '', 1).isdigit()]
-        logger.info('%s: %d states in the last 24 h (%d numeric), last at %s', args.rf_entity, len(states), len(numeric),
+        logger.info('%s: %d states in the last 24 h (%d numeric), last at %s', args.live_meter_entity, len(states), len(numeric),
                     states[-1][0].astimezone(zone).isoformat(timespec='seconds') if states else '-')
-        stats = hass.statistics_metadata([args.rf_entity])
+        stats = hass.statistics_metadata([args.live_meter_entity])
         logger.info('  its statistics metadata: %s', stats[0] if stats else 'none')
     return 0
 
@@ -173,8 +173,9 @@ def main(argv=None) -> int:
     parser.add_argument('--dir', default=os.environ.get('EXPORT_DIR', 'export'))
     parser.add_argument('--meter', default=os.environ.get('METER_ID'))
     parser.add_argument('--tz', default=os.environ.get('TZ', 'Europe/Vienna'))
-    parser.add_argument('--rf-entity', default=os.environ.get('HA_RF_ENTITY'),
-                        help='RF energy counter entity, e.g. sensor.<place>_grid_total_energy_consumption')
+    parser.add_argument('--live-entity', '--rf-entity', dest='live_meter_entity',
+                        default=os.environ.get('HA_LIVE_ENTITY') or os.environ.get('HA_RF_ENTITY'),
+                        help='live energy counter entity, e.g. sensor.<place>_grid_total_energy_consumption')
     parser.add_argument('-d', '--debug', action='store_true')
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO,

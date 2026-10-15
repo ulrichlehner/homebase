@@ -47,10 +47,56 @@ TEXTS = {
                                'imported',
         # page
         'stat.consumption': '{site} grid consumption',
-        'stat.portal': '{site} grid consumption (portal)',
+        'problem.live_meter_entity': 'The live meter reading "{value}" is not an entity ID like sensor.home_grid_total_energy_consumption.',
+        'deviation.title': 'LINZ NETZ Energy: live meter and portal differ',
+        'deviation.text': 'On these days the live meter readings differ from the portal by more than 2 % '
+                          '(live / portal): {details}. The live values are kept; please check the live source (for example the receiver) and the meter.',
+        'entity.last_portal_fetch': 'Last portal fetch',
+        'entity.portal_data_until': 'Portal data until',
+        'entity.live_data_until': 'Live data until',
+        'entity.live_deviation': 'Live deviation last day',
+        'entity.deviating_hours': 'Deviating hours last 7 days',
+        'entity.portal_login_problem': 'Portal login problem',
+        'phase.live': 'reading the live meter',
+        'page.live': 'Live meter readings',
+        'page.live_hours': '{count} hours, {first} to {last}',
+        'page.live_check': 'Live vs portal',
+        'page.live_check_line': 'last complete day {day}: {percent} %; {hours} deviating hours in 7 days',
+        'page.live_check_none': 'no day with both complete yet',
+        'page.energy': 'Energy dashboard',
+        'page.energy_ok': 'Uses "{name}" as grid consumption.',
+        'page.energy_double': 'It also uses {others}: please remove it there, otherwise the consumption is counted twice.',
+        'page.energy_switch': 'To use "{name}" (the full history, live meter readings, gaps filled by the portal): '
+                              'make a backup, then open Settings > Dashboards > Energy, add "{name}" under grid '
+                              'consumption and remove {current}. This can be undone at any time; the old '
+                              'statistics stay.',
+        'page.energy_none': 'nothing yet',
+        'page.energy_unknown': 'The configuration of the Energy dashboard could not be read.',
+        'page.remove_title': 'Remove everything from Home Assistant',
+        'page.remove_text': 'Before uninstalling the add-on: this deletes what it created in Home Assistant (the '
+                            'statistic, the device with its status entities, its notifications) and pauses the add-on. '
+                            'Its own files stay until you uninstall it with "delete data". Not possible while the '
+                            'Energy dashboard uses the statistic.',
+        'page.remove_check': 'I understand that the statistic with the whole history is deleted from Home Assistant.',
+        'page.remove_confirm': 'Delete the statistic, the device and the notifications of the add-on?',
+        'page.remove_button': 'Remove everything',
+        'page.remove_unconfirmed': 'Please tick the box to confirm.',
+        'page.remove_requested': 'Removing, the page updates itself.',
+        'page.remove_refused': 'The Energy dashboard still uses the statistic. Remove it there first '
+                               '(Settings > Dashboards > Energy), then try again.',
+        'page.remove_failed': 'Removing did not work ({error}), nothing is paused. Details are in the log; '
+                              'try again later.',
+        'page.removed_title': 'Removed from Home Assistant',
+        'page.removed_text': 'The statistic, the device and the notifications are gone, and the add-on is paused. Now '
+                             'uninstall it and tick "delete data" to remove its files too. Changed your mind? '
+                             'Reactivate it: everything is created again within an hour.',
+        'page.resume': 'Reactivate',
+        'page.resume_requested': 'Reactivating, the page updates itself.',
+        'phase.removing': 'removing',
+        'phase.removed': 'removed, paused',
         'page.not_configured': 'Not configured yet',
         'page.site': 'Site {site} · metering point {metering_point}',
-        'source.rf': 'radio (RF)',
+        'source.live': 'live meter',
         'source.portal': 'portal',
         'source.portal_substitute': 'portal substitute values',
         'source.reconstructed': 'reconstructed',
@@ -73,7 +119,6 @@ TEXTS = {
         'page.quarter_hours': '{count} quarter hours, {first} to {last}',
         'page.statistics': 'Statistics',
         'page.stat_consumption': 'Grid consumption (for the Energy dashboard)',
-        'page.stat_portal': 'Portal readings only (for checks)',
         'page.not_written': 'not written yet',
         'page.stat_line': '{hours} hours, {first} to {last}, {kwh} kWh',
         'page.deviating': '{count} deviating hours',
@@ -143,10 +188,56 @@ TEXTS = {
         'import.bad_header': 'die Datei hat nicht die erwarteten Spalten',
         'import.unknown_file': 'importiert werden nur <Zählpunkt>_readings.csv und <Zählpunkt>_reconstructed_15min.csv',
         'stat.consumption': '{site} Netzbezug',
-        'stat.portal': '{site} Netzbezug (Portal)',
+        'problem.live_meter_entity': 'Der Live-Zählerstand „{value}“ ist keine Entitäts-ID wie sensor.home_grid_total_energy_consumption.',
+        'deviation.title': 'LINZ NETZ Energy: Live-Zähler und Portal weichen ab',
+        'deviation.text': 'An diesen Tagen weichen die Live-Werte des Zählers um mehr als 2 % vom Portal ab '
+                          '(Live / Portal): {details}. Die Live-Werte bleiben; bitte die Live-Quelle (etwa den Empfänger) und den Zähler prüfen.',
+        'entity.last_portal_fetch': 'Letzter Portal-Abruf',
+        'entity.portal_data_until': 'Portaldaten bis',
+        'entity.live_data_until': 'Live-Daten bis',
+        'entity.live_deviation': 'Live-Abweichung letzter Tag',
+        'entity.deviating_hours': 'Abweichende Stunden letzte 7 Tage',
+        'entity.portal_login_problem': 'Portal-Login-Problem',
+        'phase.live': 'liest den Live-Zählerstand',
+        'page.live': 'Live-Zählerwerte',
+        'page.live_hours': '{count} Stunden, {first} bis {last}',
+        'page.live_check': 'Live vs. Portal',
+        'page.live_check_line': 'letzter vollständiger Tag {day}: {percent} %; {hours} abweichende Stunden in 7 Tagen',
+        'page.live_check_none': 'noch kein Tag, den beide vollständig haben',
+        'page.energy': 'Energie-Dashboard',
+        'page.energy_ok': 'Nutzt „{name}“ als Netzbezug.',
+        'page.energy_double': 'Es nutzt zusätzlich {others}: bitte dort entfernen, sonst wird der Verbrauch doppelt gezählt.',
+        'page.energy_switch': 'Um „{name}“ zu nutzen (der ganze Verlauf, Live-Zählerwerte, Lücken vom Portal gefüllt): '
+                              'Backup machen, dann Einstellungen > Dashboards > Energie öffnen, unter Netzbezug '
+                              '„{name}“ hinzufügen und {current} entfernen. Das lässt sich jederzeit rückgängig '
+                              'machen; die alten Statistiken bleiben.',
+        'page.energy_none': 'noch nichts',
+        'page.energy_unknown': 'Die Einstellungen des Energie-Dashboards ließen sich nicht lesen.',
+        'page.remove_title': 'Alles aus Home Assistant entfernen',
+        'page.remove_text': 'Vor dem Deinstallieren: das löscht, was die App in Home Assistant angelegt hat (die '
+                            'Statistik, das Gerät mit seinen Status-Entitäten, ihre Benachrichtigungen) und pausiert die '
+                            'App. Ihre eigenen Dateien bleiben, bis du sie mit „Daten löschen“ deinstallierst. Nicht '
+                            'möglich, solange das Energie-Dashboard die Statistik nutzt.',
+        'page.remove_check': 'Mir ist klar, dass die Statistik mit dem ganzen Verlauf aus Home Assistant gelöscht wird.',
+        'page.remove_confirm': 'Statistik, Gerät und Benachrichtigungen der App löschen?',
+        'page.remove_button': 'Alles entfernen',
+        'page.remove_unconfirmed': 'Bitte zur Bestätigung das Kästchen anhaken.',
+        'page.remove_requested': 'Wird entfernt, die Seite aktualisiert sich selbst.',
+        'page.remove_refused': 'Das Energie-Dashboard nutzt die Statistik noch. Bitte dort zuerst entfernen '
+                               '(Einstellungen > Dashboards > Energie), dann nochmals versuchen.',
+        'page.remove_failed': 'Entfernen hat nicht geklappt ({error}), nichts ist pausiert. Details stehen im Protokoll; '
+                              'bitte später nochmals versuchen.',
+        'page.removed_title': 'Aus Home Assistant entfernt',
+        'page.removed_text': 'Statistik, Gerät und Benachrichtigungen sind weg, die App ist pausiert. Jetzt deinstallieren '
+                             'und „Daten löschen“ anhaken, damit auch ihre Dateien weg sind. Doch nicht? Reaktivieren: '
+                             'alles wird innerhalb einer Stunde neu angelegt.',
+        'page.resume': 'Reaktivieren',
+        'page.resume_requested': 'Wird reaktiviert, die Seite aktualisiert sich selbst.',
+        'phase.removing': 'entfernt',
+        'phase.removed': 'entfernt, pausiert',
         'page.not_configured': 'Noch nicht eingerichtet',
         'page.site': 'Standort {site} · Zählpunkt {metering_point}',
-        'source.rf': 'Funk (RF)',
+        'source.live': 'Live-Zähler',
         'source.portal': 'Portal',
         'source.portal_substitute': 'Portal-Ersatzwerte',
         'source.reconstructed': 'rekonstruiert',
@@ -169,7 +260,6 @@ TEXTS = {
         'page.quarter_hours': '{count} Viertelstunden, {first} bis {last}',
         'page.statistics': 'Statistiken',
         'page.stat_consumption': 'Netzbezug (für das Energie-Dashboard)',
-        'page.stat_portal': 'Nur Portalwerte (zur Kontrolle)',
         'page.not_written': 'noch nicht geschrieben',
         'page.stat_line': '{hours} Stunden, {first} bis {last}, {kwh} kWh',
         'page.deviating': '{count} abweichende Stunden',

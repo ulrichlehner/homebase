@@ -2,10 +2,8 @@ name: LINZ NETZ Energy
 # set by release-please from the conventional commits (only this line), see README "Releases"
 version: "0.2.2" # x-release-please-version
 slug: linznetz_energy
-description: LINZ NETZ portal readings as long-term statistics for the Energy dashboard
+description: Smart meter consumption from a live meter reading and the LINZ NETZ portal, with history, for the Energy dashboard
 url: https://github.com/ulrichlehner/homebase/tree/main/linznetz_energy
-# experimental until the fused statistic replaces the RF sensor in the Energy dashboard
-stage: experimental
 # oldest version the statistics import was tested with
 homeassistant: "2026.10.0"
 arch:
@@ -18,6 +16,9 @@ boot: auto
 image: ghcr.io/ulrichlehner/homebase-linznetz-energy-{arch}
 # websocket access to the HA core through the Supervisor (statistics, notifications)
 homeassistant_api: true
+# the MQTT broker for the status entities (optional: without it the add-on runs without them)
+services:
+  - mqtt:want
 # the add-on page (status and history upload) behind "Open Web UI", optionally in the sidebar
 ingress: true
 ingress_port: 8099
@@ -36,9 +37,11 @@ options:
   metering_point: ""
   site: Home
   fetch_interval_hours: 12
+  live_meter_entity: ""
 schema:
   portal_username: str?
   portal_password: password?
   metering_point: str?
   site: str?
   fetch_interval_hours: int(6,48)
+  live_meter_entity: str?

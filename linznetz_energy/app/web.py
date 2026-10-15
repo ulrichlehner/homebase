@@ -112,6 +112,14 @@ tr:last-child td, tr:last-child th { border-bottom: 0; }
 .ok { background: var(--ok); } .warn { background: var(--warn); } .err { background: var(--err); }
 .run { background: var(--primary); }
 .setup { border-left: 4px solid var(--warn); }
+.danger { border-left: 4px solid var(--err); }
+/* destructive and secondary actions: outlined and only as wide as their text, the upload stays the main action */
+button.danger, button.secondary { display: inline-block; width: auto; background: transparent; font-size: 16px;
+                                  padding: 10px 18px; }
+button.danger { color: var(--err); border: 1px solid var(--err); }
+button.secondary { color: var(--primary); border: 1px solid var(--primary); }
+.check { display: flex; gap: 10px; align-items: flex-start; margin-top: 4px; }
+.check input { margin-top: 5px; }
 .setup p { margin: 12px 0 0; }
 .files { margin: 0 0 18px; padding: 0; list-style: none; display: grid; gap: 8px; }
 .files li { display: grid; gap: 2px; }
@@ -177,12 +185,13 @@ def render_page(status: dict, message=None) -> str:
     values) pair shown on top, e.g. the result of an upload."""
     lang = language(status.get('language'))
     phase = status.get('phase', 'idle')
-    pill_class = {'idle': 'ok', 'importing': 'run', 'downloading': 'run', 'statistics': 'run',
+    pill_class = {'idle': 'ok', 'importing': 'run', 'downloading': 'run', 'statistics': 'run', 'live': 'run',
+                  'removed': 'err', 'removing': 'run',
                   'starting': 'run', 'setup': 'warn', 'error': 'err'}.get(phase, 'warn')
     pill_text = t(lang, f'phase.{phase}') if f'phase.{phase}' in TEXTS['en'] else phase
     detail = status.get('detail', '')
     detail = t(lang, detail) if detail in TEXTS['en'] else detail
-    busy = phase not in ('idle', 'setup') or status.get('import_pending')
+    busy = phase not in ('idle', 'setup', 'removed') or status.get('import_pending') or status.get('removal_request')
     refresh = '<meta http-equiv="refresh" content="5">' if busy else ''
 
     setup = status.get('setup') or []
@@ -220,6 +229,53 @@ def render_page(status: dict, message=None) -> str:
             return f'<span class="muted">{t(lang, "page.none")}</span>'
         return html.escape(t(lang, 'page.quarter_hours', count=d['count'], first=d['from'], last=d['to']))
 
+    def live_row(d: Optional[dict]) -> str:
+        if not d:
+            return f'<span class="muted">{t(lang, "page.none")}</span>'
+        return html.escape(t(lang, 'page.live_hours', count=d['count'], first=d['from'], last=d['to']))
+
+    def check_row() -> str:
+        c = status.get('live_check') or {}
+        if not c.get('last_day'):
+            return f'<span class="muted">{t(lang, "page.live_check_none")}</span>'
+        line = html.escape(t(lang, 'page.live_check_line', day=c['last_day'], percent=c['last_day_percent'],
+                             hours=c['deviating_hours']))
+        bad = (f' <span class="pill warn">{len(c["bad_days"])} × &gt; 2 %</span>' if c.get('bad_days') else '')
+        return line + bad
+
+    removal = status.get('removal') or {}
+    if removal.get('state') == 'done':
+        remove_html = (f'<div class="card danger"><h2>{t(lang, "page.removed_title")}</h2>'
+                       f'<p>{html.escape(t(lang, "page.removed_text"))}</p>'
+                       f'<form method="post" action="resume"><button type="submit" class="secondary">'
+                       f'{t(lang, "page.resume")}</button></form></div>')
+    else:
+        problem = {'refused': t(lang, 'page.remove_refused'),
+                   'failed': t(lang, 'page.remove_failed', error=removal.get('error', ''))}.get(removal.get('state'))
+        refused = f'<p><span class="pill warn">!</span> {html.escape(problem)}</p>' if problem else ''
+        remove_html = (f'<div class="card danger"><h2>{t(lang, "page.remove_title")}</h2>'
+                       f'<p>{html.escape(t(lang, "page.remove_text"))}</p>{refused}'
+                       f'<form method="post" action="remove" onsubmit="return confirm({html.escape(json.dumps(t(lang, "page.remove_confirm")))})">'
+                       f'<label class="check"><input type="checkbox" name="confirm" value="yes" required> '
+                       f'{html.escape(t(lang, "page.remove_check"))}</label>'
+                       f'<button type="submit" class="danger">{t(lang, "page.remove_button")}</button></form></div>')
+    energy = status.get('energy')
+    energy_html = ''
+    if 'energy' in status:
+        name = t(lang, 'stat.consumption', site=status.get('site', ''))
+        if not energy:
+            body = f'<p class="muted">{html.escape(t(lang, "page.energy_unknown"))}</p>'
+        elif energy.get('uses_consumption'):
+            others = [g for g in energy['grid_from'] if g != energy['consumption_statistic']]
+            body = f'<p><span class="pill ok">ok</span> {html.escape(t(lang, "page.energy_ok", name=name))}</p>'
+            if others:
+                body += (f'<p><span class="pill warn">!</span> '
+                         f'{html.escape(t(lang, "page.energy_double", others=", ".join(others)))}</p>')
+        else:
+            current = ', '.join(energy['grid_from']) or t(lang, 'page.energy_none')
+            body = f'<p>{html.escape(t(lang, "page.energy_switch", name=name, current=current))}</p>'
+        energy_html = f'<div class="card"><h2>{t(lang, "page.energy")}</h2>{body}</div>'
+
     last_import = status.get('last_import') or {}
     import_lines = ''.join(f'<li>{html.escape(_text(lang, line))}</li>' for line in last_import.get('lines', []))
     import_html = (f'<p class="muted">{_fmt_time(last_import.get("at"), lang)}</p><ul>{import_lines}</ul>'
@@ -250,11 +306,12 @@ def render_page(status: dict, message=None) -> str:
 <div class="card"><h2>{t(lang, 'page.data')}</h2><table>{_rows([
         (t(lang, 'page.readings'), range_row(data.get('readings'))),
         (t(lang, 'page.reconstructed'), range_row(data.get('reconstructed'))),
-    ])}</table></div>
+    ] + ([(t(lang, 'page.live'), live_row(data.get('live'))), (t(lang, 'page.live_check'), check_row())]
+         if 'live' in data and (data.get('live') or status.get('live_check')) else []))}</table></div>
 <div class="card"><h2>{t(lang, 'page.statistics')}</h2><table>{_rows([
         (t(lang, 'page.stat_consumption'), stat_row('consumption')),
-        (t(lang, 'page.stat_portal'), stat_row('portal')),
     ])}</table></div>
+{energy_html}
 <div class="card"><h2>{t(lang, 'page.import_title')}</h2>
 <p>{t(lang, 'page.import_lead')}</p>
 <ul class="files">
@@ -292,6 +349,7 @@ def render_page(status: dict, message=None) -> str:
 </script>
 </div>
 <div class="card"><h2>{t(lang, 'page.last_import')}</h2>{import_html}</div>
+{remove_html}
 </main></body></html>"""
 
 
@@ -334,7 +392,20 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._allowed():
             return
-        if self.path.split('?')[0].rstrip('/') != '/upload':
+        path = self.path.split('?')[0].rstrip('/')
+        if path in ('/remove', '/resume'):
+            # the main loop does the work (it holds the connection to HA); the page only asks
+            length = int(self.headers.get('Content-Length') or 0)
+            body = self.rfile.read(length).decode(errors='replace')
+            if path == '/remove' and 'confirm=yes' not in body:
+                self._send(400, render_page(read_status(self.store), ('page.remove_unconfirmed', {})))
+                return
+            write_status(self.store, removal_request=path.strip('/'))
+            self.wake.set()
+            logger.info('Requested on the add-on page: %s', path.strip('/'))
+            self._send(200, render_page(read_status(self.store), (f'page.{path.strip("/")}_requested', {})))
+            return
+        if path != '/upload':
             self.send_error(404)
             return
         length = int(self.headers.get('Content-Length') or 0)

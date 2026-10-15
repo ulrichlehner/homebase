@@ -44,7 +44,6 @@ files, HA statistics have no field for it.
 | ---------------------------- | ------------------------------------------ | ----------------------------------------- |
 | RF sensors (existing)        | `sensor.<place>_grid_*`                    | unchanged, stock amiplus entity names     |
 | fused, used in the Energy tab | `linznetz_energy:<place>_grid_consumption`        | external statistic, kWh, `sum`, "<Place> grid consumption" |
-| portal only, for checks      | `linznetz_energy:<place>_grid_consumption_portal` | external statistic, kWh, `sum`, "<Place> grid consumption (portal)" |
 | feed-in (PV site, later)     | `linznetz_energy:<place>_grid_return`             | external statistic, kWh, `sum`            |
 | fused power (optional)       | `linznetz_energy:<place>_grid_power`              | external statistic, kW, `mean`/`min`/`max` |
 | RF vs portal deviation       | `sensor.<place>_grid_rf_deviation`         | MQTT discovery, published by the add-on   |
@@ -115,9 +114,11 @@ Done when the backtest error is acceptable and the source files are unchanged.
 - [x] Dry run with a real RF history download of the energy counter (12.10. 13:18 to 14.10.):
       35 hours against the portal, mean 1 Wh per hour, +0.01 %, 13.10. complete and within the
       tolerance; today's hours filled from RF
-- [ ] Dry run over the misread phases of 9.10. and 11.10. (the history download only starts at
-      12.10. 13:18; check whether HA still has older raw states, they are purged around
-      19.10./21.10. unless `purge_keep_days` is raised)
+- [x] Dry run over the misread phases of 9.10. and 11.10.: not possible, HA has no data of them.
+      The raw states and the 5-minute and hourly statistics of the counter all start at 12.10.
+      13:18, when the entities were renamed. The cleaning of such phases is covered by synthetic
+      tests (a tenth of the counter, near-zero values, spikes); the add-on's live archive keeps
+      the raw readings for 90 days, so the next real misread phase can be replayed from there
 - [x] Cross-check with the RF power sensor (integrated, 12.10. 13:18 to 14.10.): 35 complete
       hours -0.33 % against the portal, mean 3 Wh per hour, 13.10. 9.718 vs 9.772 kWh
 - [ ] Check whether the portal offers meter counter readings; if so, compare them with the RF
@@ -196,43 +197,44 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
 
 ### Step 6: Fusion live, running alongside the current setup
 
-- [ ] Hourly (a few minutes past the hour): read the RF counter history, rebuild and import
-      `…_grid_consumption`
-- [x] Priority in `fusion.py` changed to RF primary: RF valid > portal measured > portal
-      substitute > reconstructed > portal partial; deviating hours (more than 2 %, at least 20 Wh
-      per hour) keep RF and are flagged in the fused CSV (`portal_kwh`, `flag`); dry run with the
-      RF history read from HA: 53 RF hours, none flagged
-- [ ] Deviating hours counted in the status entities and notified
-- [ ] Archive the RF readings (energy counter and power) in the add-on storage, part of every HA
-      backup: the recorder purges raw states after `purge_keep_days` (default 10), long-term
-      statistics stay. Optionally raise `purge_keep_days` in HA (the user's decision, bigger
-      database)
-- [ ] Status entities over MQTT discovery (device "LINZ NETZ Energy <site>"): last portal fetch,
-      portal data until, fused data from/until, RF deviation; notification above a threshold
-- [ ] The portal delivers 1 to 2 days late: RF covers that span, the deviation check waits for it
+- [x] Option `live_meter_entity` (the RF energy counter, e.g. `sensor.<place>_grid_total_energy_consumption`);
+      empty means portal only
+- [x] Hourly: read the new RF counter states from HA (`history/history_during_period`, read only),
+      archive them (`lib/homebase/livearchive.py`: raw readings 90 days, cleaned hourly values for
+      good; new readings are appended, the last 14 days are re-cleaned every hour), rebuild
+      `…_grid_consumption` with RF as the primary source
+- [x] Counter cleaning: repeated values count from their first occurrence (a repeated value with a
+      later timestamp made the next step look like 35 kW and cut off a whole evening, found in the
+      live test on 2026-10-14)
+- [x] RF vs portal per complete day, notification for days beyond 2 % (once per day), status on the
+      add-on page
+- [x] Status entities over MQTT discovery (`services: mqtt:want`, broker from the Supervisor): device
+      "LINZ NETZ Energy <site>", entities `sensor.<site>_linznetz_last_portal_fetch`,
+      `…_portal_data_until`, `…_live_data_until`, `…_live_deviation`, `…_deviating_hours`,
+      `binary_sensor.<site>_linznetz_portal_login_problem`; tested with a local Mosquitto
+- [x] Tested read-only against HA: 57 RF hours up to the current hour, 13.10. RF vs portal 0.0 %
+- [ ] Release, set `live_meter_entity` on the installed add-on, check the entities in HA
 - [ ] About 2 weeks in parallel while the Energy tab still uses the RF sensor, compare daily
 
 ### Step 7: Switch the Energy tab
 
-- [ ] HA backup, then change the grid source to `…_grid_consumption` (reversible, the old
-      statistics stay)
-- [ ] Optional: `…_grid_power_fused` for the power chart
-- [ ] Energy tab shows March 2023 to now, daily totals match the portal
+- [x] Prepared in the add-on: a card "Energy dashboard" on the add-on page reads the dashboard
+      configuration (`energy/get_prefs`, read only) and shows whether "<Site> grid consumption" is
+      the grid source, otherwise the steps (and the warning about counting twice when both stay);
+      DOCS.md "Switching the Energy dashboard". The add-on never changes the dashboard itself.
+- [ ] After about 2 weeks in parallel: HA backup, change the grid source to `…_grid_consumption`
+      (reversible, the old statistics stay), check the daily totals against the portal
+- Dropped: a fused power statistic for the power chart (not needed for the Energy tab)
 
 ### Step 8: Docs and cleanup
 
-- [ ] Revoke the long-lived HA token used by `ha-spike` (profile > Security)
-- [x] After the first release (v0.1.0): remove `release-as` from `release-please-config.json`,
-      otherwise every release PR stays at 0.1.0
-- [ ] Release 1.0.0 deliberately (`release-as: 1.0.0`) once the Energy tab uses the fused statistic
-- [ ] Remove `stage: experimental` from `linznetz_energy/config.yaml` once the Energy tab uses
-      the fused statistic
-- [ ] Add-on README with the prerequisites: quarter-hour analysis ("Viertelstundenauswertung")
-      enabled in the portal, data arrives 1 to 2 days late (already in the homebase README)
-- [ ] Add-on README, homebase README, `smartmeter/` docs (guard sensor possibly unnecessary)
-- [x] Decide whether the Docker databot keeps writing the CSV archive outside HA: no, the add-on does
-      the regular fetching; the cron container, docker-compose and the published tool image are removed,
-      the `./homebase` commands stay for manual use
+- [ ] Revoke the long-lived HA token used by `ha-spike` (profile > Security), the user's task
+- [x] After the first release (v0.1.0): remove `release-as` from `release-please-config.json`
+- [x] Remove `stage: experimental` and release 1.0.0 (`release-as: 1.0.0`, with step 6 and 7)
+- [ ] After v1.0.0: remove `release-as` again
+- [x] Add-on README and DOCS, homebase README, `smartmeter/` docs (pointer to the add-on; a guard
+      sensor in HA against the misread spikes is not needed)
+- [x] Decide whether the Docker databot keeps writing the CSV archive outside HA: no, cron removed
 
 ## Related projects and what we take from them
 
@@ -282,6 +284,28 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-15: dry run (read only) over the whole HA history of the counter, 12.10. 13:18 to 15.10.:
+  13,371 readings, 1 rejected (the first one after the restart), no misread phase, no hour
+  missing; 13.10. live 9.772 kWh vs portal 9.772 kWh, mean deviation 0.8 Wh per hour. The misread
+  phases of 9.10. and 11.10. cannot be replayed: HA has no states or statistics of the counter
+  before 12.10. 13:18.
+- 2026-10-15: code review of #23: flat counter periods (PV export) give 0 Wh hours instead of
+  gaps, removal refused when the Energy dashboard cannot be read and failures shown on the page,
+  unacknowledged MQTT publishes count as failed, the live archive appends and re-cleans 14 days.
+- 2026-10-14: "Remove everything from Home Assistant" on the add-on page (statistics, MQTT device,
+  notifications; refused while the Energy dashboard uses the statistic; pauses the add-on,
+  "Reactivate" undoes it), because uninstalling an add-on leaves statistics and MQTT entities behind.
+- 2026-10-14: `rf_entity` renamed to `live_meter_entity` before 1.0.0 (any live counter of the meter
+  works, wM-Bus radio is one example); entities `…_live_data_until`, `…_live_deviation`, archive
+  `…_live_raw.csv`/`…_live_hourly.csv`, module `livearchive`; CLI `--live` (`--rf` stays as alias).
+- 2026-10-14: the portal-only statistic `…_grid_consumption_portal` is dropped in 1.0.0 (the add-on
+  compares radio and portal itself) and deleted once on the first start; GitHub: squash merges only,
+  PR title as commit message, branches deleted after merging (no duplicate changelog entries).
+- 2026-10-14: step 7 prepared (Energy dashboard card, docs) and step 8 done in the same PR as
+  step 6 (#23); the add-on becomes 1.0.0. The switch of the Energy tab stays the user's click.
+- 2026-10-14: step 6 implemented (RF archive and fusion, deviation notification, MQTT status entities).
+  The live test found a cleaning bug: a repeated counter value with a later timestamp cut off the
+  rest of the evening; repeated values now count from their first occurrence.
 - 2026-10-14: cron container removed (cron scripts, `start.sh`, `docker-compose.yml`,
   `./homebase up/down/logs`, the workflow that published the tool image); the tool image is only
   built locally (`homebase-databot:local`).
