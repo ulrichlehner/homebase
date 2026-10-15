@@ -231,7 +231,7 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
 - [ ] Revoke the long-lived HA token used by `ha-spike` (profile > Security), the user's task
 - [x] After the first release (v0.1.0): remove `release-as` from `release-please-config.json`
 - [x] Remove `stage: experimental` and release 1.0.0 (`release-as: 1.0.0`, with step 6 and 7)
-- [ ] After v1.0.0: remove `release-as` again
+- [x] After v1.0.0: remove `release-as` again
 - [x] Add-on README and DOCS, homebase README, `smartmeter/` docs (pointer to the add-on; a guard
       sensor in HA against the misread spikes is not needed)
 - [x] Decide whether the Docker databot keeps writing the CSV archive outside HA: no, cron removed
