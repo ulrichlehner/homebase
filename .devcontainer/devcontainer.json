@@ -65,6 +65,8 @@
     "ghcr.io/devcontainers/features/github-cli:1": {},
     // ./homebase builds and runs its images through the host's Docker.
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
+    // Claude Code is installed with npm; the Python base image has no Node.
+    "ghcr.io/devcontainers/features/node:1": { "version": "lts" },
     "ghcr.io/anthropics/devcontainer-features/claude-code:1": {},
     // Prompt with git status (.devcontainer/starship.toml), plain Unicode symbols.
     "ghcr.io/devcontainers-extra/features/starship:1": {}
