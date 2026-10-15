@@ -146,9 +146,9 @@ def test_energy_card_explains_the_switch_and_double_counting():
 def test_remove_needs_the_confirmation_box(server):
     url, store, wake = server
     req = urllib.request.Request(url + '/remove', data=b'', method='POST')
-    with pytest.raises(urllib.error.HTTPError) as err:
-        urllib.request.urlopen(req)
-    assert err.value.code == 400 and not wake.is_set()
+    page = urllib.request.urlopen(req).read().decode()
+    assert 'Please tick the box to confirm.' in page and not wake.is_set()
+    assert 'removal_request' not in W.read_status(store)
     req = urllib.request.Request(url + '/remove', data=b'confirm=yes', method='POST',
                                  headers={'Content-Type': 'application/x-www-form-urlencoded'})
     page = urllib.request.urlopen(req).read().decode()
@@ -204,10 +204,10 @@ def test_live_meter_post_records_the_request(server):
     page = urllib.request.urlopen(req).read().decode()
     assert 'Saving, the page updates itself.' in page and wake.is_set()
     assert W.read_status(store)['live_meter_request'] == {'entity': 'sensor.place_grid_total'}
+    W.write_status(store, live_meter_request=None)
     bad = urllib.request.Request(url + '/live_meter', data=b'entity=../x', method='POST')
-    with pytest.raises(urllib.error.HTTPError) as err:
-        urllib.request.urlopen(bad)
-    assert err.value.code == 400
+    page = urllib.request.urlopen(bad).read().decode()
+    assert '../x is not a sensor' in page and W.read_status(store)['live_meter_request'] is None
 
 
 def test_plain_text_password_card_has_the_steps():
@@ -226,3 +226,26 @@ def test_status_shows_the_portal_schedule():
     assert 'usually around 11:07 (last 5 days)' in page
     done = W.render_page({'language': 'de', 'portal': {'next': '2026-10-15T04:07:00+00:00', 'next_waits': False}})
     assert 'der gestrige Tag ist vollständig' in done and 'Neue Tage kommen' not in done
+
+
+def test_actions_redirect_to_the_page_and_show_their_message_once(server):
+    url, store, wake = server
+
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **kw):
+            return None
+    opener = urllib.request.build_opener(NoRedirect)
+    with pytest.raises(urllib.error.HTTPError) as err:
+        opener.open(urllib.request.Request(url + '/fetch', data=b'', method='POST'))
+    assert err.value.code == 303 and err.value.headers['Location'] == './'
+    first = urllib.request.urlopen(url + '/').read().decode()
+    assert 'Fetching from the portal' in first
+    again = urllib.request.urlopen(url + '/').read().decode()            # the page's own refresh
+    assert 'Fetching from the portal' not in again
+    # an address left over from a form: back to the page instead of "Not Found"
+    with pytest.raises(urllib.error.HTTPError) as err:
+        opener.open(url + '/fetch')
+    assert err.value.code == 303
+    with pytest.raises(urllib.error.HTTPError) as err:
+        urllib.request.urlopen(url + '/nothing')
+    assert err.value.code == 404

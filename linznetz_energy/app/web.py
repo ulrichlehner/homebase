@@ -9,9 +9,12 @@ the Ingress proxy (172.30.32.2) and uses relative links, so it works under any I
   POST /upload   history files (multipart form, field `files`): stored in import/ and
                  imported on the spot by waking the main loop
   POST /live_meter  the live meter picked from the list (field `entity`, empty: none); the
-                 main loop writes it into the add-on configuration
+                 main loop keeps it in the add-on's state
   POST /fetch    fetch the portal now (the main loop does it right away)
   POST /remove, /resume  remove everything from Home Assistant, or reactivate
+
+Every POST answers with a redirect back to the page (its message shown once there), so the
+page's own refresh and a browser reload never land on an action address.
 """
 
 from __future__ import annotations
@@ -471,64 +474,85 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _done(self, message: tuple) -> None:
+        """Answers a form with a redirect to the page (303, relative, so it works under any Ingress
+        path): the browser shows the page itself, its refresh and reload do not repeat the action.
+        The message is shown once on that page."""
+        write_status(self.store, notice=[message[0], message[1]])
+        self.send_response(303)
+        self.send_header('Location', './')
+        self.send_header('Content-Length', '0')
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+
     def do_GET(self):
         if not self._allowed():
             return
-        # /upload too: the browser stays there after an upload and the page refreshes itself
-        if self.path.split('?')[0].rstrip('/') not in ('', '/index.html', '/upload'):
+        path = self.path.split('?')[0].rstrip('/')
+        if path in ACTIONS:
+            # an address left over from before the redirects (or typed): back to the page
+            self.send_response(303)
+            self.send_header('Location', './')
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return
+        if path not in ('', '/index.html'):
             self.send_error(404)
             return
-        self._send(200, render_page(read_status(self.store)))
+        status = read_status(self.store)
+        notice = status.get('notice')
+        if notice:
+            write_status(self.store, notice=None)
+        self._send(200, render_page(status, tuple(notice) if notice else None))
 
     def do_POST(self):
         if not self._allowed():
             return
         path = self.path.split('?')[0].rstrip('/')
+        if path not in ACTIONS:
+            self.send_error(404)
+            return
+        length = int(self.headers.get('Content-Length') or 0)
+        if path == '/upload':
+            if length > MAX_UPLOAD:
+                self._done(('page.too_large', {}))
+                return
+            files = parse_upload(self.headers.get('Content-Type', ''), self.rfile.read(length))
+            if not files:
+                self._done(('page.no_file', {}))
+                return
+            names = [store_upload(self.store / 'import', name, data).name for name, data in files]
+            write_status(self.store, import_pending=True)
+            self.wake.set()
+            logger.info('Uploaded %s, importing', ', '.join(names))
+            self._done(('page.uploaded', {'files': ', '.join(names)}))
+            return
+        # the main loop does the work (it holds the connection to HA); the page only asks
+        body = self.rfile.read(min(length, 4096)).decode(errors='replace')
         if path in ('/remove', '/resume'):
-            # the main loop does the work (it holds the connection to HA); the page only asks
-            length = int(self.headers.get('Content-Length') or 0)
-            body = self.rfile.read(length).decode(errors='replace')
             if path == '/remove' and 'confirm=yes' not in body:
-                self._send(400, render_page(read_status(self.store), ('page.remove_unconfirmed', {})))
+                self._done(('page.remove_unconfirmed', {}))
                 return
             write_status(self.store, removal_request=path.strip('/'))
             self.wake.set()
             logger.info('Requested on the add-on page: %s', path.strip('/'))
-            self._send(200, render_page(read_status(self.store), (f'page.{path.strip("/")}_requested', {})))
-            return
-        if path == '/fetch':
+            self._done((f'page.{path.strip("/")}_requested', {}))
+        elif path == '/fetch':
             write_status(self.store, fetch_request=True)
             self.wake.set()
             logger.info('Requested on the add-on page: portal fetch')
-            self._send(200, render_page(read_status(self.store), ('page.fetch_requested', {})))
-            return
-        if path == '/live_meter':
-            length = int(self.headers.get('Content-Length') or 0)
-            fields = parse_qs(self.rfile.read(min(length, 4096)).decode(errors='replace'))
-            entity = (fields.get('entity') or [''])[0].strip()
+            self._done(('page.fetch_requested', {}))
+        elif path == '/live_meter':
+            entity = (parse_qs(body).get('entity') or [''])[0].strip()
             if entity and not re.fullmatch(r'sensor\.[a-z0-9_]+', entity):
-                self._send(400, render_page(read_status(self.store), ('page.live_meter_unknown', {'entity': entity})))
+                self._done(('page.live_meter_unknown', {'entity': entity}))
                 return
             write_status(self.store, live_meter_request={'entity': entity}, live_meter_result=None)
             self.wake.set()
-            self._send(200, render_page(read_status(self.store), ('page.live_meter_requested', {})))
-            return
-        if path != '/upload':
-            self.send_error(404)
-            return
-        length = int(self.headers.get('Content-Length') or 0)
-        if length > MAX_UPLOAD:
-            self._send(413, render_page(read_status(self.store), ('page.too_large', {})))
-            return
-        files = parse_upload(self.headers.get('Content-Type', ''), self.rfile.read(length))
-        if not files:
-            self._send(400, render_page(read_status(self.store), ('page.no_file', {})))
-            return
-        names = [store_upload(self.store / 'import', name, data).name for name, data in files]
-        write_status(self.store, import_pending=True)
-        self.wake.set()
-        logger.info('Uploaded %s, importing', ', '.join(names))
-        self._send(200, render_page(read_status(self.store), ('page.uploaded', {'files': ', '.join(names)})))
+            self._done(('page.live_meter_requested', {}))
+
+
+ACTIONS = ('/upload', '/fetch', '/live_meter', '/remove', '/resume')
 
 
 def start(store: Path, wake: threading.Event, port: int = PORT) -> ThreadingHTTPServer:
