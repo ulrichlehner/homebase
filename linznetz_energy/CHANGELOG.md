@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.1](https://github.com/ulrichlehner/homebase/compare/v1.3.0...v1.3.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* buttons on the add-on page return to the page instead of "Not Found" ([#37](https://github.com/ulrichlehner/homebase/issues/37)) ([3dedc71](https://github.com/ulrichlehner/homebase/commit/3dedc71397e1ea333964c0e0e41dd0fce1660a9f))
+* password steps explain saving secrets.yaml and the one-minute delay ([#36](https://github.com/ulrichlehner/homebase/issues/36)) ([c55efd7](https://github.com/ulrichlehner/homebase/commit/c55efd7a0c6aece70af08e167621b75c87d93dfc))
+
 ## [1.3.0](https://github.com/ulrichlehner/homebase/compare/v1.2.0...v1.3.0) (2026-10-15)
 
 
