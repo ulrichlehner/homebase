@@ -117,6 +117,11 @@ the old ones; the hours before stay covered by the portal. With a live meter, th
 - makes them the **primary source** of the consumption statistic: the hours since the last portal
   day come from the live meter right away, and where it has no value (a gap, a misread phase) the
   portal fills in a day or two later,
+- treats an hour as an **estimate** when its start or end falls into a reception gap of the live
+  meter (the meter sends no usable counter for about half an hour now and then; the counter
+  around the gap is exact, only the split between the two hours is assumed). The portal value
+  replaces such hours as soon as the portal has them; until then the page shows them as
+  "estimated hours", an info, not a deviation,
 - compares the live meter with the portal for every day both have complete, and sends a notification
   when a day differs by more than 2 % (the live value is kept),
 - archives the readings in its own folder: the raw readings of the last 90 days and the cleaned

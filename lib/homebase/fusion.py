@@ -12,7 +12,8 @@ Sources, best first, per UTC hour:
 The live counter is the primary source: the portal verifies it and fills its gaps (missing
 or misread hours, and everything before live readings exist). A live hour whose complete
 portal value differs by more than the hourly tolerance keeps the live value and is flagged
-`deviation`.
+`deviation`. A live hour estimated across a reception gap (one of its ends interpolated over
+more than `ESTIMATE_GAP`) gives way to the complete portal value once the portal has it.
 An hour no source covers is left out (a gap), the running sum simply continues.
 All arithmetic is in integer Wh, so the running sum cannot drift.
 
@@ -61,6 +62,8 @@ DEFAULT_MAX_GAP = timedelta(minutes=60)
 # A longer silence is still interpolated if the counter moved at most this much: whatever
 # happened in between, no hour can be off by more.
 FLAT_WH = 10
+# An hour whose end lies in a longer reception gap is an estimate (see counter_hourly_estimated).
+ESTIMATE_GAP = timedelta(minutes=5)
 DEFAULT_DAY_TOLERANCE = 0.02                # live vs portal per day, share of the portal value
 DEFAULT_DAY_TOLERANCE_WH = 50               # ... but at least this much
 DEFAULT_HOUR_TOLERANCE = 0.02               # live vs portal per hour, share of the portal value
@@ -195,35 +198,53 @@ def clean_counter(samples: list, max_kw: float = DEFAULT_MAX_KW) -> RfCleaning:
     return result
 
 
-def counter_at(accepted: list, times: list, t: datetime, max_gap: timedelta) -> Optional[float]:
-    """Counter value (Wh) at time t, interpolated between the accepted readings around it."""
+def _counter_at(accepted: list, times: list, t: datetime, max_gap: timedelta) -> tuple:
+    """(counter value in Wh at time t or None, seconds between the readings it lies between)."""
     i = bisect.bisect_left(times, t)
     if i < len(times) and times[i] == t:
-        return float(accepted[i][1])
+        return float(accepted[i][1]), 0.0
     if i == 0 or i == len(times):
-        return None
+        return None, 0.0
     (ta, va), (tb, vb) = accepted[i - 1], accepted[i]
     if tb - ta > max_gap and vb - va > FLAT_WH:
-        return None
-    return va + (vb - va) * (t - ta).total_seconds() / (tb - ta).total_seconds()
+        return None, 0.0
+    span = (tb - ta).total_seconds()
+    return va + (vb - va) * (t - ta).total_seconds() / span, (span if vb - va > FLAT_WH else 0.0)
 
 
-def counter_hourly(accepted: list, max_gap: timedelta = DEFAULT_MAX_GAP,
-              max_kw: float = DEFAULT_MAX_KW) -> dict:
-    """{UTC hour start: Wh} from the cleaned counter."""
+def counter_at(accepted: list, times: list, t: datetime, max_gap: timedelta) -> Optional[float]:
+    """Counter value (Wh) at time t, interpolated between the accepted readings around it."""
+    return _counter_at(accepted, times, t, max_gap)[0]
+
+
+def counter_hourly_estimated(accepted: list, max_gap: timedelta = DEFAULT_MAX_GAP,
+                             max_kw: float = DEFAULT_MAX_KW) -> tuple:
+    """({UTC hour start: Wh}, {hours that are estimates}) from the cleaned counter. An hour is an
+    estimate when one of its ends falls into a reception gap longer than `ESTIMATE_GAP` (the
+    meter's phases of non-spec records, about 30 minutes): the counter there is interpolated as
+    if the load had been even, so energy can shift between the two hours; their sum stays exact."""
     if len(accepted) < 2:
-        return {}
+        return {}, set()
     times = [t for t, _ in accepted]
-    out = {}
+    out, estimated = {}, set()
     h = hour_of(times[0])
     if h < times[0]:
         h += HOUR
+    limit = ESTIMATE_GAP.total_seconds()
     while h + HOUR <= times[-1]:
-        a, b = counter_at(accepted, times, h, max_gap), counter_at(accepted, times, h + HOUR, max_gap)
+        (a, gap_a), (b, gap_b) = _counter_at(accepted, times, h, max_gap), _counter_at(accepted, times, h + HOUR, max_gap)
         if a is not None and b is not None and 0 <= b - a <= max_kw * 1000:
             out[h] = round(b - a)
+            if gap_a > limit or gap_b > limit:
+                estimated.add(h)
         h += HOUR
-    return out
+    return out, estimated
+
+
+def counter_hourly(accepted: list, max_gap: timedelta = DEFAULT_MAX_GAP,
+                   max_kw: float = DEFAULT_MAX_KW) -> dict:
+    """{UTC hour start: Wh} from the cleaned counter."""
+    return counter_hourly_estimated(accepted, max_gap, max_kw)[0]
 
 
 # -- Fusion -------------------------------------------------------------------
@@ -235,7 +256,8 @@ class Hour:
     source: str
     sum_wh: int
     portal_wh: Optional[int] = None   # the complete portal value of the hour, if there is one
-    flag: str = ''                    # 'deviation': live and portal differ beyond the tolerance
+    flag: str = ''                    # 'deviation': live and portal differ beyond the tolerance;
+                                      # 'estimated': a live estimate the portal has not confirmed yet
 
 
 def deviates(live_wh: int, portal_wh: int, tolerance: float = DEFAULT_HOUR_TOLERANCE,
@@ -264,8 +286,10 @@ def reconstructed_hours(quarters: dict) -> dict:
     return {h: v for h, (v, n) in acc.items() if n == 4}
 
 
-def fuse(portal: dict, live: dict, reconstructed: dict) -> list:
-    """The fused hourly series, see the module docstring for the priorities."""
+def fuse(portal: dict, live: dict, reconstructed: dict, estimated: frozenset = frozenset()) -> list:
+    """The fused hourly series, see the module docstring for the priorities. `estimated` are live
+    hours interpolated across a reception gap: the portal's complete value replaces them once it
+    is there, until then they are flagged 'estimated' (an expected state, not a deviation)."""
     ph = portal_hours(portal)
     rh = reconstructed_hours(reconstructed)
     out = []
@@ -274,9 +298,14 @@ def fuse(portal: dict, live: dict, reconstructed: dict) -> list:
         p = ph.get(h)
         complete = p[0] if p and p[1] == 4 else None
         flag = ''
-        if h in live:
+        measured = complete is not None and not p[2]
+        if h in live and h in estimated and measured:
+            value, source = complete, 'portal'
+        elif h in live:
             value, source = live[h], 'live'
-            if complete is not None and not p[2] and deviates(value, complete):
+            if h in estimated:
+                flag = 'estimated'
+            elif measured and deviates(value, complete):
                 flag = 'deviation'
         elif complete is not None and not p[2]:
             value, source = complete, 'portal'

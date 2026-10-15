@@ -309,22 +309,25 @@ def to_stats(hours: list) -> list:
 @dataclass
 class Inputs:
     """The add-on's files, read once per run: portal {UTC quarter: (Wh, substitute)}, the
-    reconstructed history {UTC quarter: Wh} and the live hours {UTC hour: Wh}."""
+    reconstructed history {UTC quarter: Wh}, the live hours {UTC hour: Wh} and which of them are
+    estimates across a reception gap."""
     portal: dict
     reconstructed: dict
     live: dict
+    estimated: frozenset = frozenset()
 
     @classmethod
     def read(cls, store: Path, metering_point: str) -> 'Inputs':
         path = readings.readings_path(store, metering_point)
         return cls(portal=fusion.read_portal(path) if path.exists() else {},
                    reconstructed=fusion.read_reconstructed(store / f'{metering_point}_reconstructed_15min.csv'),
-                   live=livearchive.read_hourly(store, metering_point))
+                   live=livearchive.read_hourly(store, metering_point),
+                   estimated=frozenset(livearchive.read_estimated(store, metering_point)))
 
     def fused(self) -> list:
         """The best source per hour: the live counter (primary), then portal readings, then the
         reconstructed history (fusion.fuse)."""
-        return fusion.fuse(self.portal, self.live, self.reconstructed)
+        return fusion.fuse(self.portal, self.live, self.reconstructed, self.estimated)
 
 
 def update_live(hass, options: Options, store: Path, now: datetime) -> dict:
@@ -354,12 +357,13 @@ def compare_live(inputs: Inputs, zone: ZoneInfo, now: datetime) -> dict:
     result = fusion.validate(inputs.portal, inputs.live, zone)
     since = (now - timedelta(days=CHECK_DAYS)).astimezone(zone).date()
     last = result.days[-1] if result.days else None
-    hours = fusion.fuse(inputs.portal, inputs.live, {})
+    hours = fusion.fuse(inputs.portal, inputs.live, {}, inputs.estimated)
     return {
         'last_day': last[0].isoformat() if last else None,
         'last_day_percent': round(100 * (last[2] - last[1]) / last[1], 2) if last and last[1] else None,
         'bad_days': [(d.isoformat(), p, r) for d, p, r in result.bad_days if d >= since],
-        'deviating_hours': sum(1 for h in hours if h.flag and h.start.astimezone(zone).date() >= since),
+        'deviating_hours': sum(1 for h in hours if h.flag == 'deviation' and h.start.astimezone(zone).date() >= since),
+        'estimated_hours': sum(1 for h in hours if h.flag == 'estimated'),
     }
 
 
@@ -397,7 +401,8 @@ def statistic_status(statistic_id: str, hours: list, zone: ZoneInfo) -> dict:
             'from': hours[0].start.astimezone(zone).strftime('%d.%m.%Y'),
             'to': hours[-1].start.astimezone(zone).strftime('%d.%m.%Y %H:%M'),
             'kwh': hours[-1].sum_wh / 1000, 'sources': sources,
-            'flagged': sum(1 for h in hours if h.flag),
+            'flagged': sum(1 for h in hours if h.flag == 'deviation'),
+            'estimated': sum(1 for h in hours if h.flag == 'estimated'),
             'gaps': [{'from': a.astimezone(zone).strftime(fmt), 'to': b.astimezone(zone).strftime(fmt), 'hours': n}
                      for a, b, n in statistic_gaps(hours)]}
 
@@ -464,6 +469,7 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
                     notify(hass, DOWNLOAD_NOTIFICATION, t(lang, 'no_data.title'), t(lang, 'no_data.text'))
             state['portal_ok'] = now.isoformat()
             state.pop('portal_login_failed', None)
+            state.pop('portal_login_rejected', None)
             after = portal_newest(store, options.metering_point)
             note_arrival(state, newest, after, now, zone)
             newest = after
@@ -471,11 +477,17 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
                 state['portal_newest'] = newest.isoformat()
             notify(hass, LOGIN_NOTIFICATION, '', None)
         except LoginError as err:
-            state['portal_login_failed'] = now.isoformat()
-            hours = int(LOGIN_RETRY.total_seconds() // 3600)
-            logger.error('LINZ NETZ login failed: %s. Next attempt in %d hours.', err, hours)
-            notify(hass, LOGIN_NOTIFICATION, t(lang, 'login_failed.title'),
-                   t(lang, 'login_failed.text', hours=hours))
+            if not state.get('portal_login_rejected'):
+                # the portal also rejects a login while another session (the browser, a second
+                # tool) is active: try again at the next run before calling the credentials wrong
+                state['portal_login_rejected'] = now.isoformat()
+                logger.warning('LINZ NETZ rejected the login (%s); possibly another session, trying again next hour', err)
+            else:
+                state['portal_login_failed'] = now.isoformat()
+                hours = int(LOGIN_RETRY.total_seconds() // 3600)
+                logger.error('LINZ NETZ login failed: %s. Next attempt in %d hours.', err, hours)
+                notify(hass, LOGIN_NOTIFICATION, t(lang, 'login_failed.title'),
+                       t(lang, 'login_failed.text', hours=hours))
         except LinzNetzError as err:
             logger.warning('Portal fetch failed, retrying next hour: %s', err)
             if first_download:

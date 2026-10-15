@@ -132,6 +132,7 @@ tr:last-child td, tr:last-child th { border-bottom: 0; }
 .pill { display: inline-block; border-radius: 12px; padding: 1px 10px; font-size: 14px; color: #fff; }
 .ok { background: var(--ok); } .warn { background: var(--warn); } .err { background: var(--err); }
 .run { background: var(--primary); }
+.info { background: var(--muted); }
 .setup { border-left: 4px solid var(--warn); }
 .danger { border-left: 4px solid var(--err); }
 /* destructive and secondary actions: outlined and only as wide as their text, the upload stays the main action */
@@ -278,9 +279,12 @@ def render_page(status: dict, message=None) -> str:
                             for k, v in s.get('sources', {}).items())
         flagged = (f' · <span class="pill warn">{t(lang, "page.deviating", count=s["flagged"])}</span>'
                    if s.get('flagged') else '')
+        estimated = (f'<br><span class="pill info">{t(lang, "page.estimated", count=s["estimated"])}</span> '
+                     f'<span class="muted">{html.escape(t(lang, "page.estimated_hint"))}</span>'
+                     if s.get('estimated') else '')
         line = t(lang, 'page.stat_line', hours=s['hours'], first=s['from'], last=s['to'], kwh=f'{s["kwh"]:.1f}')
         return (f'<code>{html.escape(s["id"])}</code><br>{html.escape(line)}<br>'
-                f'<span class="muted">{html.escape(sources)}</span>{flagged}')
+                f'<span class="muted">{html.escape(sources)}</span>{flagged}{estimated}')
 
     def gaps_row(key: str) -> str:
         gaps = (stats.get(key) or {}).get('gaps') or []

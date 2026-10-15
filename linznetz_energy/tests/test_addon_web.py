@@ -285,3 +285,12 @@ def test_status_writes_from_several_threads_neither_fail_nor_lose_changes(tmp_pa
     status = W.read_status(tmp_path)
     assert all(status[f't{n}_{k}'] == 195 + k for n in range(4) for k in range(5))   # no change lost
     assert [p.name for p in tmp_path.iterdir()] == ['status.json']                    # no temporary file left
+
+
+
+def test_estimated_hours_are_an_info_not_a_warning():
+    stat = {'id': 'x', 'hours': 3, 'from': '01.01.2023', 'to': '02.01.2023 00:00', 'kwh': 1.0, 'sources': {},
+            'flagged': 0, 'estimated': 4}
+    page = W.render_page({'language': 'de', 'statistics': {'consumption': stat}})
+    assert '<span class="pill info">4 geschätzte Stunden</span>' in page and 'Der Portalwert ersetzt sie' in page
+    assert 'pill warn' not in page.split('Statistiken')[1].split('</table>')[0]

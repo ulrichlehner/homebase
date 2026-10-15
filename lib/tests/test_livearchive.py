@@ -61,3 +61,14 @@ def test_hourly_updates_append_and_reclean_only_recent_days(tmp_path):
     assert summary['dropped_segments'] == 0 and len(livearchive.read_raw(tmp_path, METER)) == 181 + 61
     assert livearchive.read_hourly(tmp_path, METER) == {T0: 600, T0 + fusion.HOUR: 600, T0 + 2 * fusion.HOUR: 600,
                                                         later: 600}
+
+
+
+def test_estimated_hours_are_archived(tmp_path):
+    readings = {t: v for t, v in counter(180).items() if not (T0 + timedelta(minutes=45) < t < T0 + timedelta(minutes=75))}
+    livearchive.update(tmp_path, METER, readings, T0 + timedelta(hours=3))
+    assert livearchive.read_estimated(tmp_path, METER) == {T0, T0 + fusion.HOUR}
+    assert 'start_utc;wh;estimated' in livearchive.hourly_path(tmp_path, METER).read_text()
+    # a file of an earlier version, without the column: no estimates, values as before
+    livearchive.hourly_path(tmp_path, METER).write_text('start_utc;wh\n2026-10-05T00:00:00Z;600\n')
+    assert livearchive.read_estimated(tmp_path, METER) == set() and livearchive.read_hourly(tmp_path, METER) == {T0: 600}
