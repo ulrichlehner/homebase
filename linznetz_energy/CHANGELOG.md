@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.0](https://github.com/ulrichlehner/homebase/compare/v1.2.0...v1.3.0) (2026-10-15)
+
+
+### Features
+
+* fetch the portal when a new day can be there, no interval option ([#35](https://github.com/ulrichlehner/homebase/issues/35)) ([a556cae](https://github.com/ulrichlehner/homebase/commit/a556cae20b448a8c8baf24e851838686e0cee3d7))
+* live meter only on the add-on page, fetch button, clearer page ([#34](https://github.com/ulrichlehner/homebase/issues/34)) ([39e6418](https://github.com/ulrichlehner/homebase/commit/39e6418eb14f40cfbafada161b2f96085ad58492))
+* warn while the portal password is not a !secret ([#32](https://github.com/ulrichlehner/homebase/issues/32)) ([d73cfe1](https://github.com/ulrichlehner/homebase/commit/d73cfe1d747b245477e41c4139c5e7184db106d0))
+
+
+### Bug Fixes
+
+* option names and help texts show again ([#31](https://github.com/ulrichlehner/homebase/issues/31)) ([7dd7793](https://github.com/ulrichlehner/homebase/commit/7dd7793fdcb1e4a8df2890a61c0bc0674de26dc3))
+
 ## [1.2.0](https://github.com/ulrichlehner/homebase/compare/v1.1.0...v1.2.0) (2026-10-15)
 
 
