@@ -6,8 +6,9 @@ readings are archived next to the portal readings:
 
   <meterId>_live_raw.csv      the raw counter readings (UTC time; Wh) as Home Assistant recorded
                             them, for the last `RAW_DAYS` days: enough to re-clean a misread phase
-  <meterId>_live_hourly.csv   the cleaned hourly live values (UTC hour; Wh), kept for good: about
-                            9000 rows a year
+  <meterId>_live_hourly.csv   the cleaned hourly live values (UTC hour; Wh; 1 if the hour is an
+                            estimate across a reception gap, see fusion.counter_hourly_estimated),
+                            kept for good: about 9000 rows a year
 
 Every update merges new raw readings, cleans the counter of the last `CLEAN_DAYS` days again and
 replaces the hourly values inside that window; older hourly values stay as they are. The rest of
@@ -28,7 +29,7 @@ UTC = ZoneInfo('UTC')
 RAW_DAYS = 90
 CLEAN_DAYS = 14   # re-cleaned every hour: long enough for the longest segment to be the real counter
 RAW_HEADER = ['time_utc', 'wh']
-HOURLY_HEADER = ['start_utc', 'wh']
+HOURLY_HEADER = ['start_utc', 'wh', 'estimated']
 
 
 def raw_path(folder: Path, meter_id: str) -> Path:
@@ -53,13 +54,15 @@ def _read(path: Path) -> dict:
     return out
 
 
-def _write(path: Path, header: list, rows: dict) -> None:
+def _write(path: Path, header: list, rows: dict, estimated: Optional[set] = None) -> None:
+    """Writes the rows; with `estimated` (the hourly file) a third column marks the estimates."""
     tmp = path.with_suffix(path.suffix + '.tmp')
     with tmp.open('w', newline='') as fh:
         writer = csv.writer(fh, delimiter=';', lineterminator='\n')
         writer.writerow(header)
         for t in sorted(rows):
-            writer.writerow([t.strftime('%Y-%m-%dT%H:%M:%SZ'), rows[t]])
+            row = [t.strftime('%Y-%m-%dT%H:%M:%SZ'), rows[t]]
+            writer.writerow(row if estimated is None else row + [int(t in estimated)])
     tmp.replace(path)
 
 
@@ -78,6 +81,20 @@ def read_raw(folder: Path, meter_id: str) -> dict:
 def read_hourly(folder: Path, meter_id: str) -> dict:
     """{UTC hour: Wh} of the cleaned hourly live values."""
     return _read(hourly_path(folder, meter_id))
+
+
+def read_estimated(folder: Path, meter_id: str) -> set:
+    """The UTC hours of the hourly file that are estimates across a reception gap (files of
+    versions before this column have none)."""
+    path = hourly_path(folder, meter_id)
+    out = set()
+    if not path.exists():
+        return out
+    with path.open(newline='') as fh:
+        for row in csv.DictReader(fh, delimiter=';'):
+            if row.get('estimated') == '1':
+                out.add(datetime.fromisoformat(row['start_utc'].replace('Z', '+00:00')).astimezone(UTC))
+    return out
 
 
 def parse_states(states: list) -> dict:
@@ -127,14 +144,17 @@ def update(folder: Path, meter_id: str, new_readings: dict, now: datetime,
     clean_from = now - timedelta(days=clean_days)
     window = sorted((t, v) for t, v in raw.items() if t >= clean_from)
     cleaning = fusion.clean_counter(window, max_kw)
-    fresh = fusion.counter_hourly(cleaning.accepted, max_gap, max_kw)
+    fresh, fresh_estimated = fusion.counter_hourly_estimated(cleaning.accepted, max_gap, max_kw)
     hourly = read_hourly(folder, meter_id)
+    estimated = read_estimated(folder, meter_id)
     if window:
         # hours fully inside the cleaned window are computed anew (a re-cleaned misread phase may
         # remove a value); the first, partial hour and everything before keep their archived value
         window_start = fusion.hour_of(window[0][0]) + fusion.HOUR
         hourly = {h: v for h, v in hourly.items() if h < window_start}
+        estimated = {h for h in estimated if h < window_start}
     hourly.update(fresh)
-    _write(hourly_path(folder, meter_id), HOURLY_HEADER, hourly)
+    estimated |= fresh_estimated
+    _write(hourly_path(folder, meter_id), HOURLY_HEADER, hourly, estimated)
     return {'raw': len(raw), 'rejected': cleaning.rejected, 'dropped_segments': len(cleaning.dropped_segments),
             'hours': len(hourly), 'last_hour': max(hourly).isoformat() if hourly else None}

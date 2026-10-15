@@ -284,6 +284,13 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-15: live hours whose start or end falls into a reception gap (the meter's ~30 minute
+  phases of non-spec energy records, which the driver drops) are marked as estimates in the live
+  archive; the complete portal value replaces them once it is there, until then the page shows
+  them as an info. On real data (12.10. to 15.10.) the 6 "deviating hours" were 3 such pairs on
+  14.10. (±101, ±44, ±56 Wh, each pair summing to the exact value); afterwards 0 deviations, the
+  remaining live hours match the portal to 2 Wh. A first rejected portal login is retried at the
+  next run (another session can cause it), only a second one in a row notifies and waits 6 hours.
 - 2026-10-15: no fetch interval option any more (`fetch_interval_hours` removed): the add-on looks
   for yesterday on the portal every hour between 06:00 and 22:00 until it is complete, then waits
   for the next day; after a rejected login 6 hours. It notes when new days arrive and shows the

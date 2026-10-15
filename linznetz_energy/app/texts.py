@@ -162,6 +162,10 @@ TEXTS = {
         'page.not_written': 'not written yet',
         'page.stat_line': '{hours} hours, {first} to {last}, {kwh} kWh',
         'page.deviating': '{count} deviating hours',
+        'page.estimated': '{count} estimated hours',
+        'page.estimated_hint': 'The live meter had a reception gap at the hour boundary (the meter sends no usable '
+                               'counter for about half an hour now and then), so the split between the two hours is an '
+                               'estimate; their sum is exact. The portal value replaces them a day or two later.',
         'page.gaps': 'Gaps',
         'page.gaps_none': 'none',
         'page.gap_line': '{first} to {last} ({hours} hours)',
@@ -353,6 +357,11 @@ TEXTS = {
         'page.not_written': 'noch nicht geschrieben',
         'page.stat_line': '{hours} Stunden, {first} bis {last}, {kwh} kWh',
         'page.deviating': '{count} abweichende Stunden',
+        'page.estimated': '{count} geschätzte Stunden',
+        'page.estimated_hint': 'Der Live-Zähler hatte an der Stundengrenze eine Empfangslücke (der Zähler sendet ab und '
+                               'zu etwa eine halbe Stunde lang keinen verwertbaren Zählerstand), daher ist die Aufteilung '
+                               'auf die beiden Stunden geschätzt; ihre Summe stimmt. Der Portalwert ersetzt sie ein bis '
+                               'zwei Tage später.',
         'page.gaps': 'Lücken',
         'page.gaps_none': 'keine',
         'page.gap_line': '{first} bis {last} ({hours} Stunden)',

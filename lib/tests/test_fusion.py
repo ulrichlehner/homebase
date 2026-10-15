@@ -193,3 +193,26 @@ def test_a_repeated_value_does_not_break_the_counter():
     result = F.clean_counter(samples)
     assert result.rejected == 0 and result.dropped_segments == []   # the repeat is merged, nothing rejected
     assert T0 + F.HOUR * 2 in F.counter_hourly(result.accepted)          # the hour after it has a value
+
+
+
+# -- Estimated hours (reception gaps at the hour boundary) ---------------------------------------
+
+def test_a_reception_gap_at_the_hour_boundary_makes_both_hours_estimates():
+    samples = [(t, v) for t, v in counter(180) if not (T0 + timedelta(minutes=45) < t < T0 + timedelta(minutes=75))]
+    hours, estimated = F.counter_hourly_estimated(F.clean_counter(samples).accepted)
+    assert estimated == {T0, T0 + F.HOUR}                       # 01:00 lies in the 30 minute gap
+    assert hours[T0] + hours[T0 + F.HOUR] == 1200               # the sum stays exact
+    inside = [(t, v) for t, v in counter(180) if not (T0 + timedelta(minutes=10) < t < T0 + timedelta(minutes=40))]
+    assert F.counter_hourly_estimated(F.clean_counter(inside).accepted)[1] == set()   # gap inside an hour: exact
+
+
+def test_the_portal_replaces_estimated_live_hours():
+    portal = {T0 + F.QUARTER * i: (150, False) for i in range(8)}          # 600 Wh in each of 2 hours
+    live = {T0: 700, T0 + F.HOUR: 500}                                      # 100 Wh shifted by the gap
+    plain = F.fuse(portal, live, {})
+    assert [h.flag for h in plain] == ['deviation', 'deviation']
+    fused = F.fuse(portal, live, {}, frozenset(live))
+    assert [(h.wh, h.source, h.flag) for h in fused] == [(600, 'portal', ''), (600, 'portal', '')]
+    waiting = F.fuse({}, live, {}, frozenset(live))                         # portal not there yet
+    assert [(h.wh, h.source, h.flag) for h in waiting] == [(700, 'live', 'estimated'), (500, 'live', 'estimated')]

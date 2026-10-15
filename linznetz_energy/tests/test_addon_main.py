@@ -205,20 +205,32 @@ def test_run_once_imports_the_consumption_statistic_in_chunks(tmp_path, monkeypa
     assert len(fetched) == 2 and len(hass.imports) == 9    # three runs, 3 import calls each
 
 
-def test_rejected_login_notifies_and_keeps_going(tmp_path, monkeypatch, caplog):
+def test_rejected_login_notifies_the_second_time_and_keeps_going(tmp_path, monkeypatch, caplog):
     write_readings(tmp_path, hours=2)
+    results = []
 
-    def reject(*a):
-        raise linznetz.LoginError('LINZ NETZ rejected the credentials')
-    monkeypatch.setattr(addon, 'fetch_portal', reject)
+    def portal(*a):
+        if results.pop(0) == 'reject':
+            raise linznetz.LoginError('LINZ NETZ rejected the credentials')
+    monkeypatch.setattr(addon, 'fetch_portal', portal)
     hass = FakeHass()
+    # once: maybe another session (the browser, a second tool), no notification yet
+    results[:] = ['reject']
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW)
+    assert not [s for s in hass.services if s[1] == 'create'] and len(hass.imports) == 1
+    assert 'portal_login_failed' not in addon.read_state(tmp_path)
+    # twice in a row: the credentials are wrong
+    results[:] = ['reject']
+    addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW + timedelta(hours=1))
     created = [s for s in hass.services if s[1] == 'create']
     assert created and created[0][2]['notification_id'] == addon.LOGIN_NOTIFICATION
-    assert len(hass.imports) == 1   # the existing readings are still imported
     assert 'portal_login_failed' in addon.read_state(tmp_path)
     assert 'secret-pw' not in caplog.text and 'secret-pw' not in json.dumps(hass.services)
-
+    # a good login later resets both
+    results[:] = ['ok']
+    addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW + timedelta(hours=7))   # 6 hours later, 21:07 local
+    state = addon.read_state(tmp_path)
+    assert 'portal_login_failed' not in state and 'portal_login_rejected' not in state
 
 def test_other_portal_errors_retry_next_hour(tmp_path, monkeypatch):
     def broken(*a):
