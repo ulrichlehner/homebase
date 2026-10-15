@@ -66,6 +66,7 @@ LOGIN_NOTIFICATION = 'linznetz_energy_login'
 IMPORT_NOTIFICATION = 'linznetz_energy_import'
 DOWNLOAD_NOTIFICATION = 'linznetz_energy_download'
 SETUP_NOTIFICATION = 'linznetz_energy_setup'
+SECRET_NOTIFICATION = 'linznetz_energy_secret'
 DEVIATION_NOTIFICATION = 'linznetz_energy_deviation'
 LIVE_HISTORY_DAYS = 10            # how far back the first read of the live counter goes (HA's default purge_keep_days)
 CHECK_DAYS = 7                  # days of live/portal comparison for the status and the notification
@@ -470,14 +471,67 @@ def live_meter_candidates(hass) -> list:
     return sorted(out, key=lambda c: c['entity_id'])
 
 
+def _supervisor_headers() -> dict:
+    return {'Authorization': f'Bearer {os.environ.get("SUPERVISOR_TOKEN", "")}'}
+
+
+def stored_options() -> dict:
+    """The add-on configuration as the Supervisor stores it: unresolved, so a `!secret x`
+    value is still the reference, not the secret. Raises requests.RequestException, KeyError
+    or ValueError."""
+    r = requests.get(f'{SUPERVISOR_SELF}/info', headers=_supervisor_headers(), timeout=10)
+    r.raise_for_status()
+    return dict(r.json()['data']['options'])
+
+
+def password_is_secret() -> Optional[bool]:
+    """Is the portal password a `!secret` reference to secrets.yaml? None outside Home Assistant
+    or when the Supervisor cannot be asked."""
+    if not os.environ.get('SUPERVISOR_TOKEN'):
+        return None
+    try:
+        return str(stored_options().get('portal_password') or '').startswith('!secret ')
+    except (requests.RequestException, KeyError, ValueError) as err:
+        logger.debug('Could not read the stored options: %s', err)
+        return None
+
+
+SECRET_STEPS = ('secret.step1', 'secret.step2', 'secret.step3', 'secret.step4', 'secret.step5', 'secret.step6')
+
+
+def secret_instructions(lang: str) -> str:
+    """The steps to move the portal password into secrets.yaml, as Markdown for the notification."""
+    steps = '\n'.join(f'{i}. {t(lang, key)}' for i, key in enumerate(SECRET_STEPS, 1))
+    return f"{t(lang, 'secret.intro')}\n\n{steps}\n\n{t(lang, 'secret.outro')}"
+
+
+def check_password_secret(hass, store: Path, lang: str) -> None:
+    """Warns (page, one notification, log) while the portal password is stored as plain text in
+    the add-on configuration instead of as a `!secret`; the add-on works either way."""
+    secret = password_is_secret()
+    web.write_status(store, password_secret=secret)
+    if secret is None:
+        return
+    state = read_state(store)
+    if secret:
+        if state.pop('secret_warned', None):
+            notify(hass, SECRET_NOTIFICATION, '', None)
+            write_state(store, state)
+        return
+    if not state.get('secret_warned'):
+        logger.warning('The portal password is stored as plain text in the add-on configuration; '
+                       'keep it in secrets.yaml and enter "!secret linznetz_password" instead (see the documentation)')
+        notify(hass, SECRET_NOTIFICATION, t(lang, 'secret.title'), secret_instructions(lang))
+        state['secret_warned'] = True
+        write_state(store, state)
+
+
 def save_live_meter(entity_id: str) -> None:
     """Writes `live_meter_entity` into the add-on configuration (the Configuration tab shows it).
     The Supervisor replaces all options at once, so the stored ones are read first; they come
     unresolved, so `!secret` references stay references. Raises requests.RequestException."""
-    headers = {'Authorization': f'Bearer {os.environ.get("SUPERVISOR_TOKEN", "")}'}
-    r = requests.get(f'{SUPERVISOR_SELF}/info', headers=headers, timeout=10)
-    r.raise_for_status()
-    stored = dict(r.json()['data']['options'])
+    headers = _supervisor_headers()
+    stored = stored_options()
     stored['live_meter_entity'] = entity_id
     r = requests.post(f'{SUPERVISOR_SELF}/options', json={'options': stored}, headers=headers, timeout=10)
     if r.status_code != 200:
@@ -505,7 +559,7 @@ def handle_live_meter_request(hass, options: Options, store: Path) -> Options:
     return replace(options, live_meter_entity=entity_id)
 
 
-ALL_NOTIFICATIONS = (LOGIN_NOTIFICATION, IMPORT_NOTIFICATION, DOWNLOAD_NOTIFICATION, SETUP_NOTIFICATION,
+ALL_NOTIFICATIONS = (LOGIN_NOTIFICATION, IMPORT_NOTIFICATION, DOWNLOAD_NOTIFICATION, SETUP_NOTIFICATION, SECRET_NOTIFICATION,
                      DEVIATION_NOTIFICATION)
 
 
@@ -690,6 +744,7 @@ def main(argv=None) -> int:
                     # paused after "remove everything": nothing is created again until reactivated
                     web.write_status(store, phase='removed', detail='', language=config.get('language') or 'en')
                 else:
+                    check_password_secret(hass, store, config.get('language') or 'en')
                     run_once(hass, options, store, tz, datetime.now(UTC), config.get('language') or 'en')
             finally:
                 hass.close()

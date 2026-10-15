@@ -41,11 +41,11 @@ notifications follow the language of Home Assistant (German and English; the log
 The form hides the password, but the YAML view of the configuration shows it. Keep it in Home
 Assistant's `secrets.yaml` instead, the way Home Assistant handles secrets everywhere:
 
-1. Add a line to `secrets.yaml` in the Home Assistant configuration folder (for example with the
-   File editor or Studio Code Server add-on):
+1. Add a line to `secrets.yaml` in the Home Assistant configuration folder, for example with the
+   File editor add-on (Settings > Apps > Install app > File editor); keep the quotes:
 
    ```yaml
-   linznetz_password: your-portal-password
+   linznetz_password: "your-portal-password"
    ```
 
 2. In the add-on's **Configuration** tab, open the menu (⋮) > **Edit in YAML** and write
@@ -60,6 +60,9 @@ The add-on configuration then only holds the reference; Home Assistant puts the 
 the add-on starts. The same works for `portal_username`. Choosing the live meter on the add-on page
 keeps the reference as it is. Backups contain `secrets.yaml`, so keep them encrypted (the default
 for Home Assistant backups).
+
+While the password is stored as plain text, the add-on page shows these steps and Home
+Assistant gets one notification with them; the add-on works either way.
 
 The portal shows a day only one to two days later, so fetching more often brings nothing new;
 the statistic is still rebuilt every hour from the files the add-on already has.
