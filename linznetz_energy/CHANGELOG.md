@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/ulrichlehner/homebase/compare/v1.1.0...v1.2.0) (2026-10-15)
+
+
+### Features
+
+* AppArmor profile in complain mode ([#29](https://github.com/ulrichlehner/homebase/issues/29)) ([a405e6b](https://github.com/ulrichlehner/homebase/commit/a405e6b32e2a46e833ad23b0b099037dfefaaacd))
+
 ## [1.1.0](https://github.com/ulrichlehner/homebase/compare/v1.0.0...v1.1.0) (2026-10-15)
 
 
