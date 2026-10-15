@@ -168,7 +168,7 @@ Done when the backtest error is acceptable and the source files are unchanged.
 - [x] Store presentation: `icon.png`, `logo.png` (rendered from the SVGs in `linznetz_energy/assets/`
       by `./homebase assets`, checked in CI; readable in light and dark mode), `CHANGELOG.md`,
       `stage: experimental`, minimum HA version 2026.10.0 (the tested one)
-- [ ] Installs from the repo URL on HA OS (`https://github.com/ulrichlehner/homebase`, after the
+- [x] Installs from the repo URL on HA OS (`https://github.com/ulrichlehner/homebase`, after the
       merge of #13), survives a restart, no credentials in the logs
 
 ### Step 5: Load the history once
@@ -193,7 +193,8 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
       imports right away; only reachable through the Ingress proxy; light and dark mode; tested
       locally against HA: first download, then upload added exactly 2880 readings (September
       2023) and the reconstruction
-- [ ] On the installed add-on: upload both files on the add-on page
+- [x] On the installed add-on: upload both files on the add-on page (2026-10-15; no gaps, all
+      hours identical to the files)
 
 ### Step 6: Fusion live, running alongside the current setup
 
@@ -213,8 +214,9 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
       `…_portal_data_until`, `…_live_data_until`, `…_live_deviation`, `…_deviating_hours`,
       `binary_sensor.<site>_linznetz_portal_login_problem`; tested with a local Mosquitto
 - [x] Tested read-only against HA: 57 RF hours up to the current hour, 13.10. RF vs portal 0.0 %
-- [ ] Release, set `live_meter_entity` on the installed add-on, check the entities in HA
+- [x] Release, choose the live meter on the installed add-on, check the entities in HA (2026-10-15)
 - [ ] About 2 weeks in parallel while the Energy tab still uses the RF sensor, compare daily
+      (from 2026-10-15, so until about 2026-10-29)
 
 ### Step 7: Switch the Energy tab
 
@@ -224,11 +226,15 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
       DOCS.md "Switching the Energy dashboard". The add-on never changes the dashboard itself.
 - [ ] After about 2 weeks in parallel: HA backup, change the grid source to `…_grid_consumption`
       (reversible, the old statistics stay), check the daily totals against the portal
-- Dropped: a fused power statistic for the power chart (not needed for the Energy tab)
+- Dropped: a fused power statistic for the power chart. External statistics are hourly only, so it
+  would replace the meter's 5-minute power curve; the power chart keeps the meter's sensor
 
 ### Step 8: Docs and cleanup
 
-- [ ] Revoke the long-lived HA token used by `ha-spike` (profile > Security), the user's task
+- [ ] AppArmor: after some days of 1.2.0 or later, read the host log for `apparmor="ALLOWED"`
+      entries of `linznetz_energy`, add what is missing, remove `complain`
+- [ ] Revoke the long-lived HA token used by `ha-spike` and the read-only checks (profile >
+      Security), the user's task, once no more checks against HA are needed
 - [x] After the first release (v0.1.0): remove `release-as` from `release-please-config.json`
 - [x] Remove `stage: experimental` and release 1.0.0 (`release-as: 1.0.0`, with step 6 and 7)
 - [x] After v1.0.0: remove `release-as` again
