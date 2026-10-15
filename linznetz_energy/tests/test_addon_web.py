@@ -263,3 +263,25 @@ def test_statistics_card_lists_gaps():
     none = W.render_page({'language': 'en', 'statistics': {'consumption': {**stat, 'gaps': []}}})
     assert '<th>Gaps</th><td><span class="muted">none</span>' in none
     assert 'Gaps' not in W.render_page({'language': 'en'})                # nothing written yet
+
+
+def test_status_writes_from_several_threads_neither_fail_nor_lose_changes(tmp_path):
+    """Real case (1.3.1): an upload on the page and the main loop wrote status.json at the same
+    moment through the same temporary file; one of them crashed the add-on."""
+    errors = []
+
+    def writer(name):
+        try:
+            for i in range(200):
+                W.write_status(tmp_path, **{f'{name}_{i % 5}': i})
+        except Exception as err:   # pragma: no cover - the failure this test is about
+            errors.append(err)
+    threads = [threading.Thread(target=writer, args=(f't{n}',)) for n in range(4)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+    assert errors == []
+    status = W.read_status(tmp_path)
+    assert all(status[f't{n}_{k}'] == 195 + k for n in range(4) for k in range(5))   # no change lost
+    assert [p.name for p in tmp_path.iterdir()] == ['status.json']                    # no temporary file left

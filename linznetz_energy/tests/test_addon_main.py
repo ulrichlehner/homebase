@@ -611,3 +611,38 @@ def test_statistic_gaps_are_listed(tmp_path):
     status = addon.statistic_status('x', hours, ZONE)
     assert status['gaps'] == [{'from': '01.09.2023 00:00', 'to': '01.10.2023 00:00', 'hours': 720}]
     assert addon.statistic_gaps(hours[:2]) == []                          # the time after the newest hour is no gap
+
+
+def test_an_unexpected_error_does_not_stop_the_add_on(tmp_path, monkeypatch):
+    options_file = tmp_path / 'options.json'
+    options_file.write_text(json.dumps({'portal_username': 'u', 'portal_password': 'p', 'metering_point': METER}))
+    monkeypatch.setenv('ADDON_OPTIONS', str(options_file))
+    monkeypatch.setenv('ADDON_STORE', str(tmp_path))
+    monkeypatch.setattr(addon.web, 'start', lambda *a: None)
+    monkeypatch.setattr(addon, 'announce_setup', lambda *a: None)
+    monkeypatch.setattr(addon, 'next_run', lambda now: now)        # no waiting between runs
+    calls = []
+
+    def connect():
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError('boom')
+        raise KeyboardInterrupt   # ends the test after the second run
+    monkeypatch.setattr(addon, 'connect', connect)
+    with pytest.raises(KeyboardInterrupt):
+        addon.main([])
+    assert len(calls) == 2                                          # it went on after the error
+    assert addon.web.read_status(tmp_path)['detail'] == 'RuntimeError: boom'
+
+
+def test_the_log_shows_only_the_end_of_the_metering_point(caplog):
+    import logging
+    handler = logging.StreamHandler()
+    stream = __import__('io').StringIO()
+    handler.setStream(stream)
+    handler.addFilter(addon.MaskMeteringPoint('AT0099000000000000000000000001234'))
+    log = logging.getLogger('test.mask')
+    log.addHandler(handler)
+    log.warning('Uploaded %s, importing', 'AT0099000000000000000000000001234_readings.csv')
+    log.removeHandler(handler)
+    assert stream.getvalue() == 'Uploaded …1234_readings.csv, importing\n'

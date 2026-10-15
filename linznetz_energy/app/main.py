@@ -759,6 +759,28 @@ def ha_language(hass) -> str:
         return 'en'
 
 
+class MaskMeteringPoint(logging.Filter):
+    """Shortens the metering point to its last four characters in every log line, file names
+    included: logs end up in issues and forums, the metering point identifies the connection.
+    The add-on page (the user's own HA) shows it in full."""
+
+    def __init__(self, metering_point: str):
+        super().__init__()
+        self.metering_point = metering_point
+        self.short = f'…{metering_point[-4:]}'
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        if self.metering_point in message:
+            record.msg, record.args = message.replace(self.metering_point, self.short), ()
+        return True
+
+
+def mask_metering_point(metering_point: str) -> None:
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(MaskMeteringPoint(metering_point))
+
+
 def connect() -> HomeAssistant:
     url = os.environ.get('HA_URL', SUPERVISOR_WS)
     token = os.environ.get('HA_TOKEN') or os.environ.get('SUPERVISOR_TOKEN')
@@ -791,8 +813,9 @@ def main(argv=None) -> int:
             return 1
         # HA restarts the add-on when the configuration is saved; until then only the page runs
         threading.Event().wait()
-    logger.info('Site %s (%s), metering point ...%s, data in %s', options.site, options.site_id,
-                options.metering_point[-4:], store)
+    mask_metering_point(options.metering_point)
+    logger.info('Site %s (%s), metering point %s, data in %s', options.site, options.site_id,
+                options.metering_point, store)
     # the page shows the full metering point (it is the user's own HA); the log only the last digits
     web.write_status(store, site=options.site, metering_point=options.metering_point, phase='starting',
                      detail='', setup=[])
@@ -826,6 +849,14 @@ def main(argv=None) -> int:
         except HomeAssistantError as err:
             logger.error('Home Assistant: %s', err)
             web.write_status(store, phase='error', detail=f'Home Assistant: {err}')
+        except Exception as err:   # noqa: BLE001 - a bug must not stop the add-on for good
+            if args.once:
+                raise
+            logger.exception('Unexpected error, trying again at the next run')
+            try:
+                web.write_status(store, phase='error', detail=f'{type(err).__name__}: {err}')
+            except OSError:
+                pass
         if args.once:
             return 0
         at = next_run(datetime.now(UTC))

@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import re
+import tempfile
 import threading
 from urllib.parse import parse_qs
 from datetime import datetime
@@ -52,14 +53,25 @@ def read_status(store: Path) -> dict:
         return {}
 
 
+_status_lock = threading.Lock()
+
+
 def write_status(store: Path, **changes) -> dict:
-    """Merges `changes` into status.json (atomically) and returns the new status."""
-    status = read_status(store)
-    status.update(changes)
-    tmp = store / (STATUS_FILE + '.tmp')
-    tmp.write_text(json.dumps(status, indent=2, sort_keys=True, default=str))
-    tmp.replace(store / STATUS_FILE)
-    return status
+    """Merges `changes` into status.json (atomically) and returns the new status. The main loop
+    and the page's request threads both write it: the lock keeps one read-merge-write from
+    overtaking another (which would lose changes), and every write has its own temporary file."""
+    with _status_lock:
+        status = read_status(store)
+        status.update(changes)
+        fd, tmp = tempfile.mkstemp(dir=store, prefix=STATUS_FILE + '.', suffix='.tmp')
+        try:
+            with os.fdopen(fd, 'w') as fh:
+                fh.write(json.dumps(status, indent=2, sort_keys=True, default=str))
+            os.replace(tmp, store / STATUS_FILE)
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
+        return status
 
 
 # -- Upload -------------------------------------------------------------------------------
