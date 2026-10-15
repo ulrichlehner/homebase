@@ -130,6 +130,7 @@ button.secondary { color: var(--primary); border: 1px solid var(--primary); }
 .check { display: flex; gap: 10px; align-items: flex-start; margin-top: 4px; }
 .check input { margin-top: 5px; }
 .setup p { margin: 12px 0 0; }
+.steps { margin: 12px 0 0; padding-left: 22px; display: grid; gap: 8px; }
 .files { margin: 0 0 18px; padding: 0; list-style: none; display: grid; gap: 8px; }
 .files li { display: grid; gap: 2px; }
 .drop { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; cursor: pointer;
@@ -210,6 +211,12 @@ def render_page(status: dict, message=None) -> str:
         items = ''.join(f'<li>{html.escape(_text(lang, line))}</li>' for line in setup)
         setup_html = (f'<div class="card setup"><h2>{t(lang, "page.setup_title")}</h2><ul>{items}</ul>'
                       f'<p>{html.escape(t(lang, "setup.howto"))}</p></div>')
+
+    if status.get('password_secret') is False:
+        steps = ''.join(f'<li>{html.escape(t(lang, f"secret.step{i}"))}</li>' for i in range(1, 7))
+        setup_html += (f'<div class="card setup"><h2>{t(lang, "page.secret_title")}</h2>'
+                       f'<p>{html.escape(t(lang, "secret.intro"))}</p><ol class="steps">{steps}</ol>'
+                       f'<p class="muted">{html.escape(t(lang, "secret.outro"))}</p></div>')
 
     portal = status.get('portal', {})
     if portal.get('login_failed'):

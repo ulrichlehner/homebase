@@ -19,6 +19,23 @@ TEXTS = {
                                          '(the Zählpunktnummer, not the meter number).',
         'problem.site': 'The site needs at least one letter or digit.',
         # notifications
+        'secret.title': 'LINZ NETZ Energy: portal password in plain text',
+        'secret.intro': 'The portal password is stored as plain text in the app configuration, and its YAML view shows '
+                        'it. Home Assistant keeps passwords in the file secrets.yaml; the configuration then only '
+                        'names them. To move it there:',
+        'secret.step1': 'Install the app "File editor": Settings > Apps > Install app, search "File editor", Install, '
+                        'then Start (switch on "Show in sidebar").',
+        'secret.step2': 'Open File editor in the sidebar, click the folder icon at the top left and open secrets.yaml '
+                        '(it is there in every installation).',
+        'secret.step3': 'Add a new line at the end: linznetz_password: "your portal password" (with the quotes), then '
+                        'save with the disk icon at the top.',
+        'secret.step4': 'Open Settings > Apps > LINZ NETZ Energy, tab Configuration. Click the menu (⋮) at the top right '
+                        'of the options and choose "Edit in YAML".',
+        'secret.step5': 'Replace the line portal_password: … with portal_password: "!secret linznetz_password" and '
+                        'click Save.',
+        'secret.step6': 'Tab Info: Restart. This message goes away; File editor can be uninstalled again.',
+        'secret.outro': 'The app works either way.',
+        'page.secret_title': 'Portal password in plain text',
         'setup.title': 'LINZ NETZ Energy: setup needed',
         'setup.intro': 'The app needs a few settings before it can fetch anything:',
         'setup.howto': 'Open the app "LINZ NETZ Energy" in Home Assistant, fill in the fields on the Configuration tab '
@@ -172,6 +189,24 @@ TEXTS = {
         'problem.metering_point_prefix': 'Der Zählpunkt muss mit AT beginnen. Bitte mit der Rechnung vergleichen '
                                          '(die Zählpunktnummer, nicht die Zählernummer).',
         'problem.site': 'Der Standort braucht mindestens einen Buchstaben oder eine Ziffer.',
+        'secret.title': 'LINZ NETZ Energy: Portal-Passwort im Klartext',
+        'secret.intro': 'Das Portal-Passwort steht im Klartext in der Konfiguration der App, ihre YAML-Ansicht zeigt es '
+                        'an. Home Assistant hält Passwörter in der Datei secrets.yaml; die Konfiguration nennt sie dann '
+                        'nur beim Namen. So zieht es dorthin um:',
+        'secret.step1': 'Die App „File editor“ installieren: Einstellungen > Apps > App installieren, nach „File editor“ '
+                        'suchen, Installieren, dann Starten („In Seitenleiste anzeigen“ einschalten).',
+        'secret.step2': 'File editor in der Seitenleiste öffnen, oben links auf das Ordnersymbol klicken und '
+                        'secrets.yaml öffnen (die Datei gibt es in jeder Installation).',
+        'secret.step3': 'Am Ende eine neue Zeile ergänzen: linznetz_password: "dein Portal-Passwort" (mit den '
+                        'Anführungszeichen), dann oben mit dem Diskettensymbol speichern.',
+        'secret.step4': 'Einstellungen > Apps > LINZ NETZ Energy öffnen, Tab Konfiguration. Oben rechts bei den Optionen '
+                        'auf das Menü (⋮) klicken und „In YAML bearbeiten“ wählen.',
+        'secret.step5': 'Die Zeile portal_password: … ersetzen durch portal_password: "!secret linznetz_password" und '
+                        'Speichern klicken.',
+        'secret.step6': 'Tab Info: Neu starten. Diese Meldung verschwindet; File editor kann danach wieder '
+                        'deinstalliert werden.',
+        'secret.outro': 'Die App funktioniert so oder so.',
+        'page.secret_title': 'Portal-Passwort im Klartext',
         'setup.title': 'LINZ NETZ Energy: Einrichtung nötig',
         'setup.intro': 'Die App braucht noch ein paar Einstellungen, bevor sie Daten holen kann:',
         'setup.howto': 'Öffne in Home Assistant die App „LINZ NETZ Energy“, fülle im Tab Konfiguration die Felder aus '

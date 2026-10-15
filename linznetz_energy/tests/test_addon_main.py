@@ -585,3 +585,26 @@ def test_apparmor_profile_is_named_after_the_slug():
     slug = next(l.split(':', 1)[1].strip() for l in (folder / 'config.yaml').read_text().splitlines() if l.startswith('slug:'))
     profile = (folder / 'apparmor.txt').read_text()
     assert f'profile {slug} flags=(attach_disconnected,mediate_deleted,complain)' in profile
+
+
+
+def test_a_plain_text_password_is_warned_about_once(tmp_path, monkeypatch):
+    stored = {'portal_password': 'plain'}
+    monkeypatch.setenv('SUPERVISOR_TOKEN', 'x')
+    monkeypatch.setattr(addon, 'stored_options', lambda: dict(stored))
+    hass = FakeHass()
+    addon.check_password_secret(hass, tmp_path, 'de')
+    addon.check_password_secret(hass, tmp_path, 'de')
+    notes = [s[2] for s in hass.services if s[2].get('notification_id') == addon.SECRET_NOTIFICATION]
+    assert len(notes) == 1 and 'In YAML bearbeiten' in notes[0]['message'] and '6. Tab Info' in notes[0]['message']
+    assert addon.web.read_status(tmp_path)['password_secret'] is False
+    stored['portal_password'] = '!secret linznetz_password'
+    addon.check_password_secret(hass, tmp_path, 'de')
+    assert hass.services[-1][1] == 'dismiss' and addon.web.read_status(tmp_path)['password_secret'] is True
+
+
+def test_no_password_check_outside_home_assistant(tmp_path, monkeypatch):
+    monkeypatch.delenv('SUPERVISOR_TOKEN', raising=False)
+    hass = FakeHass()
+    addon.check_password_secret(hass, tmp_path, 'en')
+    assert hass.services == [] and addon.web.read_status(tmp_path)['password_secret'] is None

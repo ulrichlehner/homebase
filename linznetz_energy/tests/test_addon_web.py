@@ -194,3 +194,11 @@ def test_live_meter_post_records_the_request(server):
     with pytest.raises(urllib.error.HTTPError) as err:
         urllib.request.urlopen(bad)
     assert err.value.code == 400
+
+
+def test_plain_text_password_card_has_the_steps():
+    page = W.render_page({'language': 'en', 'password_secret': False})
+    assert '<h2>Portal password in plain text</h2>' in page and page.count('<li>') >= 6
+    assert '&quot;Edit in YAML&quot;' in page and 'The app works either way.' in page
+    assert 'Portal password in plain text' not in W.render_page({'language': 'en', 'password_secret': True})
+    assert 'Portal password in plain text' not in W.render_page({'language': 'en'})
