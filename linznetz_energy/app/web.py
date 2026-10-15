@@ -10,6 +10,7 @@ the Ingress proxy (172.30.32.2) and uses relative links, so it works under any I
                  imported on the spot by waking the main loop
   POST /live_meter  the live meter picked from the list (field `entity`, empty: none); the
                  main loop writes it into the add-on configuration
+  POST /fetch    fetch the portal now (the main loop does it right away)
   POST /remove, /resume  remove everything from Home Assistant, or reactivate
 """
 
@@ -90,9 +91,9 @@ def store_upload(import_dir: Path, name: str, data: bytes) -> Path:
 
 STYLE = """
 :root { --primary: #03a9f4; --primary-soft: rgba(3, 169, 244, .08); --bg: #fafafa; --card: #ffffff;
-        --text: #212121; --muted: #727272; --divider: #e0e0e0; --ok: #43a047; --warn: #ffa000; --err: #db4437; }
+        --text: #212121; --muted: #727272; --divider: #e0e0e0; --code-bg: rgba(0, 0, 0, .05); --ok: #43a047; --warn: #ffa000; --err: #db4437; }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #111111; --card: #1c1c1c; --text: #e1e1e1; --muted: #9b9b9b; --divider: #2f2f2f;
+  :root { --bg: #111111; --card: #1c1c1c; --text: #e1e1e1; --muted: #9b9b9b; --divider: #2f2f2f; --code-bg: rgba(255, 255, 255, .08);
           --primary-soft: rgba(3, 169, 244, .12); } }
 * { box-sizing: border-box; }
 /* The HA app shows the page in an iframe; on iOS such an iframe only scrolls when the page
@@ -123,10 +124,19 @@ button.danger, button.secondary { display: inline-block; width: auto; background
                                   padding: 10px 18px; }
 button.danger { color: var(--err); border: 1px solid var(--err); }
 button.secondary { color: var(--primary); border: 1px solid var(--primary); }
-.pick { display: flex; gap: 10px; flex-wrap: wrap; }
-.pick select { flex: 1 1 260px; min-width: 0; font: inherit; color: var(--text); background: var(--card);
-               border: 1px solid var(--divider); border-radius: 8px; padding: 10px; }
-.pick button { flex: 0 0 auto; width: auto; }
+.lead { color: var(--muted); }
+form.inline { display: inline; margin-left: 12px; }
+button.small { padding: 4px 12px; font-size: 14px; margin: 0; vertical-align: baseline; }
+.pick { margin-top: 16px; }
+.pick label { display: block; font-weight: 500; color: var(--muted); font-size: 14px; margin-bottom: 6px; }
+.pick .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch; }
+.pick select { flex: 1 1 260px; min-width: 0; height: 48px; font: inherit; color: var(--text); background: var(--card);
+               border: 1px solid var(--divider); border-radius: 8px; padding: 0 12px; }
+.pick select:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+.pick button { flex: 0 0 auto; width: auto; height: 48px; margin: 0; padding: 0 24px; font-size: 16px; }
+.steps li::marker { color: var(--muted); font-weight: 500; }
+.steps + p { margin-top: 14px; }
+table + p, table + form { margin-top: 14px; }
 .check { display: flex; gap: 10px; align-items: flex-start; margin-top: 4px; }
 .check input { margin-top: 5px; }
 .setup p { margin: 12px 0 0; }
@@ -145,7 +155,8 @@ button { display: block; width: 100%; margin-top: 14px; background: var(--primar
          border-radius: 8px; padding: 14px 20px; font: inherit; font-size: 17px; font-weight: 500; cursor: pointer; }
 button:disabled { opacity: .45; cursor: default; }
 ul { margin: 0; padding-left: 20px; }
-code { font-size: 14px; }
+code { font: 13.5px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; background: var(--code-bg);
+       border-radius: 4px; padding: 1px 5px; }
 /* phones: less padding, label above value instead of two table columns */
 @media (max-width: 600px) {
   body { padding: 16px 12px; font-size: 15px; }
@@ -161,6 +172,8 @@ code { font-size: 14px; }
   .drop { padding: 22px 12px; }
   .drop strong { font-size: 17px; }
   button { padding: 14px 16px; }
+  .pick .row { flex-direction: column; }
+  .pick select, .pick button { flex: 0 0 48px; width: 100%; }
 }
 """
 
@@ -190,6 +203,14 @@ def _text(lang: str, entry) -> str:
     return t(lang, key, **values)
 
 
+def _rich(text: str) -> str:
+    """Escapes a text and turns `x` into <code>x</code> and **x** into <strong>x</strong>, so the
+    texts can name entities and UI paths readably."""
+    out = html.escape(text, quote=False)
+    out = re.sub(r'`([^`]+)`', r'<code>\1</code>', out)
+    return re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', out)
+
+
 def render_page(status: dict, message=None) -> str:
     """The page in the language of HA (`status['language']`). `message` is a (text key,
     values) pair shown on top, e.g. the result of an upload."""
@@ -202,7 +223,7 @@ def render_page(status: dict, message=None) -> str:
     detail = status.get('detail', '')
     detail = t(lang, detail) if detail in TEXTS['en'] else detail
     busy = (phase not in ('idle', 'setup', 'removed') or status.get('import_pending') or status.get('removal_request')
-            or status.get('live_meter_request'))
+            or status.get('live_meter_request') or status.get('fetch_request'))
     refresh = '<meta http-equiv="refresh" content="5">' if busy else ''
 
     setup = status.get('setup') or []
@@ -213,12 +234,16 @@ def render_page(status: dict, message=None) -> str:
                       f'<p>{html.escape(t(lang, "setup.howto"))}</p></div>')
 
     if status.get('password_secret') is False:
-        steps = ''.join(f'<li>{html.escape(t(lang, f"secret.step{i}"))}</li>' for i in range(1, 7))
+        steps = ''.join(f'<li>{_rich(t(lang, f"secret.step{i}"))}</li>' for i in range(1, 7))
         setup_html += (f'<div class="card setup"><h2>{t(lang, "page.secret_title")}</h2>'
-                       f'<p>{html.escape(t(lang, "secret.intro"))}</p><ol class="steps">{steps}</ol>'
+                       f'<p>{_rich(t(lang, "secret.intro"))}</p><ol class="steps">{steps}</ol>'
                        f'<p class="muted">{html.escape(t(lang, "secret.outro"))}</p></div>')
 
     portal = status.get('portal', {})
+    fetching = status.get('fetch_request') or phase == 'downloading'
+    fetch_button = ('' if status.get('setup') or phase == 'removed' else
+                    f'<form method="post" action="fetch" class="inline"><button type="submit" class="secondary small"'
+                    f'{" disabled" if fetching else ""}>{t(lang, "page.fetch_now")}</button></form>')
     if portal.get('login_failed'):
         login = (f'<span class="pill err">{t(lang, "page.login_rejected")}</span> '
                  + _fmt_time(portal.get('login_failed'), lang))
@@ -280,25 +305,34 @@ def render_page(status: dict, message=None) -> str:
     if 'live_candidates' in status:
         current = status.get('live_meter') or ''
         candidates = status.get('live_candidates') or []
+        by_id = {c['entity_id']: c for c in candidates}
         choices = [('', t(lang, 'page.live_meter_none'))] + [
-            (c['entity_id'], f'{c["name"]} · {c["entity_id"]} · {c["state"]} {c["unit"]}') for c in candidates]
-        if current and current not in {c['entity_id'] for c in candidates}:
-            choices.append((current, current))   # entered in the Configuration tab, not (or no longer) a match
+            (c['entity_id'], f'{c["name"]} ({c["state"]} {c["unit"]})') for c in candidates]
+        if current and current not in by_id:
+            choices.append((current, current))   # chosen earlier, no longer a matching sensor
         select = ''.join(f'<option value="{html.escape(v)}"{" selected" if v == current else ""}>{html.escape(label)}</option>'
                          for v, label in choices)
+        if current:
+            c = by_id.get(current)
+            value = f' · {html.escape(str(c["state"]))} {html.escape(c["unit"])}' if c else ''
+            name = f'<strong>{html.escape(c["name"])}</strong><br>' if c else ''
+            in_use = f'{name}<code>{html.escape(current)}</code>{value}'
+        else:
+            in_use = f'<span class="muted">{html.escape(t(lang, "page.live_meter_none"))}</span>'
         result = status.get('live_meter_result') or {}
         result_text = {'saved': lambda: t(lang, 'page.live_meter_saved', entity=result.get('entity') or t(lang, 'page.live_meter_none')),
-                       'failed': lambda: t(lang, 'page.live_meter_failed', error=result.get('error', '')),
                        'unknown': lambda: t(lang, 'page.live_meter_unknown', entity=result.get('entity', ''))}.get(result.get('state'))
         result_html = (f'<p><span class="pill {"ok" if result.get("state") == "saved" else "warn"}">'
                        f'{"ok" if result.get("state") == "saved" else "!"}</span> {html.escape(result_text())}</p>'
                        if result_text else '')
         empty = f'<p class="muted">{html.escape(t(lang, "page.live_meter_no_candidates"))}</p>' if not candidates else ''
         live_meter_html = (f'<div class="card"><h2>{t(lang, "page.live_meter")}</h2>'
-                           f'<p>{html.escape(t(lang, "page.live_meter_lead"))}</p>{empty}{result_html}'
+                           f'<p class="lead">{html.escape(t(lang, "page.live_meter_lead"))}</p>'
+                           f'<table>{_rows([(t(lang, "page.live_meter_in_use"), in_use)])}</table>{empty}{result_html}'
                            f'<form method="post" action="live_meter" class="pick">'
-                           f'<select name="entity" aria-label="{html.escape(t(lang, "page.live_meter"))}">{select}</select>'
-                           f'<button type="submit">{t(lang, "page.live_meter_save")}</button></form></div>')
+                           f'<label for="live-meter">{t(lang, "page.live_meter_choose")}</label>'
+                           f'<div class="row"><select name="entity" id="live-meter">{select}</select>'
+                           f'<button type="submit">{t(lang, "page.live_meter_save")}</button></div></form></div>')
 
     energy = status.get('energy')
     energy_html = ''
@@ -308,13 +342,20 @@ def render_page(status: dict, message=None) -> str:
             body = f'<p class="muted">{html.escape(t(lang, "page.energy_unknown"))}</p>'
         elif energy.get('uses_consumption'):
             others = [g for g in energy['grid_from'] if g != energy['consumption_statistic']]
-            body = f'<p><span class="pill ok">ok</span> {html.escape(t(lang, "page.energy_ok", name=name))}</p>'
+            body = f'<p><span class="pill ok">ok</span> {_rich(t(lang, "page.energy_ok", name=name))}</p>'
             if others:
                 body += (f'<p><span class="pill warn">!</span> '
-                         f'{html.escape(t(lang, "page.energy_double", others=", ".join(others)))}</p>')
+                         f'{_rich(t(lang, "page.energy_double", others=", ".join(f"`{o}`" for o in others)))}</p>')
         else:
-            current = ', '.join(energy['grid_from']) or t(lang, 'page.energy_none')
-            body = f'<p>{html.escape(t(lang, "page.energy_switch", name=name, current=current))}</p>'
+            current = ', '.join(f'`{g}`' for g in energy['grid_from'])
+            used = _rich(current) if current else f'<span class="muted">{t(lang, "page.energy_none")}</span>'
+            keys = ('page.energy_step_backup', 'page.energy_step_open',
+                    'page.energy_step_pick' if current else 'page.energy_step_add')
+            steps = ''.join(f'<li>{_rich(t(lang, k, name=name, current=current))}</li>' for k in keys)
+            body = (f'<table>{_rows([(t(lang, "page.energy_uses"), used)])}</table>'
+                    f'<p class="lead">{_rich(t(lang, "page.energy_switch", name=name))}</p>'
+                    f'<ol class="steps">{steps}</ol>'
+                    f'<p class="muted">{html.escape(t(lang, "page.energy_undo"))}</p>')
         energy_html = f'<div class="card"><h2>{t(lang, "page.energy")}</h2>{body}</div>'
 
     last_import = status.get('last_import') or {}
@@ -342,7 +383,7 @@ def render_page(status: dict, message=None) -> str:
         (t(lang, 'page.last_run'), _fmt_time(status.get('last_run'), lang)),
         (t(lang, 'page.next_run'), _fmt_time(status.get('next_run'), lang)),
         (t(lang, 'page.portal_login'), login),
-        (t(lang, 'page.last_fetch'), _fmt_time(portal.get('ok'), lang)),
+        (t(lang, 'page.last_fetch'), _fmt_time(portal.get('ok'), lang) + fetch_button),
     ])}</table></div>
 <div class="card"><h2>{t(lang, 'page.data')}</h2><table>{_rows([
         (t(lang, 'page.readings'), range_row(data.get('readings'))),
@@ -446,6 +487,12 @@ class Handler(BaseHTTPRequestHandler):
             self.wake.set()
             logger.info('Requested on the add-on page: %s', path.strip('/'))
             self._send(200, render_page(read_status(self.store), (f'page.{path.strip("/")}_requested', {})))
+            return
+        if path == '/fetch':
+            write_status(self.store, fetch_request=True)
+            self.wake.set()
+            logger.info('Requested on the add-on page: portal fetch')
+            self._send(200, render_page(read_status(self.store), ('page.fetch_requested', {})))
             return
         if path == '/live_meter':
             length = int(self.headers.get('Content-Length') or 0)

@@ -85,7 +85,7 @@ class Options:
     metering_point: str          # the 33-character Zählpunktnummer (not the meter number)
     site: str                    # the name of the place as entered, e.g. "Zweitwohnsitz Linz"
     fetch_interval_hours: int = 12
-    live_meter_entity: str = ''          # the live energy counter of the meter in HA (kWh total), empty: portal only
+    live_meter_entity: str = ''  # the live energy counter of the meter in HA (kWh total), chosen on the add-on page; empty: portal only
 
     @property
     def site_id(self) -> str:
@@ -150,13 +150,9 @@ def load_options(path: Path) -> tuple:
         problems.append(('problem.metering_point_prefix', {}))
     if not site_id(site):
         problems.append(('problem.site', {}))
-    live_meter_entity = (raw.get('live_meter_entity') or '').strip()
-    if live_meter_entity and not re.fullmatch(r'sensor\.[a-z0-9_]+', live_meter_entity):
-        problems.append(('problem.live_meter_entity', {'value': live_meter_entity}))
     if problems:
         return None, problems
-    return Options(username, password, metering_point, site, int(raw.get('fetch_interval_hours') or 12),
-                   live_meter_entity), []
+    return Options(username, password, metering_point, site, int(raw.get('fetch_interval_hours') or 12)), []
 
 
 # -- State ----------------------------------------------------------------------
@@ -357,7 +353,9 @@ def notify(hass, notification_id: str, title: str, message: Optional[str]) -> No
         logger.warning('Could not update the HA notification: %s', err)
 
 
-def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: str = 'en') -> None:
+def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: str = 'en',
+             fetch_now: bool = False) -> None:
+    """One cycle; `fetch_now` fetches the portal even if `fetch_interval_hours` have not passed (button on the page)."""
     zone = ZoneInfo(tz)
     web.write_status(store, language=lang)
     if any((store / IMPORT_DIR).glob('*.csv')):
@@ -369,7 +367,7 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
                '\n'.join(f'- {render(lang, key, values)}' for key, values in imported))
     web.write_status(store, import_pending=False)
     state = read_state(store)
-    if portal_due(state, now, options.fetch_interval_hours):
+    if fetch_now or portal_due(state, now, options.fetch_interval_hours):
         readings_file = readings.readings_path(store, options.metering_point)
         first_download = not readings_file.exists()
         web.write_status(store, phase='downloading',
@@ -526,37 +524,23 @@ def check_password_secret(hass, store: Path, lang: str) -> None:
         write_state(store, state)
 
 
-def save_live_meter(entity_id: str) -> None:
-    """Writes `live_meter_entity` into the add-on configuration (the Configuration tab shows it).
-    The Supervisor replaces all options at once, so the stored ones are read first; they come
-    unresolved, so `!secret` references stay references. Raises requests.RequestException."""
-    headers = _supervisor_headers()
-    stored = stored_options()
-    stored['live_meter_entity'] = entity_id
-    r = requests.post(f'{SUPERVISOR_SELF}/options', json={'options': stored}, headers=headers, timeout=10)
-    if r.status_code != 200:
-        raise requests.RequestException(f'Supervisor {r.status_code}: {r.text[:200]}')
 
-
-def handle_live_meter_request(hass, options: Options, store: Path) -> Options:
-    """Carries out the live meter choice of the add-on page; returns the options to use from now on."""
+def handle_live_meter_request(hass, store: Path) -> None:
+    """Carries out the live meter choice of the add-on page. The choice is kept in the add-on's
+    state (its config folder, part of backups), not in the Configuration tab: the page is the one
+    place to pick it, from a list."""
     request = web.read_status(store).get('live_meter_request')
     if request is None:
-        return options
+        return
     entity_id = request.get('entity', '')
-    candidates = {c['entity_id'] for c in live_meter_candidates(hass)}
-    if entity_id and entity_id not in candidates:
+    if entity_id and entity_id not in {c['entity_id'] for c in live_meter_candidates(hass)}:
         web.write_status(store, live_meter_request=None, live_meter_result={'state': 'unknown', 'entity': entity_id})
-        return options
-    try:
-        save_live_meter(entity_id)
-    except (requests.RequestException, KeyError, ValueError) as err:
-        logger.error('Could not save the live meter %s: %s', entity_id or '(none)', err)
-        web.write_status(store, live_meter_request=None, live_meter_result={'state': 'failed', 'error': str(err)[:200]})
-        return options
+        return
+    state = read_state(store)
+    state['live_meter'] = entity_id
+    write_state(store, state)
     logger.info('Live meter set on the add-on page: %s', entity_id or '(none, portal only)')
     web.write_status(store, live_meter_request=None, live_meter_result={'state': 'saved', 'entity': entity_id})
-    return replace(options, live_meter_entity=entity_id)
 
 
 ALL_NOTIFICATIONS = (LOGIN_NOTIFICATION, IMPORT_NOTIFICATION, DOWNLOAD_NOTIFICATION, SETUP_NOTIFICATION, SECRET_NOTIFICATION,
@@ -734,7 +718,8 @@ def main(argv=None) -> int:
                 config = hass.call('get_config') or {}
                 tz = config.get('time_zone') or 'Europe/Vienna'
                 handle_removal_request(hass, options, store)
-                options = handle_live_meter_request(hass, options, store)
+                handle_live_meter_request(hass, store)
+                options = replace(options, live_meter_entity=read_state(store).get('live_meter', ''))
                 try:
                     web.write_status(store, live_meter=options.live_meter_entity,
                                      live_candidates=live_meter_candidates(hass))
@@ -745,7 +730,11 @@ def main(argv=None) -> int:
                     web.write_status(store, phase='removed', detail='', language=config.get('language') or 'en')
                 else:
                     check_password_secret(hass, store, config.get('language') or 'en')
-                    run_once(hass, options, store, tz, datetime.now(UTC), config.get('language') or 'en')
+                    fetch_now = bool(web.read_status(store).get('fetch_request'))
+                    if fetch_now:
+                        logger.info('Portal fetch requested on the add-on page')
+                        web.write_status(store, fetch_request=None)
+                    run_once(hass, options, store, tz, datetime.now(UTC), config.get('language') or 'en', fetch_now)
             finally:
                 hass.close()
         except HomeAssistantError as err:
