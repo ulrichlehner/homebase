@@ -92,7 +92,46 @@ The live meter and the portal are compared by the add-on itself (its page, the s
 notification), so there is no separate portal statistic; the one written by versions before 1.0.0
 is deleted once.
 
-Pick the statistic in a statistics graph card, or in the Energy dashboard as grid consumption.
+Pick the statistic in a statistics graph card, or in the Energy dashboard under **Energy imported
+from grid**.
+
+## How the statistic is built
+
+The statistic has one value per hour. For every hour the add-on takes the best source it has:
+
+| Order | Source | When it is used |
+| --- | --- | --- |
+| 1 | Live meter | the hour has good live readings; available right after the hour |
+| 2 | Portal, measured | the portal has all four quarter hours of the hour (one to two days later) |
+| 3 | Portal, substitute values | all four quarter hours, but some are substitute values (see below) |
+| 4 | Reconstructed history | your imported `_reconstructed_15min.csv`, for months the portal no longer has |
+| 5 | Portal, incomplete | some quarter hours are missing; the ones that are there |
+
+**Substitute values** (Ersatzwerte): when LINZ NETZ receives no reading from the meter for a quarter
+hour (for example after a transmission fault or a meter change), it calculates one so the bill has
+no hole, and marks it in the portal's "Ersatzwert" column. It may replace it with the real reading
+later. Such hours rank below measured ones, and they are not used to check the live meter.
+
+A few rules on top:
+
+- **Live first, portal as check.** When the portal later has an hour the live meter already
+  delivered, the live value stays. If the two differ by more than 2 % (at least 20 Wh), the hour
+  counts as a deviation on the add-on page; whole days are compared too.
+- **Reception gaps.** When the meter sends no usable counter for a while, the add-on splits the
+  consumption of that gap between the hours by the meter's power readings. Without power readings
+  the split is an estimate, and the measured portal value replaces it once the portal has it.
+- **Nothing is double.** Each hour has exactly one value from one source, so switching sources
+  never counts anything twice.
+- **Gaps stay gaps.** An hour no source has gets no value; the running total simply continues.
+  The add-on page lists such gaps under **Statistics**, and older readings fill them (see
+  "Bringing older history").
+- **Rebuilt every hour.** The whole statistic is written again each time, so a value the portal
+  delivers or corrects later replaces the earlier one in Home Assistant.
+
+An example day, seen on the next morning: the hours until midnight come from the live meter, one
+hour around a reception gap is split by the power readings, and an hour in which the receiver was
+off is still empty. A day later the portal has the whole day: the empty hour gets the portal value,
+and the add-on checks the live hours against the portal.
 
 ## Live meter readings (optional)
 
