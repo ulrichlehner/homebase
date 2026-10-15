@@ -1,6 +1,6 @@
 name: LINZ NETZ Energy
 # set by release-please from the conventional commits (only this line), see README "Releases"
-version: "0.2.2" # x-release-please-version
+version: "1.0.0" # x-release-please-version
 slug: linznetz_energy
 description: Smart meter consumption from a live meter reading and the LINZ NETZ portal, with history, for the Energy dashboard
 url: https://github.com/ulrichlehner/homebase/tree/main/linznetz_energy

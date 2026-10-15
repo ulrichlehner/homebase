@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/ulrichlehner/homebase/compare/v0.2.2...v1.0.0) (2026-10-15)
+
+
+### Features
+
+* radio readings as primary source, MQTT status, Energy dashboard card, 1.0.0 (steps 6 to 8) ([#23](https://github.com/ulrichlehner/homebase/issues/23)) ([787f5bc](https://github.com/ulrichlehner/homebase/commit/787f5bc917994fb91ba49dcd597c114264cf7057))
+
 ## [0.2.2](https://github.com/ulrichlehner/homebase/compare/v0.2.1...v0.2.2) (2026-10-14)
 
 
