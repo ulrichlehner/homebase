@@ -34,7 +34,32 @@ notifications follow the language of Home Assistant (German and English; the log
 | `metering_point`       | the metering point number (Zählpunktnummer, not the meter number), 33 characters starting with `AT`; spaces, dots and lowercase letters are fine |
 | `site`                 | name of the place, shown as you write it (default `Home`); the statistic IDs use a simplified form (`Zweitwohnsitz Linz` → `zweitwohnsitz_linz`) |
 | `fetch_interval_hours` | hours between two portal fetches (default 12, 6 to 48)                     |
-| `live_meter_entity`    | optional: a live energy counter of the meter in Home Assistant (total in kWh), for example from the meter's wM-Bus radio: `sensor.home_grid_total_energy_consumption` (see below) |
+| `live_meter_entity`    | optional: a live energy counter of the meter in Home Assistant (total in kWh), for example from the meter's wM-Bus radio: `sensor.home_grid_total_energy_consumption`; easier to pick from a list on the add-on page (see below) |
+
+### The portal password as a secret
+
+The form hides the password, but the YAML view of the configuration shows it. Keep it in Home
+Assistant's `secrets.yaml` instead, the way Home Assistant handles secrets everywhere:
+
+1. Add a line to `secrets.yaml` in the Home Assistant configuration folder (for example with the
+   File editor or Studio Code Server add-on):
+
+   ```yaml
+   linznetz_password: your-portal-password
+   ```
+
+2. In the add-on's **Configuration** tab, open the menu (⋮) > **Edit in YAML** and write
+
+   ```yaml
+   portal_password: "!secret linznetz_password"
+   ```
+
+   then save and restart the add-on.
+
+The add-on configuration then only holds the reference; Home Assistant puts the password in when
+the add-on starts. The same works for `portal_username`. Choosing the live meter on the add-on page
+keeps the reference as it is. Backups contain `secrets.yaml`, so keep them encrypted (the default
+for Home Assistant backups).
 
 The portal shows a day only one to two days later, so fetching more often brings nothing new;
 the statistic is still rebuilt every hour from the files the add-on already has.
@@ -62,8 +87,16 @@ Pick the statistic in a statistics graph card, or in the Energy dashboard as gri
 
 Any entity in Home Assistant that has the meter's energy counter live (a total in kWh) can serve as
 the live source: for example the meter's wM-Bus radio received with the wmbusmeters add-on and the
-`amiplus_linznetz` driver of this repository, or a reader on the meter's customer interface. Enter
-that entity as `live_meter_entity`, and the add-on
+`amiplus_linznetz` driver of this repository, or a reader on the meter's customer interface.
+
+Pick it on the add-on page (**Open Web UI**) under **Live meter**: the list shows the sensors that
+count energy upwards (Wh, kWh or MWh, without daily or monthly utility meters) with their current
+value, so the right counter is easy to spot. **Save** writes it into the add-on configuration as
+`live_meter_entity` (the **Configuration** tab shows it too), and it is used from the next run on,
+without a restart. Typing the entity into the Configuration tab works as well.
+
+Choosing another counter later starts a new live archive, because its readings do not continue
+the old ones; the hours before stay covered by the portal. With a live meter, the add-on
 
 - reads the new counter readings every hour (only reads, nothing is changed in Home Assistant),
 - cleans them: repeated values count from their first occurrence, phases in which the meter sends
@@ -119,7 +152,9 @@ the add-on's page inside Home Assistant. It shows
   while something runs, plus the last and next run and the portal login,
 - the data it has: portal readings and reconstructed history with their ranges,
 - the statistic with its range, total and sources, and the live vs portal check,
-- the result of the last import.
+- the live meter choice (see above),
+- the Energy dashboard card, the history import and the result of the last import,
+- at the bottom, removing everything from Home Assistant (see "Uninstalling").
 
 ## Bringing older history
 

@@ -8,6 +8,9 @@ the Ingress proxy (172.30.32.2) and uses relative links, so it works under any I
                  import; refreshes itself while something is running
   POST /upload   history files (multipart form, field `files`): stored in import/ and
                  imported on the spot by waking the main loop
+  POST /live_meter  the live meter picked from the list (field `entity`, empty: none); the
+                 main loop writes it into the add-on configuration
+  POST /remove, /resume  remove everything from Home Assistant, or reactivate
 """
 
 from __future__ import annotations
@@ -16,7 +19,9 @@ import html
 import json
 import logging
 import os
+import re
 import threading
+from urllib.parse import parse_qs
 from datetime import datetime
 from email.parser import BytesParser
 from email.policy import default as email_policy
@@ -118,6 +123,10 @@ button.danger, button.secondary { display: inline-block; width: auto; background
                                   padding: 10px 18px; }
 button.danger { color: var(--err); border: 1px solid var(--err); }
 button.secondary { color: var(--primary); border: 1px solid var(--primary); }
+.pick { display: flex; gap: 10px; flex-wrap: wrap; }
+.pick select { flex: 1 1 260px; min-width: 0; font: inherit; color: var(--text); background: var(--card);
+               border: 1px solid var(--divider); border-radius: 8px; padding: 10px; }
+.pick button { flex: 0 0 auto; width: auto; }
 .check { display: flex; gap: 10px; align-items: flex-start; margin-top: 4px; }
 .check input { margin-top: 5px; }
 .setup p { margin: 12px 0 0; }
@@ -191,7 +200,8 @@ def render_page(status: dict, message=None) -> str:
     pill_text = t(lang, f'phase.{phase}') if f'phase.{phase}' in TEXTS['en'] else phase
     detail = status.get('detail', '')
     detail = t(lang, detail) if detail in TEXTS['en'] else detail
-    busy = phase not in ('idle', 'setup', 'removed') or status.get('import_pending') or status.get('removal_request')
+    busy = (phase not in ('idle', 'setup', 'removed') or status.get('import_pending') or status.get('removal_request')
+            or status.get('live_meter_request'))
     refresh = '<meta http-equiv="refresh" content="5">' if busy else ''
 
     setup = status.get('setup') or []
@@ -259,6 +269,30 @@ def render_page(status: dict, message=None) -> str:
                        f'<label class="check"><input type="checkbox" name="confirm" value="yes" required> '
                        f'{html.escape(t(lang, "page.remove_check"))}</label>'
                        f'<button type="submit" class="danger">{t(lang, "page.remove_button")}</button></form></div>')
+    live_meter_html = ''
+    if 'live_candidates' in status:
+        current = status.get('live_meter') or ''
+        candidates = status.get('live_candidates') or []
+        choices = [('', t(lang, 'page.live_meter_none'))] + [
+            (c['entity_id'], f'{c["name"]} · {c["entity_id"]} · {c["state"]} {c["unit"]}') for c in candidates]
+        if current and current not in {c['entity_id'] for c in candidates}:
+            choices.append((current, current))   # entered in the Configuration tab, not (or no longer) a match
+        select = ''.join(f'<option value="{html.escape(v)}"{" selected" if v == current else ""}>{html.escape(label)}</option>'
+                         for v, label in choices)
+        result = status.get('live_meter_result') or {}
+        result_text = {'saved': lambda: t(lang, 'page.live_meter_saved', entity=result.get('entity') or t(lang, 'page.live_meter_none')),
+                       'failed': lambda: t(lang, 'page.live_meter_failed', error=result.get('error', '')),
+                       'unknown': lambda: t(lang, 'page.live_meter_unknown', entity=result.get('entity', ''))}.get(result.get('state'))
+        result_html = (f'<p><span class="pill {"ok" if result.get("state") == "saved" else "warn"}">'
+                       f'{"ok" if result.get("state") == "saved" else "!"}</span> {html.escape(result_text())}</p>'
+                       if result_text else '')
+        empty = f'<p class="muted">{html.escape(t(lang, "page.live_meter_no_candidates"))}</p>' if not candidates else ''
+        live_meter_html = (f'<div class="card"><h2>{t(lang, "page.live_meter")}</h2>'
+                           f'<p>{html.escape(t(lang, "page.live_meter_lead"))}</p>{empty}{result_html}'
+                           f'<form method="post" action="live_meter" class="pick">'
+                           f'<select name="entity" aria-label="{html.escape(t(lang, "page.live_meter"))}">{select}</select>'
+                           f'<button type="submit">{t(lang, "page.live_meter_save")}</button></form></div>')
+
     energy = status.get('energy')
     energy_html = ''
     if 'energy' in status:
@@ -311,6 +345,7 @@ def render_page(status: dict, message=None) -> str:
 <div class="card"><h2>{t(lang, 'page.statistics')}</h2><table>{_rows([
         (t(lang, 'page.stat_consumption'), stat_row('consumption')),
     ])}</table></div>
+{live_meter_html}
 {energy_html}
 <div class="card"><h2>{t(lang, 'page.import_title')}</h2>
 <p>{t(lang, 'page.import_lead')}</p>
@@ -404,6 +439,17 @@ class Handler(BaseHTTPRequestHandler):
             self.wake.set()
             logger.info('Requested on the add-on page: %s', path.strip('/'))
             self._send(200, render_page(read_status(self.store), (f'page.{path.strip("/")}_requested', {})))
+            return
+        if path == '/live_meter':
+            length = int(self.headers.get('Content-Length') or 0)
+            fields = parse_qs(self.rfile.read(min(length, 4096)).decode(errors='replace'))
+            entity = (fields.get('entity') or [''])[0].strip()
+            if entity and not re.fullmatch(r'sensor\.[a-z0-9_]+', entity):
+                self._send(400, render_page(read_status(self.store), ('page.live_meter_unknown', {'entity': entity})))
+                return
+            write_status(self.store, live_meter_request={'entity': entity}, live_meter_result=None)
+            self.wake.set()
+            self._send(200, render_page(read_status(self.store), ('page.live_meter_requested', {})))
             return
         if path != '/upload':
             self.send_error(404)
