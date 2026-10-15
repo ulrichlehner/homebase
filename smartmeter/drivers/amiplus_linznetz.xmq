@@ -1,10 +1,11 @@
 // LINZ NETZ smart meter (Develco, manufacturer DEV, version 0x01, type 0x02).
 //
 // Why this driver exists: LN-666 specifies the energy counters (1.8.0 import, 2.8.0 export)
-// in Wh, i.e. DIF/VIF 0E 03 and 0E 83 3C. The meter sometimes sends other records instead,
-// for minutes at a time:
-//   - VIF 0x07 (10^4 Wh) with digits that are not in that unit: seen as plain Wh and as
-//     tenths of Wh, so neither the VIF nor a fixed factor gives the right value,
+// in Wh, i.e. DIF/VIF 0E 03 and 0E 83 3C. Several times a day, for about half an hour, the
+// meter sends other records instead:
+//   - VIF 0x04, 0x05, 0x07 (10, 100, 10^4 Wh): sometimes the digits are in that unit,
+//     sometimes they are the Wh counter with a wrong VIF. One telegram does not tell which,
+//     and a driver has no previous value to compare with,
 //   - VIF 0x00 with all digits zero.
 // The builtin amiplus accepts any energy VIF, so Home Assistant sees jumps and resets.
 //

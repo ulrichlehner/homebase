@@ -50,7 +50,7 @@ live power plus import/export counters, usable in the Energy dashboard. Scraping
     portal. Take it from the add-on log, from the telegram of the matching electricity meter.
   - Old readings from the CSV files may have to be merged into HA's history. Counters must line up
     with the live meter, or `total_increasing` breaks in the Energy dashboard.
-- **Wrong or zero energy values, sometimes** (found 2026-10-06, understood 2026-10-12): see
+- **Wrong or zero energy values, sometimes** (found 2026-10-06, analysed 2026-10-15): see
   [Wrong energy values](#wrong-energy-values-and-the-custom-driver). Fix: custom driver
   `drivers/amiplus_linznetz.xmq` that only accepts the energy records from LN-666, verified
   against all captured telegrams.
@@ -86,25 +86,33 @@ Quirks learned along the way:
 ## Wrong energy values and the custom driver
 
 LN-666 specifies the energy counters in Wh: DIF/VIF `0E 03` for import, `0E 83 3C` for export.
-The real meter sends other records too, for minutes at a time:
+The real meter sends other energy records too, several times a day for about half an hour each.
+In a log of 28 hours (2026-10-14/15, about 20,000 telegrams, one every 5 s) there were 10 such
+phases of 26 to 39 minutes:
 
-| Record | Import | Export | Digits | What the builtin `amiplus` reports |
-|---|---|---|---|---|
-| spec | `0E 03` | `0E 83 3C` | Wh | correct |
-| VIF 7 | `0E 07` (10⁴ Wh) | `0E 87 3C` | **not** in 10⁴ Wh: seen as Wh (2026-10-06) and as tenths of Wh (2026-10-12) | ×10 000 or ×100 000 too high |
-| all zero | `0E 00` | `0E 80 3C` | `000000000000` | 0 kWh |
+| Record | Import | Export | Unit the VIF says | Phases | Digits |
+|---|---|---|---|---|---|
+| spec | `0E 03` | `0E 83 3C` | Wh | | the counter in Wh |
+| VIF 4, 5, 7 | `0E 04`, `0E 05`, `0E 07` | `0E 84 3C`, `0E 85 3C`, `0E 87 3C` | 10, 100, 10⁴ Wh | 4 | the counter in **Wh**, the VIF is wrong |
+| all zero | `0E 00` | `0E 80 3C` | 10⁻³ Wh | 6 | `000000000000` |
 
-- The VIF 7 phases lasted about 26 to 30 minutes each. Within a phase the digits keep counting,
-  but their unit is not the one the VIF says, and it differs between phases. Neither the VIF nor
-  a fixed factor gives the right value, so these records cannot be repaired, only ignored.
-- Three more phases have no logged telegrams, so their record is unknown: on 2026-10-06 the
-  builtin driver showed values 10× too high, and on 2026-10-09 and 2026-10-11 the earlier version
-  of this driver showed roughly 1/10 000 and 1/10 of the real counter. Presumably the same
-  pattern with yet other digit units; the strict match drops them as long as the VIF is not 3.
-- All zero: seen for single telegrams and for minutes, with normal device clock, access number and
-  power values.
-- Power values (`0B 2B`, `0B AB 3C`) were never affected. In 1721 logged telegrams all 1290
-  `0E 03` records were monotonic and plausible.
+- In the VIF 4, 5 and 7 phases of that log the digits were the Wh counter: at every switch
+  between the spec record and these ones the value continues without a step (0 or 1 Wh, 5 to
+  16 s apart), and within the phases it keeps counting with the consumption.
+- Earlier phases behaved differently. On 2026-10-09 an earlier version of this driver, which read
+  the digits as Wh whatever the VIF said, showed a few Wh where the counter stood near 90 kWh:
+  that matches a VIF 7 record whose digits really were in 10⁴ Wh. On 2026-10-11 it showed about
+  a tenth of the counter, which matches VIF 4 with digits really in 10 Wh. So the meter sends the
+  same records sometimes with the right digits for their VIF and sometimes with Wh digits and a
+  wrong VIF. (A reading of one phase as "tenths of Wh" noted on 2026-10-12 is not confirmed.)
+- One telegram alone does not tell which of the two it is: `000000000008` can be 8 Wh with a
+  wrong VIF or 8 × 10⁴ Wh with a right one. Telling them apart needs the previous counter value,
+  and a wmbusmeters driver sees one telegram at a time. So no driver rule reads these records
+  correctly every time; they can only be ignored.
+- All zero: no counter at all, with normal device clock, access number and power values.
+- Power values (`0B 2B`, `0B AB 3C`) were never affected; they keep coming every 5 s during all
+  phases. The [LINZ NETZ Energy add-on](../linznetz_energy) uses them to split the consumption of
+  such a gap between the hours (to about 1 Wh against the portal).
 
 In Home Assistant a `total_increasing` sensor counts a drop as a meter reset and the return as
 consumption of the whole counter, so every phase books tens or hundreds of kWh that never flowed.
@@ -124,9 +132,10 @@ consumption of the whole counter, so every phase books tens or hundreds of kWh t
   The driver is therefore never auto-detected, you select it explicitly.
 
 Earlier versions read the digits as Wh whatever the VIF said (`vif_scaling = None`,
-`force_scale = 1/1000`, `null_value = 0`). That fixed the 2026-10-06 phases but turned the later
-ones into drops to 1/10 and 1/10 000. Avoid `override_vif_unit` in any case: it only exists in
-wmbusmeters since 2026-09-25, and an older add-on image silently ignores it.
+`force_scale = 1/1000`, `null_value = 0`). That is right for phases with a wrong VIF and wrong for
+phases whose digits match their VIF (the drops to about 1/10 000 and 1/10 on 2026-10-09 and
+2026-10-11), see above. Avoid `override_vif_unit` in any case: it only exists in wmbusmeters
+since 2026-09-25, and an older add-on image silently ignores it.
 
 Tests:
 
