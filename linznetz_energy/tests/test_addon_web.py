@@ -217,3 +217,12 @@ def test_plain_text_password_card_has_the_steps():
     assert 'The app works either way.' in page
     assert 'Portal password in plain text' not in W.render_page({'language': 'en', 'password_secret': True})
     assert 'Portal password in plain text' not in W.render_page({'language': 'en'})
+
+
+def test_status_shows_the_portal_schedule():
+    page = W.render_page({'language': 'en', 'portal': {'ok': '2026-10-14T09:07:00+00:00', 'next': '2026-10-14T10:07:00+00:00',
+                                                       'next_waits': True, 'usual': '11:07', 'arrivals': 5}})
+    assert 'Next portal fetch' in page and 'yesterday is still missing on the portal' in page
+    assert 'usually around 11:07 (last 5 days)' in page
+    done = W.render_page({'language': 'de', 'portal': {'next': '2026-10-15T04:07:00+00:00', 'next_waits': False}})
+    assert 'der gestrige Tag ist vollständig' in done and 'Neue Tage kommen' not in done

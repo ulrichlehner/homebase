@@ -10,6 +10,3 @@ configuration:
   site:
     name: Standort
     description: Name des Orts, wird so angezeigt wie eingegeben (z. B. „Home“ oder „Zweitwohnsitz Linz“). Die Statistik-IDs verwenden eine vereinfachte Form (linznetz_energy:zweitwohnsitz_linz_grid_consumption).
-  fetch_interval_hours:
-    name: Abrufintervall Portal (Stunden)
-    description: Wie oft neue Werte vom Portal geholt werden. Das Portal zeigt einen Tag erst ein bis zwei Tage später, 12 Stunden reichen.

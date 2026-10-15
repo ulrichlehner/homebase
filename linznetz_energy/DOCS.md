@@ -33,7 +33,6 @@ notifications follow the language of Home Assistant (German and English; the log
 | `portal_password`      | portal password                                                            |
 | `metering_point`       | the metering point number (Zählpunktnummer, not the meter number), 33 characters starting with `AT`; spaces, dots and lowercase letters are fine |
 | `site`                 | name of the place, shown as you write it (default `Home`); the statistic IDs use a simplified form (`Zweitwohnsitz Linz` → `zweitwohnsitz_linz`) |
-| `fetch_interval_hours` | hours between two portal fetches (default 12, 6 to 48)                     |
 
 ### The portal password as a secret
 
@@ -63,17 +62,21 @@ for Home Assistant backups).
 While the password is stored as plain text, the add-on page shows these steps and Home
 Assistant gets one notification with them; the add-on works either way.
 
-The portal shows a day only one to two days later, so fetching more often brings nothing new;
-the statistic is still rebuilt every hour from the files the add-on already has.
+There is no fetch interval to set: the add-on knows when the portal can have something new
+(see below).
 
 ## What it does
 
 Every hour, a few minutes past the full hour, the add-on
 
 1. takes over history files you dropped into its `import/` folder (see below),
-2. fetches new readings from the portal when `fetch_interval_hours` have passed since the last
-   successful fetch (the first run downloads everything the portal still has, about three years;
-   **Fetch now** on the add-on page fetches right away),
+2. fetches new readings from the portal when it can have something new: LINZ NETZ publishes a
+   day one to two days later, at a time of its own. So while yesterday is not complete on the
+   portal yet, the add-on looks every hour between 06:00 and 22:00; once it has arrived, it waits
+   for the next day. That is one or a few logins a day. The add-on page shows the next fetch and
+   when new days usually arrive. The first run downloads everything the portal still has (about
+   three years) right away, **Fetch now** on the add-on page fetches at any time, and after a
+   rejected login it waits 6 hours,
 3. imports one external statistic, `linznetz_energy:<site>_grid_consumption`, shown as
    "<Site> grid consumption" (in German "<Site> Netzbezug"): the best source per hour (the live meter
    readings, then the portal readings, then the imported reconstructed history). It is rebuilt

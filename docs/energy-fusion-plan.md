@@ -284,6 +284,11 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-15: no fetch interval option any more (`fetch_interval_hours` removed): the add-on looks
+  for yesterday on the portal every hour between 06:00 and 22:00 until it is complete, then waits
+  for the next day; after a rejected login 6 hours. It notes when new days arrive and shows the
+  usual time on the page (median of the last 14), so the publishing time of LINZ NETZ becomes
+  visible.
 - 2026-10-15: the live meter is chosen only on the add-on page and kept in the add-on's state; the
   option `live_meter_entity` is gone from the Configuration tab (no migration: pick it again).
   "Fetch now" button for the portal. Page typography: inline code for entity IDs, numbered steps
