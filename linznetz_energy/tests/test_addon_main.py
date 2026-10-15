@@ -46,10 +46,15 @@ class FakeHass:
             return self.energy_prefs
         if type_ == 'get_states':
             return self.states_list
+        if type_ == 'config/entity_registry/get':
+            return self.registry.get(payload['entity_id'], {})
+        if type_ == 'config/entity_registry/list':
+            return [{'entity_id': e, **v} for e, v in self.registry.items()]
         assert type_ == 'get_config'
         return {'language': self.language, 'time_zone': 'Europe/Vienna'}
 
     language = 'en'
+    registry: dict = {}   # entity ID -> {'device_id': ...}; empty: no device, so no power sensor
     states_list = [
         {'entity_id': 'sensor.place_grid_total_energy_consumption', 'state': '12345.678',
          'attributes': {'unit_of_measurement': 'kWh', 'state_class': 'total_increasing', 'device_class': 'energy',
@@ -658,3 +663,44 @@ def test_the_log_shows_only_the_end_of_the_metering_point(caplog):
     log.warning('Uploaded %s, importing', 'AT0099000000000000000000000001234_readings.csv')
     log.removeHandler(handler)
     assert stream.getvalue() == 'Uploaded …1234_readings.csv, importing\n'
+
+
+
+def test_the_power_sensor_of_the_meter_device_is_found():
+    hass = FakeHass()
+    hass.registry = {e: {'device_id': 'meter'} for e in (
+        'sensor.place_grid_total_energy_consumption', 'sensor.place_grid_current_power_consumption',
+        'sensor.place_grid_current_power_production')}
+    hass.registry['sensor.kitchen_power'] = {'device_id': 'plug'}
+    power = {'unit_of_measurement': 'kW', 'device_class': 'power', 'state_class': 'measurement'}
+    hass.states_list = hass.states_list + [
+        {'entity_id': 'sensor.place_grid_current_power_consumption', 'state': '0.4', 'attributes': power},
+        {'entity_id': 'sensor.place_grid_current_power_production', 'state': '0', 'attributes': power},
+        {'entity_id': 'sensor.kitchen_power', 'state': '50', 'attributes': {**power, 'unit_of_measurement': 'W'}}]
+    assert addon.power_entity(hass, 'sensor.place_grid_total_energy_consumption') == \
+        ('sensor.place_grid_current_power_consumption', 1000.0)
+    assert addon.power_entity(hass, 'sensor.unknown') is None                      # not in the registry
+
+
+def test_live_hours_across_a_gap_are_split_by_the_power(tmp_path):
+    start = datetime(2026, 10, 1, 5, 0, tzinfo=UTC)
+    counter = [(start + timedelta(minutes=m), 12_000_000 + (300 * m // 60 if m <= 60 else 300 + 1500 * (m - 60) // 60))
+               for m in range(0, 121)]                                          # 300 W, then 1500 W from 06:00
+    gap = [(t, v) for t, v in counter if not (start + timedelta(minutes=40) < t < start + timedelta(minutes=80))]
+    states = [(t, f'{v / 1000:.3f}') for t, v in gap]
+    power = [(start + timedelta(minutes=m), f'{0.3 if m < 60 else 1.5}') for m in range(0, 121)]
+
+    class Hass(FakeHassWithHistory):
+        def history(self, entity_id, since, end=None):
+            return [(t, s) for t, s in (power if 'power' in entity_id else self.states) if t >= since]
+    hass = Hass(states)
+    hass.registry = {'sensor.place_grid_total_energy_consumption': {'device_id': 'm'},
+                     'sensor.place_grid_current_power_consumption': {'device_id': 'm'}}
+    hass.states_list = hass.states_list + [{'entity_id': 'sensor.place_grid_current_power_consumption', 'state': '1.5',
+                                            'attributes': {'unit_of_measurement': 'kW', 'device_class': 'power'}}]
+    o = options(live_meter_entity='sensor.place_grid_total_energy_consumption')
+    summary = addon.update_live(hass, o, tmp_path, start + timedelta(hours=2))
+    hourly = addon.livearchive.read_hourly(tmp_path, METER)
+    assert hourly == {start: 300, start + timedelta(hours=1): 1500}               # an even split would give 700 / 1100
+    assert summary['estimated'] == 0 and addon.livearchive.read_estimated(tmp_path, METER) == set()
+    assert addon.web.read_status(tmp_path)['live_power'] == 'sensor.place_grid_current_power_consumption'

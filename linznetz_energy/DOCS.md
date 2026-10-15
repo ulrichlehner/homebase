@@ -117,11 +117,14 @@ the old ones; the hours before stay covered by the portal. With a live meter, th
 - makes them the **primary source** of the consumption statistic: the hours since the last portal
   day come from the live meter right away, and where it has no value (a gap, a misread phase) the
   portal fills in a day or two later,
-- treats an hour as an **estimate** when its start or end falls into a reception gap of the live
-  meter (the meter sends no usable counter for about half an hour now and then; the counter
-  around the gap is exact, only the split between the two hours is assumed). The portal value
-  replaces such hours as soon as the portal has them; until then the page shows them as
-  "estimated hours", an info, not a deviation,
+- splits the counter across reception gaps by the meter's **power**: the meter sends no usable
+  counter for about half an hour now and then, while its power readings keep coming. The add-on
+  finds the power sensor of the same device by itself (for the wM-Bus meter
+  `…_current_power_consumption`) and keeps minute means of it for 14 days. On real data that
+  splits the hours around a gap to within 1 Wh of the portal (an even split was off by up to
+  100 Wh). Without a power sensor such hours are split evenly and count as **estimates**: the
+  portal value replaces them as soon as the portal has them, and until then the page shows them
+  as "estimated hours", an info, not a deviation,
 - compares the live meter with the portal for every day both have complete, and sends a notification
   when a day differs by more than 2 % (the live value is kept),
 - archives the readings in its own folder: the raw readings of the last 90 days and the cleaned

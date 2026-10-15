@@ -6,6 +6,8 @@ readings are archived next to the portal readings:
 
   <meterId>_live_raw.csv      the raw counter readings (UTC time; Wh) as Home Assistant recorded
                             them, for the last `RAW_DAYS` days: enough to re-clean a misread phase
+  <meterId>_live_power.csv    the meter's power as minute means (UTC minute; W), for the last
+                            `CLEAN_DAYS`: it splits the counter inside reception gaps
   <meterId>_live_hourly.csv   the cleaned hourly live values (UTC hour; Wh; 1 if the hour is an
                             estimate across a reception gap, see fusion.counter_hourly_estimated),
                             kept for good: about 9000 rows a year
@@ -30,10 +32,48 @@ RAW_DAYS = 90
 CLEAN_DAYS = 14   # re-cleaned every hour: long enough for the longest segment to be the real counter
 RAW_HEADER = ['time_utc', 'wh']
 HOURLY_HEADER = ['start_utc', 'wh', 'estimated']
+POWER_HEADER = ['minute_utc', 'w']
 
 
 def raw_path(folder: Path, meter_id: str) -> Path:
     return folder / f'{meter_id}_live_raw.csv'
+
+
+def power_path(folder: Path, meter_id: str) -> Path:
+    return folder / f'{meter_id}_live_power.csv'
+
+
+def read_power(folder: Path, meter_id: str) -> dict:
+    """{UTC minute: mean W} of the archived power."""
+    path = power_path(folder, meter_id)
+    out = {}
+    if not path.exists():
+        return out
+    with path.open(newline='') as fh:
+        for row in csv.DictReader(fh, delimiter=';'):
+            try:
+                out[datetime.fromisoformat(row['minute_utc'].replace('Z', '+00:00')).astimezone(UTC)] = float(row['w'])
+            except (KeyError, ValueError):
+                continue
+    return out
+
+
+def update_power(folder: Path, meter_id: str, minutes: dict, now: datetime, clean_days: int = CLEAN_DAYS) -> dict:
+    """Merges new minute means ({UTC minute: W}, newer ones win) into the power archive, keeps the
+    last `clean_days` and returns the archive."""
+    power = read_power(folder, meter_id)
+    power.update(minutes)
+    cutoff = now - timedelta(days=clean_days)
+    power = {m: w for m, w in power.items() if m >= cutoff}
+    path = power_path(folder, meter_id)
+    tmp = path.with_suffix('.csv.tmp')
+    with tmp.open('w', newline='') as fh:
+        writer = csv.writer(fh, delimiter=';', lineterminator='\n')
+        writer.writerow(POWER_HEADER)
+        for m in sorted(power):
+            writer.writerow([m.strftime('%Y-%m-%dT%H:%M:%SZ'), f'{power[m]:.1f}'])
+    tmp.replace(path)
+    return power
 
 
 def hourly_path(folder: Path, meter_id: str) -> Path:
@@ -112,7 +152,7 @@ def parse_states(states: list) -> dict:
 def clear(folder: Path, meter_id: str) -> None:
     """Deletes the archive, e.g. when another counter becomes the live source: its readings
     would not continue the old ones."""
-    for path in (raw_path(folder, meter_id), hourly_path(folder, meter_id)):
+    for path in (raw_path(folder, meter_id), hourly_path(folder, meter_id), power_path(folder, meter_id)):
         path.unlink(missing_ok=True)
 
 
@@ -123,7 +163,7 @@ def last_raw_time(folder: Path, meter_id: str) -> Optional[datetime]:
 
 def update(folder: Path, meter_id: str, new_readings: dict, now: datetime,
            max_kw: float = fusion.DEFAULT_MAX_KW, max_gap: timedelta = fusion.DEFAULT_MAX_GAP,
-           clean_days: int = CLEAN_DAYS) -> dict:
+           clean_days: int = CLEAN_DAYS, power: Optional[dict] = None) -> dict:
     """Merges `new_readings` ({UTC time: Wh}) into the raw archive, prunes it to `RAW_DAYS`,
     re-cleans the last `clean_days` and replaces the hourly values inside them. Returns a summary
     for the log and the status: raw readings, rejected readings, dropped segments, hourly
@@ -144,7 +184,7 @@ def update(folder: Path, meter_id: str, new_readings: dict, now: datetime,
     clean_from = now - timedelta(days=clean_days)
     window = sorted((t, v) for t, v in raw.items() if t >= clean_from)
     cleaning = fusion.clean_counter(window, max_kw)
-    fresh, fresh_estimated = fusion.counter_hourly_estimated(cleaning.accepted, max_gap, max_kw)
+    fresh, fresh_estimated = fusion.counter_hourly_estimated(cleaning.accepted, max_gap, max_kw, power)
     hourly = read_hourly(folder, meter_id)
     estimated = read_estimated(folder, meter_id)
     if window:
@@ -157,4 +197,5 @@ def update(folder: Path, meter_id: str, new_readings: dict, now: datetime,
     estimated |= fresh_estimated
     _write(hourly_path(folder, meter_id), HOURLY_HEADER, hourly, estimated)
     return {'raw': len(raw), 'rejected': cleaning.rejected, 'dropped_segments': len(cleaning.dropped_segments),
+            'estimated': len(fresh_estimated),
             'hours': len(hourly), 'last_hour': max(hourly).isoformat() if hourly else None}

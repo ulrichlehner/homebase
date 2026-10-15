@@ -284,6 +284,11 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-15: the counter inside a reception gap is split by the meter's power (the sensor of the
+  same device, found via the entity registry; minute means kept 14 days in `…_live_power.csv`).
+  Real data, 14 hours at a gap with portal values: even split off by 29.9 Wh on average (max 101),
+  power split by 0.5 Wh (max 1). Such hours are no longer estimates; the even split and the
+  portal replacement remain the fallback without power readings.
 - 2026-10-15: live hours whose start or end falls into a reception gap (the meter's ~30 minute
   phases of non-spec energy records, which the driver drops) are marked as estimates in the live
   archive; the complete portal value replaces them once it is there, until then the page shows
