@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.4.0](https://github.com/ulrichlehner/homebase/compare/v1.3.1...v1.4.0) (2026-10-15)
+
+
+### Features
+
+* the add-on page lists gaps in the statistic ([#39](https://github.com/ulrichlehner/homebase/issues/39)) ([d91f2fe](https://github.com/ulrichlehner/homebase/commit/d91f2fe007333e92ae17931ff388af5b77acfc49))
+
+
+### Bug Fixes
+
+* add-on description ends with a period ([#42](https://github.com/ulrichlehner/homebase/issues/42)) ([83f96b2](https://github.com/ulrichlehner/homebase/commit/83f96b2899755e901c7cc9421f168bfee279b9d5))
+* an upload during a run no longer crashes the add-on ([#41](https://github.com/ulrichlehner/homebase/issues/41)) ([e7eaba2](https://github.com/ulrichlehner/homebase/commit/e7eaba20b05e19d1cc3435503914ed3a47b6a6e8))
+
 ## [1.3.1](https://github.com/ulrichlehner/homebase/compare/v1.3.0...v1.3.1) (2026-10-15)
 
 
