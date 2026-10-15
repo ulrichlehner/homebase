@@ -92,7 +92,7 @@ def test_load_options(tmp_path):
                                 'site': 'Place_1'}))
     o, problems = addon.load_options(path)
     assert problems == []
-    assert o.metering_point == METER and o.site == 'Place_1' and o.site_id == 'place_1' and o.fetch_interval_hours == 12
+    assert o.metering_point == METER and o.site == 'Place_1' and o.site_id == 'place_1'
     assert o.portal_statistic == 'linznetz_energy:place_1_grid_consumption_portal'
     assert o.consumption_statistic == 'linznetz_energy:place_1_grid_consumption'
 
@@ -145,13 +145,34 @@ def test_setup_notification_lists_the_problems_and_goes_away(tmp_path, monkeypat
     assert hass.services[-1] == ('persistent_notification', 'dismiss', {'notification_id': addon.SETUP_NOTIFICATION})
 
 
-def test_portal_due():
-    assert addon.portal_due({}, NOW, 12)
-    assert not addon.portal_due({'portal_ok': (NOW - timedelta(hours=11)).isoformat()}, NOW, 12)
-    assert addon.portal_due({'portal_ok': (NOW - timedelta(hours=12)).isoformat()}, NOW, 12)
-    # a rejected login waits the full interval too
-    assert not addon.portal_due({'portal_ok': (NOW - timedelta(days=3)).isoformat(),
-                                 'portal_login_failed': (NOW - timedelta(hours=1)).isoformat()}, NOW, 12)
+def test_portal_due_looks_for_yesterday_during_the_day():
+    day = lambda d, h, m=0: datetime(2026, 10, d, h, m, tzinfo=ZONE)
+    complete = day(13, 23, 45)                      # yesterday's last quarter hour, seen on the 14th
+    missing = day(13, 0, 45)
+    assert addon.portal_due({}, day(14, 3), ZONE, None)                    # first download: right away
+    assert addon.portal_due({}, day(14, 9), ZONE, missing)                  # yesterday missing, daytime
+    assert not addon.portal_due({}, day(14, 23), ZONE, missing)             # ... but not at night
+    assert not addon.portal_due({}, day(14, 9), ZONE, complete)             # yesterday complete: wait
+    assert addon.portal_due({}, day(15, 6), ZONE, complete)                 # the next morning it is missing again
+    tried = {'portal_tried': day(14, 9).isoformat()}
+    assert not addon.portal_due(tried, day(14, 9, 30), ZONE, missing)      # a woken run does not fetch again
+    assert addon.portal_due(tried, day(14, 10), ZONE, missing)
+    failed = {'portal_login_failed': day(14, 9).isoformat()}
+    assert not addon.portal_due(failed, day(14, 14), ZONE, missing)         # rejected login: 6 hours
+    assert addon.portal_due(failed, day(14, 15), ZONE, missing)
+
+
+def test_portal_next_and_arrivals():
+    day = lambda d, h, m=0: datetime(2026, 10, d, h, m, tzinfo=ZONE)
+    complete = day(13, 23, 45)
+    assert addon.portal_next({}, day(14, 9, 30), ZONE, complete) == day(15, 6, 7)
+    assert addon.portal_next({}, day(14, 9, 30), ZONE, day(13, 0)) == day(14, 10, 7)
+    state = {}
+    addon.note_arrival(state, day(12, 23, 45), complete, day(14, 11, 7), ZONE)   # yesterday arrived
+    addon.note_arrival(state, complete, complete, day(14, 12, 7), ZONE)           # nothing new
+    assert state['portal_arrivals'] == ['2026-10-14T11:07+02:00']
+    assert addon.usual_arrival(['2026-10-12T10:07+02:00', '2026-10-13T11:07+02:00', '2026-10-14T13:07+02:00']) == '11:07'
+    assert addon.usual_arrival([]) is None
 
 
 def test_next_run():
@@ -178,9 +199,10 @@ def test_run_once_imports_the_consumption_statistic_in_chunks(tmp_path, monkeypa
     assert last['sum'] == pytest.approx(4.8) and last['start'].minute == 0
     assert ('persistent_notification', 'dismiss', {'notification_id': addon.LOGIN_NOTIFICATION}) in hass.services
     assert 'portal_ok' in addon.read_state(tmp_path)
-    # the next hour: no portal fetch, the statistic is imported again
+    assert len(fetched) == 1                               # a minute later: not again
+    # the next hour: yesterday is still missing (the test readings end on 1.10.), so it looks again
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW + timedelta(hours=1))
-    assert len(fetched) == 1 and len(hass.imports) == 9    # three runs, 3 import calls each
+    assert len(fetched) == 2 and len(hass.imports) == 9    # three runs, 3 import calls each
 
 
 def test_rejected_login_notifies_and_keeps_going(tmp_path, monkeypatch, caplog):
@@ -206,7 +228,7 @@ def test_other_portal_errors_retry_next_hour(tmp_path, monkeypatch):
     write_readings(tmp_path, hours=0)   # not the first download
     addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW)
     assert hass.services == [] and hass.imports == []
-    assert addon.portal_due(addon.read_state(tmp_path), NOW + timedelta(hours=1), 12)
+    assert addon.portal_due(addon.read_state(tmp_path), NOW + timedelta(hours=1), ZONE, NOW - timedelta(days=2))
 
 
 # -- History import (step 5) --------------------------------------------------------
@@ -528,12 +550,12 @@ def test_live_meter_choice_must_be_a_candidate(tmp_path):
     assert addon.web.read_status(tmp_path)['live_meter_result']['state'] == 'unknown'
 
 
-def test_the_fetch_button_fetches_before_the_interval_is_over(tmp_path, monkeypatch):
+def test_the_fetch_button_fetches_even_when_not_due(tmp_path, monkeypatch):
     fetched = []
     monkeypatch.setattr(addon, 'fetch_portal', lambda *a: fetched.append(a))
     monkeypatch.setattr(addon.mqtt_status, 'broker', lambda: None)
     write_readings(tmp_path, hours=2)
-    addon.write_state(tmp_path, {'portal_ok': NOW.isoformat()})                       # fetched just now
+    addon.write_state(tmp_path, {'portal_ok': NOW.isoformat(), 'portal_tried': NOW.isoformat()})   # just now
     addon.run_once(FakeHass(), options(), tmp_path, 'Europe/Vienna', NOW)
     assert fetched == []
     addon.run_once(FakeHass(), options(), tmp_path, 'Europe/Vienna', NOW, fetch_now=True)

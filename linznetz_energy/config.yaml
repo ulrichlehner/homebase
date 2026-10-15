@@ -36,10 +36,8 @@ options:
   portal_password: ""
   metering_point: ""
   site: Home
-  fetch_interval_hours: 12
 schema:
   portal_username: str?
   portal_password: password?
   metering_point: str?
   site: str?
-  fetch_interval_hours: int(6,48)

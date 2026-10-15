@@ -7,8 +7,9 @@ Every hour, a few minutes past the full hour:
      `<meterId>_readings.csv`, which keeps months the portal no longer has, and
      `<meterId>_reconstructed_15min.csv` from `./homebase disaggregate`), then move them to
      `import/done/` (or `import/failed/`),
-  2. fetch new readings from the LINZ NETZ portal, at most every `fetch_interval_hours`
-     hours (the portal shows a day one to two days later), into the CSV files in the add-on
+  2. fetch new readings from the LINZ NETZ portal while yesterday is not complete there yet
+     (see `portal_due`: the portal publishes a day one to two days later, so once a day has
+     arrived nothing is fetched until the next morning), into the CSV files in the add-on
      config folder (part of every HA backup),
   3. rebuild the hourly statistics from the CSV files and import them completely (HA
      overwrites hours that already exist):
@@ -61,6 +62,8 @@ SUPERVISOR_WS = 'http://supervisor/core/websocket'
 SUPERVISOR_SELF = 'http://supervisor/addons/self'
 ENERGY_UNITS = ('Wh', 'kWh', 'MWh')
 RUN_MINUTE = 7                   # minutes past the hour: the recorder has compiled the hour
+PORTAL_HOURS = (6, 22)           # local hours in which a missing day is looked for on the portal
+LOGIN_RETRY = timedelta(hours=6) # after a rejected login
 IMPORT_CHUNK = 5000              # rows per import call, keeps websocket messages small
 LOGIN_NOTIFICATION = 'linznetz_energy_login'
 IMPORT_NOTIFICATION = 'linznetz_energy_import'
@@ -84,7 +87,6 @@ class Options:
     portal_password: str
     metering_point: str          # the 33-character Zählpunktnummer (not the meter number)
     site: str                    # the name of the place as entered, e.g. "Zweitwohnsitz Linz"
-    fetch_interval_hours: int = 12
     live_meter_entity: str = ''  # the live energy counter of the meter in HA (kWh total), chosen on the add-on page; empty: portal only
 
     @property
@@ -152,7 +154,7 @@ def load_options(path: Path) -> tuple:
         problems.append(('problem.site', {}))
     if problems:
         return None, problems
-    return Options(username, password, metering_point, site, int(raw.get('fetch_interval_hours') or 12)), []
+    return Options(username, password, metering_point, site), []
 
 
 # -- State ----------------------------------------------------------------------
@@ -172,11 +174,68 @@ def write_state(store: Path, state: dict) -> None:
     tmp.replace(path)
 
 
-def portal_due(state: dict, now: datetime, hours: int) -> bool:
-    """Due after `hours` hours since the last successful fetch; after a rejected login
-    only again after `hours` hours, so wrong credentials do not hammer the portal."""
-    last = max(filter(None, [state.get('portal_ok'), state.get('portal_login_failed')]), default=None)
-    return last is None or now - datetime.fromisoformat(last) >= timedelta(hours=hours)
+def portal_complete_until(newest: Optional[datetime], zone: ZoneInfo, now: datetime) -> bool:
+    """Has the portal delivered yesterday completely (its last quarter hour, 23:45 local)?"""
+    if newest is None:
+        return False
+    today = now.astimezone(zone).replace(hour=0, minute=0, second=0, microsecond=0)
+    return newest + timedelta(minutes=15) >= today
+
+
+def portal_due(state: dict, now: datetime, zone: ZoneInfo, newest: Optional[datetime]) -> bool:
+    """Is a portal fetch due? The portal publishes a day one to two days later, at a time of its
+    own. So: while yesterday is missing, look every hour between `PORTAL_HOURS` (local time);
+    once it has arrived, nothing until the next day. The first download goes right away. After a
+    rejected login only again after `LOGIN_RETRY`, so wrong credentials do not hammer the portal."""
+    failed = state.get('portal_login_failed')
+    if failed and now - datetime.fromisoformat(failed) < LOGIN_RETRY:
+        return False
+    if newest is None:
+        return True
+    if portal_complete_until(newest, zone, now):
+        return False
+    tried = state.get('portal_tried')
+    if tried and now - datetime.fromisoformat(tried) < timedelta(minutes=50):
+        return False   # a run woken by the page in between does not fetch again
+    return PORTAL_HOURS[0] <= now.astimezone(zone).hour < PORTAL_HOURS[1]
+
+
+def portal_next(state: dict, now: datetime, zone: ZoneInfo, newest: Optional[datetime]) -> datetime:
+    """When the next portal fetch will happen (for the page): the first hourly run for which
+    `portal_due` holds, within the next two days."""
+    t = next_run(now)
+    for _ in range(48):
+        if portal_due(state, t, zone, newest):
+            return t
+        t += timedelta(hours=1)
+    return t
+
+
+def note_arrival(state: dict, before: Optional[datetime], after: Optional[datetime], now: datetime,
+                 zone: ZoneInfo) -> None:
+    """Remembers when a fetch brought a new complete day (local time of day), to show on the
+    page when LINZ NETZ usually publishes; the last 14 arrivals are kept."""
+    if after is None or before is None or not portal_complete_until(after, zone, now) \
+            or portal_complete_until(before, zone, now):
+        return
+    arrivals = state.get('portal_arrivals', [])
+    arrivals.append(now.astimezone(zone).isoformat(timespec='minutes'))
+    state['portal_arrivals'] = arrivals[-14:]
+
+
+def usual_arrival(arrivals: list) -> Optional[str]:
+    """The median local time of day of the arrivals, 'HH:MM', or None without any."""
+    if not arrivals:
+        return None
+    minutes = sorted(datetime.fromisoformat(a).hour * 60 + datetime.fromisoformat(a).minute for a in arrivals)
+    m = minutes[len(minutes) // 2]
+    return f'{m // 60:02d}:{m % 60:02d}'
+
+
+def portal_newest(store: Path, metering_point: str) -> Optional[datetime]:
+    """The start (UTC) of the newest quarter hour in the readings file, None without one."""
+    rows = readings.read_csv_file(readings.readings_path(store, metering_point))
+    return datetime.fromtimestamp(max(rows), UTC) if rows else None
 
 
 def next_run(now: datetime) -> datetime:
@@ -355,7 +414,7 @@ def notify(hass, notification_id: str, title: str, message: Optional[str]) -> No
 
 def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: str = 'en',
              fetch_now: bool = False) -> None:
-    """One cycle; `fetch_now` fetches the portal even if `fetch_interval_hours` have not passed (button on the page)."""
+    """One cycle; `fetch_now` fetches the portal even if it is not due (button on the page)."""
     zone = ZoneInfo(tz)
     web.write_status(store, language=lang)
     if any((store / IMPORT_DIR).glob('*.csv')):
@@ -367,7 +426,10 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
                '\n'.join(f'- {render(lang, key, values)}' for key, values in imported))
     web.write_status(store, import_pending=False)
     state = read_state(store)
-    if fetch_now or portal_due(state, now, options.fetch_interval_hours):
+    newest = (datetime.fromisoformat(state['portal_newest']) if state.get('portal_newest')
+              else portal_newest(store, options.metering_point))
+    if fetch_now or portal_due(state, now, zone, newest):
+        state['portal_tried'] = now.isoformat()
         readings_file = readings.readings_path(store, options.metering_point)
         first_download = not readings_file.exists()
         web.write_status(store, phase='downloading',
@@ -387,20 +449,29 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
                     notify(hass, DOWNLOAD_NOTIFICATION, t(lang, 'no_data.title'), t(lang, 'no_data.text'))
             state['portal_ok'] = now.isoformat()
             state.pop('portal_login_failed', None)
+            after = portal_newest(store, options.metering_point)
+            note_arrival(state, newest, after, now, zone)
+            newest = after
+            if newest:
+                state['portal_newest'] = newest.isoformat()
             notify(hass, LOGIN_NOTIFICATION, '', None)
         except LoginError as err:
             state['portal_login_failed'] = now.isoformat()
-            logger.error('LINZ NETZ login failed: %s. Next attempt in %d hours.', err, options.fetch_interval_hours)
+            hours = int(LOGIN_RETRY.total_seconds() // 3600)
+            logger.error('LINZ NETZ login failed: %s. Next attempt in %d hours.', err, hours)
             notify(hass, LOGIN_NOTIFICATION, t(lang, 'login_failed.title'),
-                   t(lang, 'login_failed.text', hours=options.fetch_interval_hours))
+                   t(lang, 'login_failed.text', hours=hours))
         except LinzNetzError as err:
             logger.warning('Portal fetch failed, retrying next hour: %s', err)
             if first_download:
                 notify(hass, DOWNLOAD_NOTIFICATION, t(lang, 'download_failed.title'),
                        t(lang, 'download_failed.text', error=err))
         write_state(store, state)
-        web.write_status(store, portal={'ok': state.get('portal_ok'),
-                                        'login_failed': state.get('portal_login_failed')})
+    web.write_status(store, portal={'ok': state.get('portal_ok'), 'login_failed': state.get('portal_login_failed'),
+                                    'next': portal_next(state, now, zone, newest).isoformat(),
+                                    'next_waits': bool(newest) and not portal_complete_until(newest, zone, now),
+                                    'usual': usual_arrival(state.get('portal_arrivals', [])),
+                                    'arrivals': len(state.get('portal_arrivals', []))})
 
     if options.live_meter_entity:
         web.write_status(store, phase='live', detail='')

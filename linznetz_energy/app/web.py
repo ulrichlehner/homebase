@@ -358,6 +358,20 @@ def render_page(status: dict, message=None) -> str:
                     f'<p class="muted">{html.escape(t(lang, "page.energy_undo"))}</p>')
         energy_html = f'<div class="card"><h2>{t(lang, "page.energy")}</h2>{body}</div>'
 
+    status_rows = [
+        (t(lang, 'page.state'), f'<span class="pill {pill_class}">{html.escape(pill_text)}</span> {html.escape(detail)}'),
+        (t(lang, 'page.last_run'), _fmt_time(status.get('last_run'), lang)),
+        (t(lang, 'page.next_run'), _fmt_time(status.get('next_run'), lang)),
+        (t(lang, 'page.portal_login'), login),
+        (t(lang, 'page.last_fetch'), _fmt_time(portal.get('ok'), lang) + fetch_button),
+    ]
+    if portal.get('next'):
+        key = 'page.portal_next_text' if portal.get('next_waits') else 'page.portal_next_done'
+        status_rows.append((t(lang, 'page.portal_next'), t(lang, key, time=_fmt_time(portal['next'], lang))))
+    if portal.get('usual'):
+        status_rows.append((t(lang, 'page.portal_usual'),
+                            html.escape(t(lang, 'page.portal_usual_text', time=portal['usual'], count=portal.get('arrivals', 0)))))
+
     last_import = status.get('last_import') or {}
     import_lines = ''.join(f'<li>{html.escape(_text(lang, line))}</li>' for line in last_import.get('lines', []))
     import_html = (f'<p class="muted">{_fmt_time(last_import.get("at"), lang)}</p><ul>{import_lines}</ul>'
@@ -378,13 +392,7 @@ def render_page(status: dict, message=None) -> str:
 <div><h1>LINZ NETZ Energy</h1><p class="muted">{site_line}</p></div>
 {note}
 {setup_html}
-<div class="card"><h2>{t(lang, 'page.status')}</h2><table>{_rows([
-        (t(lang, 'page.state'), f'<span class="pill {pill_class}">{html.escape(pill_text)}</span> {html.escape(detail)}'),
-        (t(lang, 'page.last_run'), _fmt_time(status.get('last_run'), lang)),
-        (t(lang, 'page.next_run'), _fmt_time(status.get('next_run'), lang)),
-        (t(lang, 'page.portal_login'), login),
-        (t(lang, 'page.last_fetch'), _fmt_time(portal.get('ok'), lang) + fetch_button),
-    ])}</table></div>
+<div class="card"><h2>{t(lang, 'page.status')}</h2><table>{_rows(status_rows)}</table></div>
 <div class="card"><h2>{t(lang, 'page.data')}</h2><table>{_rows([
         (t(lang, 'page.readings'), range_row(data.get('readings'))),
         (t(lang, 'page.reconstructed'), range_row(data.get('reconstructed'))),
