@@ -1,0 +1,37 @@
+{
+  "version": "0.2",
+  "language": "en,de",
+  "ignorePaths": [
+    ".git",
+    ".env",
+    "data",
+    "**/*.csv",
+    "**/*.png",
+    "**/*.svg",
+    "**/*.xmq",
+    "smartmeter/tests/telegrams.txt",
+    "linznetz_energy/CHANGELOG.md",
+    ".release-please-manifest.json"
+  ],
+  "words": [
+    "databot",
+    "disaggregate",
+    "disaggregation",
+    "homebase",
+    "Keycloak",
+    "LINZ",
+    "linznetz",
+    "NETZ",
+    "paho",
+    "wmbus",
+    "wmbusmeters",
+    "rtlsdr",
+    "Viertelstundenwerte",
+    "Verbrauchsdateninformation",
+    "Viertelstundenauswertung",
+    "Energiemenge",
+    "Leistung",
+    "amiplus",
+    "mqtt"
+  ]
+}

@@ -1,0 +1,67 @@
+// One-off commands, run with Terminal → Run Task (Fetch readings is the default build
+// task, Shift+Cmd+B; Test is the default test task).
+// They go through ./homebase, so they work on the host and in the dev container alike.
+// Keep in sync with the command list at the top of ./homebase.
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Test",
+      "detail": "./homebase test (the same pytest run as CI, in the databot image)",
+      "type": "shell",
+      "command": "./homebase test",
+      "group": { "kind": "test", "isDefault": true },
+      "presentation": { "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Test (dev container, fast)",
+      "detail": "python3 -m pytest -q, directly in the dev container's Python",
+      "type": "shell",
+      "command": "python3 -m pytest -q -p no:cacheprovider",
+      "presentation": { "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Fetch readings",
+      "detail": "./homebase csv",
+      "type": "shell",
+      "command": "./homebase csv",
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Render current chart",
+      "detail": "./homebase render",
+      "type": "shell",
+      "command": "./homebase render",
+      "presentation": { "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Check readings",
+      "detail": "./homebase check",
+      "type": "shell",
+      "command": "./homebase check",
+      "presentation": { "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Render add-on icons",
+      "detail": "./homebase assets (render linznetz_energy/assets/*.svg to PNG)",
+      "type": "shell",
+      "command": "./homebase assets",
+      "presentation": { "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Rebuild image",
+      "detail": "./homebase build",
+      "type": "shell",
+      "command": "./homebase build",
+      "presentation": { "panel": "shared", "clear": true },
+      "problemMatcher": []
+    }
+  ]
+}

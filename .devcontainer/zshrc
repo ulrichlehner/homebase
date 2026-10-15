@@ -1,0 +1,62 @@
+# Shell setup for the dev container (after the playbook dev-environment component),
+# sourced at the end of ~/.zshrc by post-create.sh. Oh My Zsh has loaded
+# by then, with the plugins post-create.sh set: git (aliases), gh,
+# docker (completions) and fzf.
+#
+# Everything here uses plain Unicode, so it needs no font on the host.
+
+# History: large, shared live between all terminals, kept across
+# rebuilds in the history volume (HISTFILE, devcontainer.json).
+HISTSIZE=200000
+SAVEHIST=200000
+setopt share_history hist_ignore_all_dups hist_reduce_blanks hist_verify extended_history
+
+# Colours: Catppuccin Mocha, as in starship.toml.
+export FZF_DEFAULT_OPTS="--color=bg+:#313244,spinner:#f5e0dc,hl:#f38ba8,fg:#cdd6f4,header:#f38ba8,info:#cba6f7,pointer:#f5e0dc,marker:#b4befe,fg+:#cdd6f4,prompt:#cba6f7,hl+:#f38ba8,border:#6c7086"
+ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=#6c7086'
+typeset -A ZSH_HIGHLIGHT_STYLES
+ZSH_HIGHLIGHT_STYLES[command]='fg=#a6e3a1'
+ZSH_HIGHLIGHT_STYLES[alias]='fg=#a6e3a1'
+ZSH_HIGHLIGHT_STYLES[builtin]='fg=#a6e3a1'
+ZSH_HIGHLIGHT_STYLES[function]='fg=#a6e3a1'
+ZSH_HIGHLIGHT_STYLES[precommand]='fg=#a6e3a1,italic'
+ZSH_HIGHLIGHT_STYLES[unknown-token]='fg=#f38ba8'
+ZSH_HIGHLIGHT_STYLES[reserved-word]='fg=#cba6f7'
+ZSH_HIGHLIGHT_STYLES[path]='fg=#cdd6f4,underline'
+ZSH_HIGHLIGHT_STYLES[single-quoted-argument]='fg=#f9e2af'
+ZSH_HIGHLIGHT_STYLES[double-quoted-argument]='fg=#f9e2af'
+ZSH_HIGHLIGHT_STYLES[single-hyphen-option]='fg=#89b4fa'
+ZSH_HIGHLIGHT_STYLES[double-hyphen-option]='fg=#89b4fa'
+ZSH_HIGHLIGHT_STYLES[commandseparator]='fg=#f5c2e7'
+ZSH_HIGHLIGHT_STYLES[redirection]='fg=#f5c2e7'
+ZSH_HIGHLIGHT_STYLES[comment]='fg=#6c7086'
+
+# Suggestions as you type, from history first, then from completion:
+# Right arrow (or End) accepts, Ctrl-Right accepts one word.
+if [ -f /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh ]; then
+  ZSH_AUTOSUGGEST_STRATEGY=(history completion)
+  source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+fi
+
+# Keep git's index fresh for the prompt. Starship reads git status
+# without writing the index (GIT_OPTIONAL_LOCKS=0). After git on the
+# host has written it, the container sees different file stats for the
+# same files, and every prompt re-checks them all (~800 ms) until a
+# normal git command rewrites the index. Refreshing it before each
+# prompt costs ~5 ms when nothing changed, and runs in the foreground
+# so it never holds the index lock while you type a git command.
+_refresh_git_index() {
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git update-index -q --refresh >/dev/null 2>&1
+  return 0
+}
+precmd_functions=(_refresh_git_index $precmd_functions)
+
+# Prompt: Starship, .devcontainer/starship.toml (STARSHIP_CONFIG,
+# devcontainer.json): directory, git branch and status, Python version,
+# command duration and exit status, in ordinary characters.
+command -v starship >/dev/null 2>&1 && eval "$(starship init zsh)"
+
+# Syntax highlighting: commands green when they exist, red when not.
+# Must be sourced last.
+[ -f /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ] \
+  && source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
