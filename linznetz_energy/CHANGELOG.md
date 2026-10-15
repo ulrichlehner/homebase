@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.0](https://github.com/ulrichlehner/homebase/compare/v1.4.0...v1.5.0) (2026-10-15)
+
+
+### Features
+
+* reception gaps of the live meter are split by its power readings ([#44](https://github.com/ulrichlehner/homebase/issues/44)) ([6338e8f](https://github.com/ulrichlehner/homebase/commit/6338e8f7ffd18f6587cd99f3fb3162825181c3de))
+* the portal replaces live hours estimated across a reception gap ([#43](https://github.com/ulrichlehner/homebase/issues/43)) ([901099a](https://github.com/ulrichlehner/homebase/commit/901099a22a48062bbbb0b5ff2e97419a311eb19f))
+
 ## [1.4.0](https://github.com/ulrichlehner/homebase/compare/v1.3.1...v1.4.0) (2026-10-15)
 
 
