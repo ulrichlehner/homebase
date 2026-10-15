@@ -26,12 +26,14 @@ TEXTS = {
         'secret.step1': '**Settings > Apps > Install app**: search "File editor", **Install**, then **Start** and switch '
                         'on **Show in sidebar**.',
         'secret.step2': 'Open **File editor** in the sidebar, click the folder icon at the top left and open `secrets.yaml`.',
-        'secret.step3': 'Add a line at the end, with the quotes: `linznetz_password: "your portal password"`, then save '
-                        '(disk icon).',
+        'secret.step3': 'Add a line at the end, with the quotes: `linznetz_password: "your portal password"`. Save '
+                        'with the disk icon at the top right: it is red while something is unsaved. Then wait a '
+                        'minute: Home Assistant reads secrets.yaml again at most once a minute.',
         'secret.step4': '**Settings > Apps > LINZ NETZ Energy**, tab **Configuration**: menu (⋮) at the top right of the '
                         'options > **Edit in YAML**.',
         'secret.step5': 'Replace the line `portal_password: …` with `portal_password: "!secret linznetz_password"` and '
-                        'click **Save**.',
+                        'click **Save**. If it reports "Unknown secret": check that secrets.yaml is saved, wait a minute, '
+                        'reload the page and try again.',
         'secret.step6': 'Tab **Info**: **Restart**. This message goes away; File editor can be uninstalled again.',
         'secret.outro': 'The app works either way.',
         'page.secret_title': 'Portal password in plain text',
@@ -207,12 +209,14 @@ TEXTS = {
                         '**Starten** und **In Seitenleiste anzeigen** einschalten.',
         'secret.step2': '**File editor** in der Seitenleiste öffnen, oben links auf das Ordnersymbol klicken und '
                         '`secrets.yaml` öffnen.',
-        'secret.step3': 'Am Ende eine Zeile ergänzen, mit den Anführungszeichen: `linznetz_password: "dein Portal-Passwort"`, '
-                        'dann speichern (Diskettensymbol).',
+        'secret.step3': 'Am Ende eine Zeile ergänzen, mit den Anführungszeichen: `linznetz_password: "dein Portal-Passwort"`. '
+                        'Mit dem Diskettensymbol oben rechts speichern: es ist rot, solange etwas ungespeichert ist. '
+                        'Dann eine Minute warten: Home Assistant liest secrets.yaml höchstens einmal pro Minute neu.',
         'secret.step4': '**Einstellungen > Apps > LINZ NETZ Energy**, Tab **Konfiguration**: Menü (⋮) oben rechts bei den '
                         'Optionen > **In YAML bearbeiten**.',
         'secret.step5': 'Die Zeile `portal_password: …` ersetzen durch `portal_password: "!secret linznetz_password"` und '
-                        '**Speichern** klicken.',
+                        '**Speichern** klicken. Meldet es „Unknown secret“: prüfen, ob secrets.yaml gespeichert ist, eine '
+                        'Minute warten, die Seite neu laden und nochmals versuchen.',
         'secret.step6': 'Tab **Info**: **Neu starten**. Diese Meldung verschwindet; File editor kann danach wieder '
                         'deinstalliert werden.',
         'secret.outro': 'Die App funktioniert so oder so.',
