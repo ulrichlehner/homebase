@@ -164,7 +164,8 @@ the add-on's page inside Home Assistant. It shows
 - what the add-on does right now (first download, import, writing statistics), refreshing itself
   while something runs, plus the last and next run and the portal login,
 - the data it has: portal readings and reconstructed history with their ranges,
-- the statistic with its range, total and sources, and the live vs portal check,
+- the statistic with its range, total and sources, its gaps (hours no source covers, for example
+  months the portal no longer has; older readings fill them, see below), and the live vs portal check,
 - the live meter choice (see above),
 - the Energy dashboard card, the history import and the result of the last import,
 - at the bottom, removing everything from Home Assistant (see "Uninstalling").

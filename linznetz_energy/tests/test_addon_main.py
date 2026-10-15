@@ -601,3 +601,13 @@ def test_no_password_check_outside_home_assistant(tmp_path, monkeypatch):
     hass = FakeHass()
     addon.check_password_secret(hass, tmp_path, 'en')
     assert hass.services == [] and addon.web.read_status(tmp_path)['password_secret'] is None
+
+
+def test_statistic_gaps_are_listed(tmp_path):
+    start = datetime(2023, 8, 31, 22, tzinfo=ZONE).astimezone(UTC)
+    write_reconstructed(tmp_path, start, hours=2)                       # 31.08. 22:00 to 24:00
+    write_readings(tmp_path, hours=2, start=datetime(2023, 10, 1, tzinfo=ZONE).astimezone(UTC))
+    hours = addon.Inputs.read(tmp_path, METER).fused()
+    status = addon.statistic_status('x', hours, ZONE)
+    assert status['gaps'] == [{'from': '01.09.2023 00:00', 'to': '01.10.2023 00:00', 'hours': 720}]
+    assert addon.statistic_gaps(hours[:2]) == []                          # the time after the newest hour is no gap

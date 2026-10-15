@@ -249,3 +249,17 @@ def test_actions_redirect_to_the_page_and_show_their_message_once(server):
     with pytest.raises(urllib.error.HTTPError) as err:
         urllib.request.urlopen(url + '/nothing')
     assert err.value.code == 404
+
+
+def test_statistics_card_lists_gaps():
+    stat = {'id': 'x', 'hours': 3, 'from': '01.01.2023', 'to': '02.01.2023 00:00', 'kwh': 1.0, 'sources': {}}
+    page = W.render_page({'language': 'de', 'statistics': {'consumption': {
+        **stat, 'gaps': [{'from': '01.09.2023 00:00', 'to': '01.10.2023 00:00', 'hours': 720}]}}})
+    assert '<th>Lücken</th>' in page and '01.09.2023 00:00 bis 01.10.2023 00:00 (720 Stunden)' in page
+    assert '„Ältere Daten importieren“' in page
+    many = W.render_page({'language': 'en', 'statistics': {'consumption': {
+        **stat, 'gaps': [{'from': str(i), 'to': str(i), 'hours': 1} for i in range(7)]}}})
+    assert 'and 2 more' in many
+    none = W.render_page({'language': 'en', 'statistics': {'consumption': {**stat, 'gaps': []}}})
+    assert '<th>Gaps</th><td><span class="muted">none</span>' in none
+    assert 'Gaps' not in W.render_page({'language': 'en'})                # nothing written yet
