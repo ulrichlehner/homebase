@@ -1,0 +1,7 @@
+// Only Dev Containers is recommended here: the project is edited in the VS Code dev
+// container (.devcontainer/), which installs the full extension set inside the
+// container by itself. Add an extension there, not here, or every host window asks
+// to install it again.
+{
+  "recommendations": ["ms-vscode-remote.remote-containers"]
+}

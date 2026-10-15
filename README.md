@@ -215,6 +215,11 @@ EXPORT_DIR=data/databot LOGLEVEL=DEBUG .venv/bin/python databot/render.py
 Without a local Python, `./homebase test` runs all tests inside the container against the working
 tree, and `./homebase shell` opens a shell there.
 
+Or open the repository in VS Code and run "Dev Containers: Reopen in Container": Python 3.12 with all
+dependencies, `pytest` wired into the Testing view, tesseract, shellcheck, git/GitHub/Claude Code logins that
+survive rebuilds, and the host's Docker, so `./homebase …` and the tasks in `.vscode/tasks.json` work
+unchanged. Use an absolute `DATA_DIR` in `.env` there (`~` would expand to the container's home).
+
 ## Setup
 
 Requires Docker (Docker Desktop on the Mac).

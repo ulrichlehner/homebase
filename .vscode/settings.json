@@ -1,0 +1,55 @@
+// Check settings against the installed VS Code: a deprecated or unknown key shows as
+// a warning in the file. Never set an extension's setting without that extension in
+// .devcontainer/devcontainer.json.
+{
+  // the same import paths as pytest.ini, for Pylance
+  "python.analysis.extraPaths": ["lib", "databot", "linznetz_energy/app"],
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  // pytest.ini sets the paths; no .pytest_cache next to the sources, as in ./homebase test
+  "python.testing.pytestArgs": ["-p", "no:cacheprovider"],
+  "python.terminal.activateEnvironment": false,
+
+  "[python]": {
+    "editor.tabSize": 4
+  },
+  // .prettierrc only covers what Prettier knows; Markdown is formatted on demand, not on
+  // save (the README tables are aligned by hand).
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[yaml]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+
+  "files.associations": {
+    "homebase": "shellscript",
+    ".env.*": "dotenv",
+    "*.xmq": "xml"
+  },
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "files.exclude": {
+    "**/.DS_Store": true,
+    "**/__pycache__": true,
+    "**/*.egg-info": true,
+    "**/.pytest_cache": true
+  },
+  "search.exclude": {
+    "data/**": true,
+    "**/export/**": true,
+    "**/*.egg-info": true,
+    "**/package-lock.json": true,
+    "linznetz_energy/CHANGELOG.md": true
+  },
+  "shellcheck.customArgs": ["-x"]
+}

@@ -1,0 +1,123 @@
+// VS Code dev container (after the website playbook's dev-environment component,
+// adapted to this Python project).
+//
+// Optional: the host workflow (`./homebase ...` from a host terminal) stays the
+// reference and needs only Docker. Open the repo with "Dev Containers: Reopen in
+// Container" to get an editor with Python, the test runner, git, GitHub and the
+// extensions set up.
+//
+// How it fits ./homebase:
+// - The image is .devcontainer/Dockerfile: Python 3.12 with the dependencies of
+//   lib/, databot/ and the add-on, tesseract and shellcheck. The sources are
+//   not baked in; PYTHONPATH is the one pytest.ini sets, so `pytest` and
+//   `python databot/databot.py` run against the working tree.
+// - The repo is mounted at the same absolute path as on the host, and the host's
+//   Docker socket is shared (docker-outside-of-docker). So `./homebase csv`,
+//   `./homebase test` and the tasks in .vscode/tasks.json work inside the
+//   container exactly as on the host: the host daemon resolves every -v path.
+//   Use an absolute DATA_DIR in .env (a `~` would expand to /root here).
+//
+// Git without logging in again:
+// - SSH remotes: VS Code forwards the host's SSH agent (`ssh-add -l` on the host
+//   must list the key; macOS: `ssh-add --apple-use-keychain ~/.ssh/id_ed25519`).
+// - HTTPS remotes: VS Code forwards the host's credential helper.
+// - Name, email and aliases: VS Code copies the host's ~/.gitconfig.
+// - post-create.sh trusts the checkout (safe.directory) and installs GitHub's
+//   host keys, so the first fetch does not stop at a prompt.
+// - gh and Claude Code keep their logins in volumes shared by every project on
+//   the machine (devcontainer-gh-config, devcontainer-claude-config).
+{
+  "name": "homebase",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+
+  "workspaceMount": "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind",
+  "workspaceFolder": "${localWorkspaceFolder}",
+
+  "mounts": [
+    "source=homebase-shell-history,target=/commandhistory,type=volume",
+    "source=devcontainer-gh-config,target=/root/.config/gh,type=volume",
+    "source=devcontainer-claude-config,target=/root/.claude,type=volume"
+  ],
+
+  "containerEnv": {
+    "APP_DIR": "${localWorkspaceFolder}",
+    // the import paths of pytest.ini: library, command line tools, add-on app
+    "PYTHONPATH": "${localWorkspaceFolder}/lib:${localWorkspaceFolder}/databot:${localWorkspaceFolder}/linznetz_energy/app",
+    "HISTFILE": "/commandhistory/.zsh_history",
+    "CLAUDE_CONFIG_DIR": "/root/.claude",
+    "STARSHIP_CONFIG": "${localWorkspaceFolder}/.devcontainer/starship.toml"
+  },
+
+  "remoteUser": "root",
+  "init": true,
+
+  "features": {
+    // zsh with Oh My Zsh as the default shell, plus the everyday tools.
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "username": "root",
+      "installZsh": true,
+      "configureZshAsDefaultShell": true,
+      "installOhMyZsh": true
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    // ./homebase builds and runs its images through the host's Docker.
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": { "moby": false },
+    // Claude Code is installed with npm; the Python base image has no Node.
+    "ghcr.io/devcontainers/features/node:1": { "version": "lts" },
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1": {},
+    // Prompt with git status (.devcontainer/starship.toml), plain Unicode symbols.
+    "ghcr.io/devcontainers-extra/features/starship:1": {}
+  },
+
+  "postCreateCommand": "sh .devcontainer/post-create.sh",
+
+  "customizations": {
+    "vscode": {
+      // The whole extension set, installed in the container by itself.
+      // .vscode/extensions.json recommends only Dev Containers, so the host
+      // window does not offer these too. Add an extension here, not there.
+      "extensions": [
+        // Stack
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "redhat.vscode-yaml",
+        "esbenp.prettier-vscode",
+        "timonwong.shellcheck",
+        // Git and GitHub
+        "eamodio.gitlens",
+        "github.vscode-pull-request-github",
+        "github.vscode-github-actions",
+        // Ease of life
+        "usernamehw.errorlens",
+        "streetsidesoftware.code-spell-checker",
+        "streetsidesoftware.code-spell-checker-german",
+        "christian-kohler.path-intellisense",
+        "gruntfuggly.todo-tree",
+        "mikestead.dotenv",
+        "ms-azuretools.vscode-containers",
+        "mechatroner.rainbow-csv",
+        // Agent
+        "anthropic.claude-code"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        // No terminal revival: after a rebuild VS Code restored the old terminals
+        // and relaunched them as /bin/sh, without prompt or history.
+        "terminal.integrated.enablePersistentSessions": false,
+        // No automatic port forwarding: nothing here serves a port, and VS Code's
+        // own short-lived local ports would be forwarded by the dozen.
+        "remote.autoForwardPorts": false,
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "git.autofetch": true,
+        "git.pruneOnFetch": true,
+        "git.confirmSync": false,
+        // ripgrep from post-create.sh: Todo Tree cannot find VS Code's own.
+        "todo-tree.ripgrep.ripgrep": "/usr/bin/rg",
+        "gitlens.showWhatsNewAfterUpgrades": false
+      }
+    }
+  }
+}

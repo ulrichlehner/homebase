@@ -1,0 +1,104 @@
+"$schema" = 'https://starship.rs/config-schema.json'
+
+# Starship prompt for the dev container (after the playbook
+# dev-environment component), STARSHIP_CONFIG in devcontainer.json. Plain Unicode
+# symbols only, so no Nerd Font on the host. Colours: Catppuccin Mocha,
+# soft on a dark terminal; zshrc uses the same palette for syntax
+# highlighting and fzf.
+#
+#   homebase on feat/devcontainer [!?⇡1] via py v3.12.7 took 3s
+#   ❯
+#
+# Speed: the repo is a bind mount from the host, slow to scan. Starship's
+# built-in git library took ~530 ms per prompt there; the git executable
+# takes ~20 ms once zshrc has refreshed the index. The first, cold
+# status in a new container needs more than the default 500 ms.
+scan_timeout = 200
+command_timeout = 2000
+
+palette = "catppuccin_mocha"
+add_newline = true
+
+# root is always the user here and the container is always Docker, so
+# username and container are left out.
+format = """
+$directory\
+$git_branch\
+$git_state\
+$git_status\
+$python\
+$cmd_duration\
+$line_break\
+$status\
+$character"""
+
+[directory]
+style = "bold lavender"
+read_only = " ro"
+truncation_length = 3
+truncate_to_repo = true
+
+[git_branch]
+symbol = ""
+style = "bold mauve"
+format = "[on](overlay1) [$branch]($style) "
+
+[git_state]
+style = "bold yellow"
+
+[git_status]
+use_git_executable = true
+ignore_submodules = true
+style = "peach"
+format = '([\[$all_status$ahead_behind\]]($style) )'
+conflicted = "="
+ahead = "⇡${count}"
+behind = "⇣${count}"
+diverged = "⇕⇡${ahead_count}⇣${behind_count}"
+untracked = "?"
+stashed = "≡"
+modified = "!"
+staged = "+"
+renamed = "»"
+deleted = "✘"
+
+[python]
+symbol = "py "
+style = "green"
+format = "[via](overlay1) [$symbol$version]($style) "
+
+[cmd_duration]
+min_time = 2000
+style = "yellow"
+format = "[took](overlay1) [$duration]($style) "
+
+[status]
+disabled = false
+style = "red"
+format = "[$status]($style) "
+
+[character]
+success_symbol = "[❯](bold green)"
+error_symbol = "[❯](bold red)"
+
+[palettes.catppuccin_mocha]
+rosewater = "#f5e0dc"
+flamingo = "#f2cdcd"
+pink = "#f5c2e7"
+mauve = "#cba6f7"
+red = "#f38ba8"
+maroon = "#eba0ac"
+peach = "#fab387"
+yellow = "#f9e2af"
+green = "#a6e3a1"
+teal = "#94e2d5"
+sky = "#89dceb"
+sapphire = "#74c7ec"
+blue = "#89b4fa"
+lavender = "#b4befe"
+text = "#cdd6f4"
+subtext1 = "#bac2de"
+subtext0 = "#a6adc8"
+overlay2 = "#9399b2"
+overlay1 = "#7f849c"
+overlay0 = "#6c7086"
