@@ -54,6 +54,11 @@ Assistant's `secrets.yaml` instead, the way Home Assistant handles secrets every
 
    then save and restart the add-on.
 
+If saving reports "Unknown secret 'linznetz_password'", Home Assistant has not seen the line yet:
+make sure `secrets.yaml` is saved (in File editor the disk icon at the top right is red while
+something is unsaved), wait a minute (the Supervisor reads `secrets.yaml` at most once a minute),
+reload the page and save again. Double or single quotes around `!secret …` make no difference.
+
 The add-on configuration then only holds the reference; Home Assistant puts the password in when
 the add-on starts. The same works for `portal_username`. Choosing the live meter on the add-on page
 keeps the reference as it is. Backups contain `secrets.yaml`, so keep them encrypted (the default
