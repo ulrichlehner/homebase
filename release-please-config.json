@@ -14,8 +14,7 @@
         }
       ],
       "bump-minor-pre-major": true,
-      "bump-patch-for-minor-pre-major": false,
-      "release-as": "1.0.0"
+      "bump-patch-for-minor-pre-major": false
     }
   }
 }
