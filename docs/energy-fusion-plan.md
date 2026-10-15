@@ -114,9 +114,11 @@ Done when the backtest error is acceptable and the source files are unchanged.
 - [x] Dry run with a real RF history download of the energy counter (12.10. 13:18 to 14.10.):
       35 hours against the portal, mean 1 Wh per hour, +0.01 %, 13.10. complete and within the
       tolerance; today's hours filled from RF
-- [ ] Dry run over the misread phases of 9.10. and 11.10. (the history download only starts at
-      12.10. 13:18; check whether HA still has older raw states, they are purged around
-      19.10./21.10. unless `purge_keep_days` is raised)
+- [x] Dry run over the misread phases of 9.10. and 11.10.: not possible, HA has no data of them.
+      The raw states and the 5-minute and hourly statistics of the counter all start at 12.10.
+      13:18, when the entities were renamed. The cleaning of such phases is covered by synthetic
+      tests (a tenth of the counter, near-zero values, spikes); the add-on's live archive keeps
+      the raw readings for 90 days, so the next real misread phase can be replayed from there
 - [x] Cross-check with the RF power sensor (integrated, 12.10. 13:18 to 14.10.): 35 complete
       hours -0.33 % against the portal, mean 3 Wh per hour, 13.10. 9.718 vs 9.772 kWh
 - [ ] Check whether the portal offers meter counter readings; if so, compare them with the RF
@@ -199,7 +201,8 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
       empty means portal only
 - [x] Hourly: read the new RF counter states from HA (`history/history_during_period`, read only),
       archive them (`lib/homebase/livearchive.py`: raw readings 90 days, cleaned hourly values for
-      good), re-clean the raw window, rebuild `…_grid_consumption` with RF as the primary source
+      good; new readings are appended, the last 14 days are re-cleaned every hour), rebuild
+      `…_grid_consumption` with RF as the primary source
 - [x] Counter cleaning: repeated values count from their first occurrence (a repeated value with a
       later timestamp made the next step look like 35 kW and cut off a whole evening, found in the
       live test on 2026-10-14)
@@ -281,6 +284,14 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-15: dry run (read only) over the whole HA history of the counter, 12.10. 13:18 to 15.10.:
+  13,371 readings, 1 rejected (the first one after the restart), no misread phase, no hour
+  missing; 13.10. live 9.772 kWh vs portal 9.772 kWh, mean deviation 0.8 Wh per hour. The misread
+  phases of 9.10. and 11.10. cannot be replayed: HA has no states or statistics of the counter
+  before 12.10. 13:18.
+- 2026-10-15: code review of #23: flat counter periods (PV export) give 0 Wh hours instead of
+  gaps, removal refused when the Energy dashboard cannot be read and failures shown on the page,
+  unacknowledged MQTT publishes count as failed, the live archive appends and re-cleans 14 days.
 - 2026-10-14: "Remove everything from Home Assistant" on the add-on page (statistics, MQTT device,
   notifications; refused while the Energy dashboard uses the statistic; pauses the add-on,
   "Reactivate" undoes it), because uninstalling an add-on leaves statistics and MQTT entities behind.
