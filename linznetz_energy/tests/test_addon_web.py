@@ -294,3 +294,13 @@ def test_estimated_hours_are_an_info_not_a_warning():
     page = W.render_page({'language': 'de', 'statistics': {'consumption': stat}})
     assert '<span class="pill info">4 geschätzte Stunden</span>' in page and 'Der Portalwert ersetzt sie' in page
     assert 'pill warn' not in page.split('Statistiken')[1].split('</table>')[0]
+
+
+
+def test_live_meter_card_names_the_power_sensor():
+    base = {'language': 'en', 'live_meter': 'sensor.a', 'live_candidates': [
+        {'entity_id': 'sensor.a', 'name': 'A', 'state': '1', 'unit': 'kWh'}]}
+    page = W.render_page({**base, 'live_power': 'sensor.a_power'})
+    assert '<th>Power</th><td><code>sensor.a_power</code>' in page
+    assert 'no power sensor on the same device' in W.render_page({**base, 'live_power': None})
+    assert '<th>Power</th>' not in W.render_page(base)                          # before the first live update

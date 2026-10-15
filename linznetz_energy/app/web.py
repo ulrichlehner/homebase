@@ -349,6 +349,12 @@ def render_page(status: dict, message=None) -> str:
             in_use = f'{name}<code>{html.escape(current)}</code>{value}'
         else:
             in_use = f'<span class="muted">{html.escape(t(lang, "page.live_meter_none"))}</span>'
+        power_row = []
+        if current and 'live_power' in status:
+            power_row = [(t(lang, 'page.live_power'),
+                          f'<code>{html.escape(status["live_power"])}</code><br><span class="muted">'
+                          f'{html.escape(t(lang, "page.live_power_hint"))}</span>' if status.get('live_power') else
+                          f'<span class="muted">{html.escape(t(lang, "page.live_power_none"))}</span>')]
         result = status.get('live_meter_result') or {}
         result_text = {'saved': lambda: t(lang, 'page.live_meter_saved', entity=result.get('entity') or t(lang, 'page.live_meter_none')),
                        'unknown': lambda: t(lang, 'page.live_meter_unknown', entity=result.get('entity', ''))}.get(result.get('state'))
@@ -358,7 +364,7 @@ def render_page(status: dict, message=None) -> str:
         empty = f'<p class="muted">{html.escape(t(lang, "page.live_meter_no_candidates"))}</p>' if not candidates else ''
         live_meter_html = (f'<div class="card"><h2>{t(lang, "page.live_meter")}</h2>'
                            f'<p class="lead">{html.escape(t(lang, "page.live_meter_lead"))}</p>'
-                           f'<table>{_rows([(t(lang, "page.live_meter_in_use"), in_use)])}</table>{empty}{result_html}'
+                           f'<table>{_rows([(t(lang, "page.live_meter_in_use"), in_use)] + power_row)}</table>{empty}{result_html}'
                            f'<form method="post" action="live_meter" class="pick">'
                            f'<label for="live-meter">{t(lang, "page.live_meter_choose")}</label>'
                            f'<div class="row"><select name="entity" id="live-meter">{select}</select>'

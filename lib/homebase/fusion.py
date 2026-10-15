@@ -198,8 +198,54 @@ def clean_counter(samples: list, max_kw: float = DEFAULT_MAX_KW) -> RfCleaning:
     return result
 
 
-def _counter_at(accepted: list, times: list, t: datetime, max_gap: timedelta) -> tuple:
-    """(counter value in Wh at time t or None, seconds between the readings it lies between)."""
+MINUTE = timedelta(minutes=1)
+POWER_COVERAGE = 0.8   # share of a gap the power readings must cover to split it by them
+
+
+def power_minutes(states: list, until: Optional[datetime] = None) -> dict:
+    """{UTC minute start: mean W} from power states [(UTC time, W)] in time order. Home Assistant
+    records a state only when it changes, so each value holds until the next one (a step
+    function); a state that is no number (None) ends the step. `until` ends the last step."""
+    out: dict = defaultdict(float)
+    steps = list(states) + ([(until, None)] if until else [])
+    for (t0, w), (t1, _) in zip(steps, steps[1:]):
+        if w is None or t1 <= t0:
+            continue
+        m = t0.replace(second=0, microsecond=0)
+        while m < t1:
+            a, b = max(t0, m), min(t1, m + MINUTE)
+            if b > a:
+                out[m] += w * (b - a).total_seconds() / 60
+            m += MINUTE
+    return dict(out)
+
+
+def _energy_share(power: dict, ta: datetime, t: datetime, tb: datetime) -> Optional[float]:
+    """The share of the energy between ta and tb that flowed until t, by the power readings
+    (minute means); None if they cover less than `POWER_COVERAGE` of the span or show no load."""
+    def integrate(a: datetime, b: datetime) -> tuple:
+        energy = covered = 0.0
+        m = a.replace(second=0, microsecond=0)
+        while m < b:
+            lo, hi = max(a, m), min(b, m + MINUTE)
+            if hi > lo and m in power:
+                seconds = (hi - lo).total_seconds()
+                energy += power[m] * seconds
+                covered += seconds
+            m += MINUTE
+        return energy, covered
+    before, covered_a = integrate(ta, t)
+    after, covered_b = integrate(t, tb)
+    if (covered_a + covered_b) < POWER_COVERAGE * (tb - ta).total_seconds() or before + after <= 0:
+        return None
+    return before / (before + after)
+
+
+def _counter_at(accepted: list, times: list, t: datetime, max_gap: timedelta,
+                power: Optional[dict] = None) -> tuple:
+    """(counter value in Wh at time t or None, seconds of an evenly split gap it lies in, else 0).
+    Inside a reception gap the counter is split by the power readings when there are enough
+    (exact to about 1 Wh on real data), else as if the load had been even (an estimate)."""
     i = bisect.bisect_left(times, t)
     if i < len(times) and times[i] == t:
         return float(accepted[i][1]), 0.0
@@ -209,7 +255,13 @@ def _counter_at(accepted: list, times: list, t: datetime, max_gap: timedelta) ->
     if tb - ta > max_gap and vb - va > FLAT_WH:
         return None, 0.0
     span = (tb - ta).total_seconds()
-    return va + (vb - va) * (t - ta).total_seconds() / span, (span if vb - va > FLAT_WH else 0.0)
+    share = None
+    if power and span > ESTIMATE_GAP.total_seconds() and vb - va > FLAT_WH:
+        share = _energy_share(power, ta, t, tb)
+    if share is not None:
+        return va + (vb - va) * share, 0.0
+    share = (t - ta).total_seconds() / span
+    return va + (vb - va) * share, (span if vb - va > FLAT_WH else 0.0)
 
 
 def counter_at(accepted: list, times: list, t: datetime, max_gap: timedelta) -> Optional[float]:
@@ -218,11 +270,12 @@ def counter_at(accepted: list, times: list, t: datetime, max_gap: timedelta) -> 
 
 
 def counter_hourly_estimated(accepted: list, max_gap: timedelta = DEFAULT_MAX_GAP,
-                             max_kw: float = DEFAULT_MAX_KW) -> tuple:
-    """({UTC hour start: Wh}, {hours that are estimates}) from the cleaned counter. An hour is an
-    estimate when one of its ends falls into a reception gap longer than `ESTIMATE_GAP` (the
-    meter's phases of non-spec records, about 30 minutes): the counter there is interpolated as
-    if the load had been even, so energy can shift between the two hours; their sum stays exact."""
+                             max_kw: float = DEFAULT_MAX_KW, power: Optional[dict] = None) -> tuple:
+    """({UTC hour start: Wh}, {hours that are estimates}) from the cleaned counter. When one end of
+    an hour falls into a reception gap longer than `ESTIMATE_GAP` (the meter's phases of non-spec
+    records, about 30 minutes), the counter there is split by the power readings (`power`, see
+    power_minutes). Without enough of them it is split as if the load had been even: energy can
+    shift between the two hours (their sum stays exact), and both hours are estimates."""
     if len(accepted) < 2:
         return {}, set()
     times = [t for t, _ in accepted]
@@ -232,7 +285,8 @@ def counter_hourly_estimated(accepted: list, max_gap: timedelta = DEFAULT_MAX_GA
         h += HOUR
     limit = ESTIMATE_GAP.total_seconds()
     while h + HOUR <= times[-1]:
-        (a, gap_a), (b, gap_b) = _counter_at(accepted, times, h, max_gap), _counter_at(accepted, times, h + HOUR, max_gap)
+        (a, gap_a), (b, gap_b) = (_counter_at(accepted, times, h, max_gap, power),
+                                  _counter_at(accepted, times, h + HOUR, max_gap, power))
         if a is not None and b is not None and 0 <= b - a <= max_kw * 1000:
             out[h] = round(b - a)
             if gap_a > limit or gap_b > limit:

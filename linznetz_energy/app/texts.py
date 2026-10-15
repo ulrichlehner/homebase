@@ -97,6 +97,10 @@ TEXTS = {
         'page.fetch_now': 'Fetch now',
         'page.fetch_requested': 'Fetching from the portal, the page updates itself.',
         'page.live_meter_in_use': 'In use',
+        'page.live_power': 'Power',
+        'page.live_power_hint': 'from the same device; it splits the counter when the meter sends no usable reading for a while',
+        'page.live_power_none': 'no power sensor on the same device: during reception gaps the consumption is split evenly '
+                                '(an estimate until the portal has the hours)',
         'page.live_meter_choose': 'Choose a counter',
         'page.energy_uses': 'Grid import now',
         'page.energy_step_backup': '**Settings > Backup**: create a backup.',
@@ -290,6 +294,11 @@ TEXTS = {
         'page.fetch_now': 'Jetzt abrufen',
         'page.fetch_requested': 'Wird vom Portal abgerufen, die Seite aktualisiert sich selbst.',
         'page.live_meter_in_use': 'In Verwendung',
+        'page.live_power': 'Leistung',
+        'page.live_power_hint': 'vom selben Gerät; sie teilt den Zählerstand auf, wenn der Zähler eine Weile keinen '
+                                'verwertbaren Wert sendet',
+        'page.live_power_none': 'kein Leistungssensor am selben Gerät: in Empfangslücken wird der Verbrauch gleichmäßig '
+                                'aufgeteilt (eine Schätzung, bis das Portal die Stunden hat)',
         'page.live_meter_choose': 'Zähler wählen',
         'page.energy_uses': 'Netzbezug derzeit',
         'page.energy_step_backup': '**Einstellungen > Backup**: ein Backup erstellen.',

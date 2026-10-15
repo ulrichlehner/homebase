@@ -216,3 +216,18 @@ def test_the_portal_replaces_estimated_live_hours():
     assert [(h.wh, h.source, h.flag) for h in fused] == [(600, 'portal', ''), (600, 'portal', '')]
     waiting = F.fuse({}, live, {}, frozenset(live))                         # portal not there yet
     assert [(h.wh, h.source, h.flag) for h in waiting] == [(700, 'live', 'estimated'), (500, 'live', 'estimated')]
+
+
+
+def test_power_minutes_hold_each_state_until_the_next():
+    steps = [(T0, 600.0), (T0 + timedelta(seconds=30), 1200.0), (T0 + timedelta(minutes=2), None),
+             (T0 + timedelta(minutes=3), 300.0)]
+    minutes = F.power_minutes(steps, until=T0 + timedelta(minutes=4))
+    assert minutes == {T0: 900.0, T0 + timedelta(minutes=1): 1200.0, T0 + timedelta(minutes=3): 300.0}   # minute 2 unknown
+
+
+def test_too_few_power_readings_fall_back_to_the_even_split():
+    samples = [(t, v) for t, v in counter(180) if not (T0 + timedelta(minutes=45) < t < T0 + timedelta(minutes=75))]
+    sparse = {T0 + timedelta(minutes=45): 600.0}                                   # covers 1 of 30 minutes
+    hours, estimated = F.counter_hourly_estimated(F.clean_counter(samples).accepted, power=sparse)
+    assert estimated == {T0, T0 + F.HOUR}

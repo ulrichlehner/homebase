@@ -344,11 +344,58 @@ def update_live(hass, options: Options, store: Path, now: datetime) -> dict:
     last = livearchive.last_raw_time(store, options.metering_point)
     since = last - timedelta(hours=1) if last else now - timedelta(days=LIVE_HISTORY_DAYS)
     states = hass.history(options.live_meter_entity, since)
-    summary = livearchive.update(store, options.metering_point, livearchive.parse_states(states), now)
-    logger.info('Live counter %s: %d new states, archive %d raw readings (%d rejected, %d misread phase(s)), %d hours up to %s',
-                options.live_meter_entity, len(states), summary['raw'], summary['rejected'], summary['dropped_segments'],
-                summary['hours'], summary['last_hour'])
+    power = update_power(hass, options, store, since, now)
+    summary = livearchive.update(store, options.metering_point, livearchive.parse_states(states), now, power=power)
+    logger.info('Live counter %s: %d new states, archive %d raw readings (%d rejected, %d misread phase(s)), %d hours up to %s, '
+                '%d estimated', options.live_meter_entity, len(states), summary['raw'], summary['rejected'],
+                summary['dropped_segments'], summary['hours'], summary['last_hour'], summary['estimated'])
     return summary
+
+
+POWER_UNITS = {'W': 1.0, 'kW': 1000.0}
+
+
+def power_entity(hass, energy_entity: str) -> Optional[tuple]:
+    """The power sensor of the same device as the live counter, (entity ID, factor to W), or None.
+    With several power sensors (consumption and production) the one whose ID shares the counter's
+    direction word wins (`…_total_energy_consumption` → `…_current_power_consumption`)."""
+    entry = hass.call('config/entity_registry/get', entity_id=energy_entity) or {}
+    device = entry.get('device_id')
+    if not device:
+        return None
+    siblings = {e['entity_id'] for e in hass.call('config/entity_registry/list') or [] if e.get('device_id') == device}
+    candidates = []
+    for s in hass.call('get_states') or []:
+        attrs = s.get('attributes') or {}
+        if (s.get('entity_id') in siblings and attrs.get('device_class') == 'power'
+                and attrs.get('unit_of_measurement') in POWER_UNITS):
+            candidates.append((s['entity_id'], POWER_UNITS[attrs['unit_of_measurement']]))
+    direction = next((w for w in ('consumption', 'import', 'production', 'export') if w in energy_entity), None)
+    matching = [c for c in candidates if direction and direction in c[0]]
+    if len(matching) == 1:
+        return matching[0]
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def update_power(hass, options: Options, store: Path, since: datetime, now: datetime) -> Optional[dict]:
+    """The meter's power as minute means into the live archive (it splits the counter inside
+    reception gaps); None without a power sensor next to the live counter."""
+    try:
+        found = power_entity(hass, options.live_meter_entity)
+    except HomeAssistantError as err:
+        logger.warning('Could not look up the power sensor of %s: %s', options.live_meter_entity, err)
+        found = None
+    web.write_status(store, live_power=found[0] if found else None)
+    if not found:
+        return None
+    entity_id, factor = found
+    steps = []
+    for t, state in hass.history(entity_id, since):
+        try:
+            steps.append((t.astimezone(UTC), float(state) * factor))
+        except (TypeError, ValueError):
+            steps.append((t.astimezone(UTC), None))
+    return livearchive.update_power(store, options.metering_point, fusion.power_minutes(steps, until=now), now)
 
 
 def compare_live(inputs: Inputs, zone: ZoneInfo, now: datetime) -> dict:
