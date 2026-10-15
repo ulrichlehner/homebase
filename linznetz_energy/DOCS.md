@@ -104,8 +104,8 @@ broker from Home Assistant):
 | Last portal fetch | when the portal was fetched successfully the last time |
 | Portal data until | the end of the newest portal reading |
 | Live data until | the end of the newest hour with a live value |
-| Live vs portal (last day) | the deviation on the last day both have complete, in % |
-| Deviating hours (7 days) | live hours of the last 7 days that differ from the portal |
+| Live deviation last day | the deviation on the last day both have complete, in % |
+| Deviating hours last 7 days | live hours of the last 7 days that differ from the portal |
 | Portal login problem | on while the portal rejects the login |
 
 Without a broker the add-on works the same, only without these entities.

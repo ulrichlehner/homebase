@@ -365,7 +365,7 @@ def test_mqtt_messages():
     import mqtt_status
     msgs = dict(mqtt_status.messages('Lakeside', 'lakeside', 'de', '0.3.0', {'live_deviation': 0.4}))
     config = json.loads(msgs['homeassistant/sensor/linznetz_energy_lakeside/live_deviation/config'])
-    assert config['name'] == 'Live vs. Portal (letzter Tag)' and config['unit_of_measurement'] == '%'
+    assert config['name'] == 'Live-Abweichung letzter Tag' and config['unit_of_measurement'] == '%'
     assert config['default_entity_id'] == 'sensor.lakeside_linznetz_live_deviation'
     assert config['unique_id'] == 'linznetz_energy_lakeside_live_deviation'
     assert config['device']['name'] == 'LINZ NETZ Energy Lakeside'
