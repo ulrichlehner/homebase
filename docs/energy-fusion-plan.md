@@ -284,6 +284,10 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-15: AppArmor profile `apparmor.txt` in complain mode (network, Python, system files read,
+  writes only to `/data`, `/config`, `/tmp`, no other programs; checked with `apparmor_parser`).
+  Next: read the host log for `apparmor="ALLOWED"` entries of `linznetz_energy` after some days of
+  running, add what is missing, then remove `complain`.
 - 2026-10-15: the live meter can be picked on the add-on page from the sensors that count energy
   upwards; the page writes it into the add-on configuration (`/addons/self/options`, which an add-on
   may call for itself without extra permissions; the stored options are read first, so `!secret`

@@ -180,6 +180,17 @@ The CSV files (readings, the reconstructed history and the raw portal exports) l
 configuration folder `/addon_configs/<id>_linznetz_energy/`, reachable with the Samba or SSH
 add-on, and are part of every Home Assistant backup that includes the add-on.
 
+## Security
+
+The add-on runs with Ingress (Home Assistant handles the login of its page, and the page only
+answers Home Assistant) and its own AppArmor profile (`apparmor.txt`): it may use the network,
+read Python and the system files it needs, and write only to its own folders; it starts no other
+program. The profile is in **complain** mode for now: nothing is blocked, access outside the
+rules is only logged by the host as `apparmor="ALLOWED"` with `profile="linznetz_energy"`. Once
+these entries stay away, a later version switches to enforcing the rules.
+
+Home Assistant's security rating of the add-on counts the profile once the add-on is installed.
+
 ## Uninstalling
 
 Uninstalling an add-on does not touch what it created in Home Assistant itself: the statistic lives

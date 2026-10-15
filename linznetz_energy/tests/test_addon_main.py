@@ -578,3 +578,10 @@ def test_another_live_meter_starts_a_new_archive(tmp_path):
     addon.update_live(hass, options(live_meter_entity='sensor.b'), tmp_path, start + timedelta(hours=4))
     assert addon.livearchive.read_hourly(tmp_path, METER) == {} and addon.livearchive.read_raw(tmp_path, METER) == {}
     assert addon.read_state(tmp_path)['live_meter_entity'] == 'sensor.b'
+
+
+def test_apparmor_profile_is_named_after_the_slug():
+    folder = Path(addon.__file__).resolve().parent.parent
+    slug = next(l.split(':', 1)[1].strip() for l in (folder / 'config.yaml').read_text().splitlines() if l.startswith('slug:'))
+    profile = (folder / 'apparmor.txt').read_text()
+    assert f'profile {slug} flags=(attach_disconnected,mediate_deleted,complain)' in profile
