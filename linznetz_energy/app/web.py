@@ -139,6 +139,7 @@ button.small { padding: 4px 12px; font-size: 14px; margin: 0; vertical-align: ba
 .pick button { flex: 0 0 auto; width: auto; height: 48px; margin: 0; padding: 0 24px; font-size: 16px; }
 .steps li::marker { color: var(--muted); font-weight: 500; }
 .steps + p { margin-top: 14px; }
+.gaps { margin: 6px 0; }
 table + p, table + form { margin-top: 14px; }
 .check { display: flex; gap: 10px; align-items: flex-start; margin-top: 4px; }
 .check input { margin-top: 5px; }
@@ -268,6 +269,16 @@ def render_page(status: dict, message=None) -> str:
         line = t(lang, 'page.stat_line', hours=s['hours'], first=s['from'], last=s['to'], kwh=f'{s["kwh"]:.1f}')
         return (f'<code>{html.escape(s["id"])}</code><br>{html.escape(line)}<br>'
                 f'<span class="muted">{html.escape(sources)}</span>{flagged}')
+
+    def gaps_row(key: str) -> str:
+        gaps = (stats.get(key) or {}).get('gaps') or []
+        if not gaps:
+            return f'<span class="muted">{t(lang, "page.gaps_none")}</span>'
+        shown = ''.join(f'<li>{html.escape(t(lang, "page.gap_line", first=g["from"], last=g["to"], hours=g["hours"]))}</li>'
+                        for g in gaps[:5])
+        more = f'<li class="muted">{html.escape(t(lang, "page.gaps_more", count=len(gaps) - 5))}</li>' if len(gaps) > 5 else ''
+        return (f'<span class="pill warn">{len(gaps)}</span><ul class="gaps">{shown}{more}</ul>'
+                f'<span class="muted">{html.escape(t(lang, "page.gaps_hint"))}</span>')
 
     def range_row(d: Optional[dict]) -> str:
         if not d:
@@ -403,6 +414,7 @@ def render_page(status: dict, message=None) -> str:
          if 'live' in data and (data.get('live') or status.get('live_check')) else []))}</table></div>
 <div class="card"><h2>{t(lang, 'page.statistics')}</h2><table>{_rows([
         (t(lang, 'page.stat_consumption'), stat_row('consumption')),
+    ] + ([(t(lang, 'page.gaps'), gaps_row('consumption'))] if stats.get('consumption') else []) + [
     ])}</table></div>
 {live_meter_html}
 {energy_html}

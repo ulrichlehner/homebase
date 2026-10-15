@@ -162,6 +162,12 @@ TEXTS = {
         'page.not_written': 'not written yet',
         'page.stat_line': '{hours} hours, {first} to {last}, {kwh} kWh',
         'page.deviating': '{count} deviating hours',
+        'page.gaps': 'Gaps',
+        'page.gaps_none': 'none',
+        'page.gap_line': '{first} to {last} ({hours} hours)',
+        'page.gaps_more': 'and {count} more',
+        'page.gaps_hint': 'No source covers these hours. Older readings (for example the readings.csv of the '
+                          'homebase tools) fill them via "Import older history" below.',
         'page.import_title': 'Import older history',
         'page.import_lead': 'The portal keeps only about 36 months. Older data from the homebase tools can be added '
                             'here; the files are checked and imported right away, and importing the same file again '
@@ -347,6 +353,12 @@ TEXTS = {
         'page.not_written': 'noch nicht geschrieben',
         'page.stat_line': '{hours} Stunden, {first} bis {last}, {kwh} kWh',
         'page.deviating': '{count} abweichende Stunden',
+        'page.gaps': 'Lücken',
+        'page.gaps_none': 'keine',
+        'page.gap_line': '{first} bis {last} ({hours} Stunden)',
+        'page.gaps_more': 'und {count} weitere',
+        'page.gaps_hint': 'Für diese Stunden hat keine Quelle Werte. Ältere Messwerte (etwa die readings.csv der '
+                          'homebase-Werkzeuge) füllen sie über „Ältere Daten importieren“ unten.',
         'page.import_title': 'Ältere Daten importieren',
         'page.import_lead': 'Das Portal hält nur etwa 36 Monate. Ältere Daten aus den homebase-Werkzeugen lassen sich '
                             'hier ergänzen; die Dateien werden geprüft und sofort importiert, dieselbe Datei nochmals '

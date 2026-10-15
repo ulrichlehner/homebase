@@ -376,15 +376,30 @@ def data_status(inputs: Inputs, zone: ZoneInfo) -> dict:
             'live': _range(list(inputs.live), zone)}
 
 
+def statistic_gaps(hours: list) -> list:
+    """The stretches inside the statistic no source covers: [(first missing hour, next present
+    hour, missing hours)] in UTC. The time after the newest hour is no gap (the portal is one to
+    two days behind)."""
+    out = []
+    for a, b in zip(hours, hours[1:]):
+        missing = int((b.start - a.start) / fusion.HOUR) - 1
+        if missing > 0:
+            out.append((a.start + fusion.HOUR, b.start, missing))
+    return out
+
+
 def statistic_status(statistic_id: str, hours: list, zone: ZoneInfo) -> dict:
     sources: dict = {}
     for h in hours:
         sources[h.source] = sources.get(h.source, 0) + 1
+    fmt = '%d.%m.%Y %H:%M'
     return {'id': statistic_id, 'hours': len(hours),
             'from': hours[0].start.astimezone(zone).strftime('%d.%m.%Y'),
             'to': hours[-1].start.astimezone(zone).strftime('%d.%m.%Y %H:%M'),
             'kwh': hours[-1].sum_wh / 1000, 'sources': sources,
-            'flagged': sum(1 for h in hours if h.flag)}
+            'flagged': sum(1 for h in hours if h.flag),
+            'gaps': [{'from': a.astimezone(zone).strftime(fmt), 'to': b.astimezone(zone).strftime(fmt), 'hours': n}
+                     for a, b, n in statistic_gaps(hours)]}
 
 
 def import_statistic(hass, statistic_id: str, name: str, stats: list) -> None:
