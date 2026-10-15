@@ -166,3 +166,31 @@ def test_page_offers_removal_and_after_it_reactivation():
 def test_the_confirm_dialog_text_stays_inside_its_attribute():
     page = W.render_page({'language': 'en'})
     assert 'onsubmit="return confirm(&quot;Delete the statistic, the device and the notifications of the add-on?&quot;)"' in page
+
+
+def test_live_meter_card_lists_the_candidates():
+    status = {'language': 'en', 'live_meter': 'sensor.a',
+              'live_candidates': [{'entity_id': 'sensor.a', 'name': 'A <grid>', 'state': '12.3', 'unit': 'kWh'},
+                                  {'entity_id': 'sensor.b', 'name': 'B', 'state': '4', 'unit': 'Wh'}]}
+    page = W.render_page(status)
+    assert '<h2>Live meter</h2>' in page and 'action="live_meter"' in page
+    assert '<option value="sensor.a" selected>A &lt;grid&gt; · sensor.a · 12.3 kWh</option>' in page
+    assert '<option value="">None (portal only)</option>' in page
+    other = W.render_page({**status, 'live_meter': 'sensor.typed_by_hand'})      # kept, even if not listed
+    assert '<option value="sensor.typed_by_hand" selected>' in other
+    assert '<h2>Live meter</h2>' not in W.render_page({'language': 'en'})        # before the first run
+    saved = W.render_page({**status, 'live_meter_result': {'state': 'saved', 'entity': 'sensor.a'}})
+    assert 'Saved: sensor.a.' in saved
+
+
+def test_live_meter_post_records_the_request(server):
+    url, store, wake = server
+    req = urllib.request.Request(url + '/live_meter', data=b'entity=sensor.place_grid_total', method='POST',
+                                 headers={'Content-Type': 'application/x-www-form-urlencoded'})
+    page = urllib.request.urlopen(req).read().decode()
+    assert 'Saving, the page updates itself.' in page and wake.is_set()
+    assert W.read_status(store)['live_meter_request'] == {'entity': 'sensor.place_grid_total'}
+    bad = urllib.request.Request(url + '/live_meter', data=b'entity=../x', method='POST')
+    with pytest.raises(urllib.error.HTTPError) as err:
+        urllib.request.urlopen(bad)
+    assert err.value.code == 400

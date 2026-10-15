@@ -284,6 +284,11 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-15: the live meter can be picked on the add-on page from the sensors that count energy
+  upwards; the page writes it into the add-on configuration (`/addons/self/options`, which an add-on
+  may call for itself without extra permissions; the stored options are read first, so `!secret`
+  references stay). Another counter starts a new live archive. DOCS explain the portal password as
+  `!secret`. New logo layout and a shorter add-on description.
 - 2026-10-15: dry run (read only) over the whole HA history of the counter, 12.10. 13:18 to 15.10.:
   13,371 readings, 1 rejected (the first one after the restart), no misread phase, no hour
   missing; 13.10. live 9.772 kWh vs portal 9.772 kWh, mean deviation 0.8 Wh per hour. The misread

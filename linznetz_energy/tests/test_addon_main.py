@@ -44,10 +44,25 @@ class FakeHass:
             if isinstance(self.energy_prefs, Exception):
                 raise self.energy_prefs
             return self.energy_prefs
+        if type_ == 'get_states':
+            return self.states_list
         assert type_ == 'get_config'
         return {'language': self.language, 'time_zone': 'Europe/Vienna'}
 
     language = 'en'
+    states_list = [
+        {'entity_id': 'sensor.place_grid_total_energy_consumption', 'state': '12345.678',
+         'attributes': {'unit_of_measurement': 'kWh', 'state_class': 'total_increasing', 'device_class': 'energy',
+                        'friendly_name': 'Place grid Total energy consumption'}},
+        {'entity_id': 'sensor.place_grid_power', 'state': '0.4',
+         'attributes': {'unit_of_measurement': 'kW', 'state_class': 'measurement'}},
+        {'entity_id': 'sensor.daily_energy', 'state': '3.2',
+         'attributes': {'unit_of_measurement': 'kWh', 'state_class': 'total_increasing', 'meter_period': 'daily'}},
+        {'entity_id': 'sensor.plug_energy', 'state': '812',
+         'attributes': {'unit_of_measurement': 'Wh', 'state_class': 'total'}},
+        {'entity_id': 'input_number.energy', 'state': '1', 'attributes': {'unit_of_measurement': 'kWh',
+                                                                          'state_class': 'total'}},
+    ]
     energy_prefs = {'energy_sources': [{'type': 'grid', 'flow_from': [
         {'stat_energy_from': 'sensor.place_grid_total_energy_consumption'}], 'flow_to': []},
         {'type': 'solar', 'stat_energy_from': 'sensor.pv'}]}
@@ -490,3 +505,76 @@ def test_mqtt_remove_sends_empty_retained_messages(monkeypatch):
     assert mqtt_status.remove({'host': 'h'}, 'lakeside') is True
     assert len(sent) == len(mqtt_status.ENTITIES) + 1 and all(p == '' and r for _, p, r in sent)
     assert ('homeassistant/binary_sensor/linznetz_energy_lakeside/portal_login_problem/config', '', True) in sent
+
+
+# -- Live meter picked on the add-on page ------------------------------------------------------------
+
+def test_live_meter_candidates_are_upward_energy_counters():
+    candidates = addon.live_meter_candidates(FakeHass())
+    assert [c['entity_id'] for c in candidates] == ['sensor.place_grid_total_energy_consumption', 'sensor.plug_energy']
+    assert candidates[0] == {'entity_id': 'sensor.place_grid_total_energy_consumption',
+                             'name': 'Place grid Total energy consumption', 'state': '12345.678', 'unit': 'kWh'}
+
+
+class FakeSupervisor:
+    def __init__(self, options, status=200):
+        self.options, self.status, self.posted = options, status, []
+
+    def get(self, url, headers=None, timeout=None):
+        assert url == 'http://supervisor/addons/self/info'
+        return FakeResponse(200, {'data': {'options': self.options}})
+
+    def post(self, url, json=None, headers=None, timeout=None):
+        assert url == 'http://supervisor/addons/self/options'
+        self.posted.append(json)
+        return FakeResponse(self.status, {})
+
+
+class FakeResponse:
+    def __init__(self, status_code, body):
+        self.status_code, self.body, self.text = status_code, body, 'error text'
+
+    def raise_for_status(self):
+        if self.status_code != 200:
+            raise addon.requests.HTTPError(str(self.status_code))
+
+    def json(self):
+        return self.body
+
+
+def test_live_meter_choice_is_saved_into_the_configuration(tmp_path, monkeypatch):
+    stored = {'portal_username': 'u', 'portal_password': '!secret linznetz_password', 'metering_point': METER,
+              'site': 'Place', 'fetch_interval_hours': 12, 'live_meter_entity': ''}
+    supervisor = FakeSupervisor(stored)
+    monkeypatch.setattr(addon, 'requests', type('R', (), {'get': supervisor.get, 'post': supervisor.post,
+                                                          'RequestException': addon.requests.RequestException}))
+    addon.web.write_status(tmp_path, live_meter_request={'entity': 'sensor.place_grid_total_energy_consumption'})
+    new = addon.handle_live_meter_request(FakeHass(), options(), tmp_path)
+    assert new.live_meter_entity == 'sensor.place_grid_total_energy_consumption'
+    # all options are sent back as stored: the secret stays a reference
+    assert supervisor.posted == [{'options': {**stored, 'live_meter_entity': 'sensor.place_grid_total_energy_consumption'}}]
+    status = addon.web.read_status(tmp_path)
+    assert status['live_meter_result']['state'] == 'saved' and status['live_meter_request'] is None
+
+
+def test_live_meter_choice_must_be_a_candidate_and_failures_are_shown(tmp_path, monkeypatch):
+    supervisor = FakeSupervisor({'live_meter_entity': ''}, status=400)
+    monkeypatch.setattr(addon, 'requests', type('R', (), {'get': supervisor.get, 'post': supervisor.post,
+                                                          'RequestException': addon.requests.RequestException}))
+    addon.web.write_status(tmp_path, live_meter_request={'entity': 'sensor.place_grid_power'})
+    assert addon.handle_live_meter_request(FakeHass(), options(), tmp_path).live_meter_entity == ''
+    assert addon.web.read_status(tmp_path)['live_meter_result']['state'] == 'unknown' and supervisor.posted == []
+    addon.web.write_status(tmp_path, live_meter_request={'entity': 'sensor.plug_energy'})
+    assert addon.handle_live_meter_request(FakeHass(), options(), tmp_path).live_meter_entity == ''
+    assert addon.web.read_status(tmp_path)['live_meter_result']['state'] == 'failed'
+
+
+def test_another_live_meter_starts_a_new_archive(tmp_path):
+    start = datetime(2026, 10, 1, tzinfo=ZONE).astimezone(UTC)
+    hass = FakeHassWithHistory(live_states(start, 3))
+    addon.update_live(hass, options(live_meter_entity='sensor.a'), tmp_path, start + timedelta(hours=3))
+    assert addon.livearchive.read_hourly(tmp_path, METER)
+    hass = FakeHassWithHistory([])
+    addon.update_live(hass, options(live_meter_entity='sensor.b'), tmp_path, start + timedelta(hours=4))
+    assert addon.livearchive.read_hourly(tmp_path, METER) == {} and addon.livearchive.read_raw(tmp_path, METER) == {}
+    assert addon.read_state(tmp_path)['live_meter_entity'] == 'sensor.b'

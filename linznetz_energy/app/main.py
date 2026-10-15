@@ -39,7 +39,7 @@ import shutil
 import sys
 import threading
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -50,6 +50,7 @@ from homebase.hass import HomeAssistant, HomeAssistantError
 from homebase.portal import LinzNetzError, LoginError
 
 import mqtt_status
+import requests
 import web
 from texts import t
 
@@ -57,6 +58,8 @@ logger = logging.getLogger('addon')
 
 UTC = ZoneInfo('UTC')
 SUPERVISOR_WS = 'http://supervisor/core/websocket'
+SUPERVISOR_SELF = 'http://supervisor/addons/self'
+ENERGY_UNITS = ('Wh', 'kWh', 'MWh')
 RUN_MINUTE = 7                   # minutes past the hour: the recorder has compiled the hour
 IMPORT_CHUNK = 5000              # rows per import call, keeps websocket messages small
 LOGIN_NOTIFICATION = 'linznetz_energy_login'
@@ -269,7 +272,16 @@ class Inputs:
 
 
 def update_live(hass, options: Options, store: Path, now: datetime) -> dict:
-    """New raw states of the live counter from HA into the live archive (see homebase.livearchive)."""
+    """New raw states of the live counter from HA into the live archive (see homebase.livearchive).
+    Another entity than last time starts a new archive."""
+    state = read_state(store)
+    if state.get('live_meter_entity') != options.live_meter_entity:
+        if state.get('live_meter_entity'):
+            logger.info('Live meter changed from %s to %s, starting a new live archive',
+                        state['live_meter_entity'], options.live_meter_entity)
+            livearchive.clear(store, options.metering_point)
+        state['live_meter_entity'] = options.live_meter_entity
+        write_state(store, state)
     last = livearchive.last_raw_time(store, options.metering_point)
     since = last - timedelta(hours=1) if last else now - timedelta(days=LIVE_HISTORY_DAYS)
     states = hass.history(options.live_meter_entity, since)
@@ -440,6 +452,57 @@ def remove_portal_statistic(hass, options: Options, store: Path, state: dict) ->
         return
     state['portal_statistic_removed'] = True
     write_state(store, state)
+
+
+def live_meter_candidates(hass) -> list:
+    """The sensors that can be the live meter: energy counters that only count up (unit Wh, kWh or
+    MWh, state class total or total_increasing), without utility meters (they reset every period).
+    [{entity_id, name, state, unit}], sorted by entity ID."""
+    out = []
+    for s in hass.call('get_states') or []:
+        entity_id, attrs = s.get('entity_id', ''), s.get('attributes') or {}
+        if (not entity_id.startswith('sensor.') or attrs.get('unit_of_measurement') not in ENERGY_UNITS
+                or attrs.get('state_class') not in ('total', 'total_increasing')
+                or 'meter_period' in attrs or 'last_reset' in attrs and attrs.get('last_reset')):
+            continue
+        out.append({'entity_id': entity_id, 'name': attrs.get('friendly_name') or entity_id,
+                    'state': s.get('state'), 'unit': attrs['unit_of_measurement']})
+    return sorted(out, key=lambda c: c['entity_id'])
+
+
+def save_live_meter(entity_id: str) -> None:
+    """Writes `live_meter_entity` into the add-on configuration (the Configuration tab shows it).
+    The Supervisor replaces all options at once, so the stored ones are read first; they come
+    unresolved, so `!secret` references stay references. Raises requests.RequestException."""
+    headers = {'Authorization': f'Bearer {os.environ.get("SUPERVISOR_TOKEN", "")}'}
+    r = requests.get(f'{SUPERVISOR_SELF}/info', headers=headers, timeout=10)
+    r.raise_for_status()
+    stored = dict(r.json()['data']['options'])
+    stored['live_meter_entity'] = entity_id
+    r = requests.post(f'{SUPERVISOR_SELF}/options', json={'options': stored}, headers=headers, timeout=10)
+    if r.status_code != 200:
+        raise requests.RequestException(f'Supervisor {r.status_code}: {r.text[:200]}')
+
+
+def handle_live_meter_request(hass, options: Options, store: Path) -> Options:
+    """Carries out the live meter choice of the add-on page; returns the options to use from now on."""
+    request = web.read_status(store).get('live_meter_request')
+    if request is None:
+        return options
+    entity_id = request.get('entity', '')
+    candidates = {c['entity_id'] for c in live_meter_candidates(hass)}
+    if entity_id and entity_id not in candidates:
+        web.write_status(store, live_meter_request=None, live_meter_result={'state': 'unknown', 'entity': entity_id})
+        return options
+    try:
+        save_live_meter(entity_id)
+    except (requests.RequestException, KeyError, ValueError) as err:
+        logger.error('Could not save the live meter %s: %s', entity_id or '(none)', err)
+        web.write_status(store, live_meter_request=None, live_meter_result={'state': 'failed', 'error': str(err)[:200]})
+        return options
+    logger.info('Live meter set on the add-on page: %s', entity_id or '(none, portal only)')
+    web.write_status(store, live_meter_request=None, live_meter_result={'state': 'saved', 'entity': entity_id})
+    return replace(options, live_meter_entity=entity_id)
 
 
 ALL_NOTIFICATIONS = (LOGIN_NOTIFICATION, IMPORT_NOTIFICATION, DOWNLOAD_NOTIFICATION, SETUP_NOTIFICATION,
@@ -617,6 +680,12 @@ def main(argv=None) -> int:
                 config = hass.call('get_config') or {}
                 tz = config.get('time_zone') or 'Europe/Vienna'
                 handle_removal_request(hass, options, store)
+                options = handle_live_meter_request(hass, options, store)
+                try:
+                    web.write_status(store, live_meter=options.live_meter_entity,
+                                     live_candidates=live_meter_candidates(hass))
+                except HomeAssistantError as err:
+                    logger.warning('Could not list the sensors for the live meter: %s', err)
                 if read_state(store).get('removed'):
                     # paused after "remove everything": nothing is created again until reactivated
                     web.write_status(store, phase='removed', detail='', language=config.get('language') or 'en')

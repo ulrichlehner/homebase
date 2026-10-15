@@ -92,6 +92,13 @@ def parse_states(states: list) -> dict:
     return out
 
 
+def clear(folder: Path, meter_id: str) -> None:
+    """Deletes the archive, e.g. when another counter becomes the live source: its readings
+    would not continue the old ones."""
+    for path in (raw_path(folder, meter_id), hourly_path(folder, meter_id)):
+        path.unlink(missing_ok=True)
+
+
 def last_raw_time(folder: Path, meter_id: str) -> Optional[datetime]:
     raw = read_raw(folder, meter_id)
     return max(raw) if raw else None
