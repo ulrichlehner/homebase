@@ -34,7 +34,6 @@ notifications follow the language of Home Assistant (German and English; the log
 | `metering_point`       | the metering point number (Zählpunktnummer, not the meter number), 33 characters starting with `AT`; spaces, dots and lowercase letters are fine |
 | `site`                 | name of the place, shown as you write it (default `Home`); the statistic IDs use a simplified form (`Zweitwohnsitz Linz` → `zweitwohnsitz_linz`) |
 | `fetch_interval_hours` | hours between two portal fetches (default 12, 6 to 48)                     |
-| `live_meter_entity`    | optional: a live energy counter of the meter in Home Assistant (total in kWh), for example from the meter's wM-Bus radio: `sensor.home_grid_total_energy_consumption`; easier to pick from a list on the add-on page (see below) |
 
 ### The portal password as a secret
 
@@ -73,7 +72,8 @@ Every hour, a few minutes past the full hour, the add-on
 
 1. takes over history files you dropped into its `import/` folder (see below),
 2. fetches new readings from the portal when `fetch_interval_hours` have passed since the last
-   successful fetch (the first run downloads everything the portal still has, about three years),
+   successful fetch (the first run downloads everything the portal still has, about three years;
+   **Fetch now** on the add-on page fetches right away),
 3. imports one external statistic, `linznetz_energy:<site>_grid_consumption`, shown as
    "<Site> grid consumption" (in German "<Site> Netzbezug"): the best source per hour (the live meter
    readings, then the portal readings, then the imported reconstructed history). It is rebuilt
@@ -94,9 +94,9 @@ the live source: for example the meter's wM-Bus radio received with the wmbusmet
 
 Pick it on the add-on page (**Open Web UI**) under **Live meter**: the list shows the sensors that
 count energy upwards (Wh, kWh or MWh, without daily or monthly utility meters) with their current
-value, so the right counter is easy to spot. **Save** writes it into the add-on configuration as
-`live_meter_entity` (the **Configuration** tab shows it too), and it is used from the next run on,
-without a restart. Typing the entity into the Configuration tab works as well.
+value, so the right counter is easy to spot. **Save** applies it right away, without a restart.
+The choice is kept in the add-on's own folder (and so in its backups); the page is the one place
+to pick it.
 
 Choosing another counter later starts a new live archive, because its readings do not continue
 the old ones; the hours before stay covered by the portal. With a live meter, the add-on
@@ -121,11 +121,13 @@ The statistic "<Site> grid consumption" ("<Site> Netzbezug") is meant for the En
 whole history, the live meter readings, gaps filled by the portal. The add-on never changes the
 dashboard itself; its page shows what the dashboard uses now and what to do:
 
-1. Make a backup (Settings > System > Backups).
-2. Open Settings > Dashboards > Energy. Under **grid consumption** add "<Site> grid consumption"
-   and remove the sensor used so far (for example the live counter); keeping both counts the
-   consumption twice.
-3. Check a few days in the Energy dashboard against your bill or the portal.
+1. **Settings > Backup**: create a backup.
+2. **Settings > Energy**, section **Electricity grid**: open **Edit grid connection** (pencil) at
+   the grid connection, or **Add grid connection** if there is none yet.
+3. Under **Energy imported from grid**, choose "<Site> grid consumption" instead of the sensor used
+   so far (for example the live counter) and save. Do not keep both: that counts the consumption
+   twice.
+4. Check a few days in the Energy dashboard against your bill or the portal.
 
 This can be undone at any time: the old statistics of the sensor stay, switch back the same way.
 

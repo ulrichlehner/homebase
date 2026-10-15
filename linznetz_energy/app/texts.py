@@ -21,19 +21,18 @@ TEXTS = {
         # notifications
         'secret.title': 'LINZ NETZ Energy: portal password in plain text',
         'secret.intro': 'The portal password is stored as plain text in the app configuration, and its YAML view shows '
-                        'it. Home Assistant keeps passwords in the file secrets.yaml; the configuration then only '
+                        'it. Home Assistant keeps passwords in the file `secrets.yaml`; the configuration then only '
                         'names them. To move it there:',
-        'secret.step1': 'Install the app "File editor": Settings > Apps > Install app, search "File editor", Install, '
-                        'then Start (switch on "Show in sidebar").',
-        'secret.step2': 'Open File editor in the sidebar, click the folder icon at the top left and open secrets.yaml '
-                        '(it is there in every installation).',
-        'secret.step3': 'Add a new line at the end: linznetz_password: "your portal password" (with the quotes), then '
-                        'save with the disk icon at the top.',
-        'secret.step4': 'Open Settings > Apps > LINZ NETZ Energy, tab Configuration. Click the menu (⋮) at the top right '
-                        'of the options and choose "Edit in YAML".',
-        'secret.step5': 'Replace the line portal_password: … with portal_password: "!secret linznetz_password" and '
-                        'click Save.',
-        'secret.step6': 'Tab Info: Restart. This message goes away; File editor can be uninstalled again.',
+        'secret.step1': '**Settings > Apps > Install app**: search "File editor", **Install**, then **Start** and switch '
+                        'on **Show in sidebar**.',
+        'secret.step2': 'Open **File editor** in the sidebar, click the folder icon at the top left and open `secrets.yaml`.',
+        'secret.step3': 'Add a line at the end, with the quotes: `linznetz_password: "your portal password"`, then save '
+                        '(disk icon).',
+        'secret.step4': '**Settings > Apps > LINZ NETZ Energy**, tab **Configuration**: menu (⋮) at the top right of the '
+                        'options > **Edit in YAML**.',
+        'secret.step5': 'Replace the line `portal_password: …` with `portal_password: "!secret linznetz_password"` and '
+                        'click **Save**.',
+        'secret.step6': 'Tab **Info**: **Restart**. This message goes away; File editor can be uninstalled again.',
         'secret.outro': 'The app works either way.',
         'page.secret_title': 'Portal password in plain text',
         'setup.title': 'LINZ NETZ Energy: setup needed',
@@ -64,7 +63,6 @@ TEXTS = {
                                'imported',
         # page
         'stat.consumption': '{site} grid consumption',
-        'problem.live_meter_entity': 'The live meter reading "{value}" is not an entity ID like sensor.home_grid_total_energy_consumption.',
         'deviation.title': 'LINZ NETZ Energy: live meter and portal differ',
         'deviation.text': 'On these days the live meter readings differ from the portal by more than 2 % '
                           '(live / portal): {details}. The live values are kept; please check the live source (for example the receiver) and the meter.',
@@ -81,23 +79,30 @@ TEXTS = {
         'page.live_check_line': 'last complete day {day}: {percent} %; {hours} deviating hours in 7 days',
         'page.live_check_none': 'no day with both complete yet',
         'page.live_meter': 'Live meter',
-        'page.live_meter_lead': 'A live energy counter of the meter in Home Assistant becomes the primary source of the '
-                                'consumption statistic; the portal checks it and fills gaps. Listed are the sensors '
-                                'that count energy upwards, with their current value.',
+        'page.live_meter_lead': 'The meter\'s live counter in Home Assistant becomes the primary source of the consumption '
+                                'statistic; the portal checks it and fills gaps.',
         'page.live_meter_none': 'None (portal only)',
         'page.live_meter_save': 'Save',
         'page.live_meter_no_candidates': 'Home Assistant has no sensor that counts energy upwards (kWh) yet.',
         'page.live_meter_requested': 'Saving, the page updates itself.',
-        'page.live_meter_saved': 'Saved: {entity}. The Configuration tab shows it too; it is used from the next run on.',
-        'page.live_meter_failed': 'Saving did not work ({error}). Enter the sensor in the Configuration tab instead.',
+        'page.live_meter_saved': 'Saved: {entity}. It is used right away.',
         'page.live_meter_unknown': '{entity} is not a sensor that counts energy upwards.',
         'page.energy': 'Energy dashboard',
-        'page.energy_ok': 'Uses "{name}" as grid consumption.',
-        'page.energy_double': 'It also uses {others}: please remove it there, otherwise the consumption is counted twice.',
-        'page.energy_switch': 'To use "{name}" (the full history, live meter readings, gaps filled by the portal): '
-                              'make a backup, then open Settings > Dashboards > Energy, add "{name}" under grid '
-                              'consumption and remove {current}. This can be undone at any time; the old '
-                              'statistics stay.',
+        'page.energy_ok': 'Uses **{name}** as energy imported from the grid.',
+        'page.energy_double': 'It also uses {others}: remove it there, otherwise the consumption is counted twice.',
+        'page.energy_switch': '**{name}** holds the whole history, the live meter readings and the gaps filled by the '
+                              'portal. To use it in the Energy dashboard:',
+        'page.fetch_now': 'Fetch now',
+        'page.fetch_requested': 'Fetching from the portal, the page updates itself.',
+        'page.live_meter_in_use': 'In use',
+        'page.live_meter_choose': 'Choose a counter',
+        'page.energy_uses': 'Grid import now',
+        'page.energy_step_backup': '**Settings > Backup**: create a backup.',
+        'page.energy_step_open': '**Settings > Energy**, section **Electricity grid**: open **Edit grid connection** '
+                                 '(pencil) at the grid connection.',
+        'page.energy_step_pick': 'Under **Energy imported from grid**, choose "{name}" instead of {current} and save.',
+        'page.energy_step_add': 'Choose **Add grid connection**, pick "{name}" under **Energy imported from grid** and save.',
+        'page.energy_undo': 'This can be undone at any time the same way; the statistics of the old sensor stay.',
         'page.energy_none': 'nothing yet',
         'page.energy_unknown': 'The configuration of the Energy dashboard could not be read.',
         'page.remove_title': 'Remove everything from Home Assistant',
@@ -191,19 +196,19 @@ TEXTS = {
         'problem.site': 'Der Standort braucht mindestens einen Buchstaben oder eine Ziffer.',
         'secret.title': 'LINZ NETZ Energy: Portal-Passwort im Klartext',
         'secret.intro': 'Das Portal-Passwort steht im Klartext in der Konfiguration der App, ihre YAML-Ansicht zeigt es '
-                        'an. Home Assistant hält Passwörter in der Datei secrets.yaml; die Konfiguration nennt sie dann '
+                        'an. Home Assistant hält Passwörter in der Datei `secrets.yaml`; die Konfiguration nennt sie dann '
                         'nur beim Namen. So zieht es dorthin um:',
-        'secret.step1': 'Die App „File editor“ installieren: Einstellungen > Apps > App installieren, nach „File editor“ '
-                        'suchen, Installieren, dann Starten („In Seitenleiste anzeigen“ einschalten).',
-        'secret.step2': 'File editor in der Seitenleiste öffnen, oben links auf das Ordnersymbol klicken und '
-                        'secrets.yaml öffnen (die Datei gibt es in jeder Installation).',
-        'secret.step3': 'Am Ende eine neue Zeile ergänzen: linznetz_password: "dein Portal-Passwort" (mit den '
-                        'Anführungszeichen), dann oben mit dem Diskettensymbol speichern.',
-        'secret.step4': 'Einstellungen > Apps > LINZ NETZ Energy öffnen, Tab Konfiguration. Oben rechts bei den Optionen '
-                        'auf das Menü (⋮) klicken und „In YAML bearbeiten“ wählen.',
-        'secret.step5': 'Die Zeile portal_password: … ersetzen durch portal_password: "!secret linznetz_password" und '
-                        'Speichern klicken.',
-        'secret.step6': 'Tab Info: Neu starten. Diese Meldung verschwindet; File editor kann danach wieder '
+        'secret.step1': '**Einstellungen > Apps > App installieren**: nach „File editor“ suchen, **Installieren**, dann '
+                        '**Starten** und **In Seitenleiste anzeigen** einschalten.',
+        'secret.step2': '**File editor** in der Seitenleiste öffnen, oben links auf das Ordnersymbol klicken und '
+                        '`secrets.yaml` öffnen.',
+        'secret.step3': 'Am Ende eine Zeile ergänzen, mit den Anführungszeichen: `linznetz_password: "dein Portal-Passwort"`, '
+                        'dann speichern (Diskettensymbol).',
+        'secret.step4': '**Einstellungen > Apps > LINZ NETZ Energy**, Tab **Konfiguration**: Menü (⋮) oben rechts bei den '
+                        'Optionen > **In YAML bearbeiten**.',
+        'secret.step5': 'Die Zeile `portal_password: …` ersetzen durch `portal_password: "!secret linznetz_password"` und '
+                        '**Speichern** klicken.',
+        'secret.step6': 'Tab **Info**: **Neu starten**. Diese Meldung verschwindet; File editor kann danach wieder '
                         'deinstalliert werden.',
         'secret.outro': 'Die App funktioniert so oder so.',
         'page.secret_title': 'Portal-Passwort im Klartext',
@@ -234,7 +239,6 @@ TEXTS = {
         'import.bad_header': 'die Datei hat nicht die erwarteten Spalten',
         'import.unknown_file': 'importiert werden nur <Zählpunkt>_readings.csv und <Zählpunkt>_reconstructed_15min.csv',
         'stat.consumption': '{site} Netzbezug',
-        'problem.live_meter_entity': 'Der Live-Zählerstand „{value}“ ist keine Entitäts-ID wie sensor.home_grid_total_energy_consumption.',
         'deviation.title': 'LINZ NETZ Energy: Live-Zähler und Portal weichen ab',
         'deviation.text': 'An diesen Tagen weichen die Live-Werte des Zählers um mehr als 2 % vom Portal ab '
                           '(Live / Portal): {details}. Die Live-Werte bleiben; bitte die Live-Quelle (etwa den Empfänger) und den Zähler prüfen.',
@@ -251,23 +255,32 @@ TEXTS = {
         'page.live_check_line': 'letzter vollständiger Tag {day}: {percent} %; {hours} abweichende Stunden in 7 Tagen',
         'page.live_check_none': 'noch kein Tag, den beide vollständig haben',
         'page.live_meter': 'Live-Zähler',
-        'page.live_meter_lead': 'Ein Live-Zählerstand des Zählers in Home Assistant wird zur Hauptquelle der '
-                                'Verbrauchsstatistik; das Portal prüft ihn und füllt Lücken. Aufgelistet sind die '
-                                'Sensoren, die Energie aufwärts zählen, mit ihrem aktuellen Wert.',
+        'page.live_meter_lead': 'Der Live-Zählerstand des Zählers in Home Assistant wird zur Hauptquelle der '
+                                'Verbrauchsstatistik; das Portal prüft ihn und füllt Lücken.',
         'page.live_meter_none': 'Keiner (nur Portal)',
         'page.live_meter_save': 'Speichern',
         'page.live_meter_no_candidates': 'Home Assistant hat noch keinen Sensor, der Energie aufwärts zählt (kWh).',
         'page.live_meter_requested': 'Wird gespeichert, die Seite aktualisiert sich selbst.',
-        'page.live_meter_saved': 'Gespeichert: {entity}. Der Tab Konfiguration zeigt ihn auch; er gilt ab dem nächsten Lauf.',
-        'page.live_meter_failed': 'Speichern hat nicht geklappt ({error}). Bitte den Sensor im Tab Konfiguration eintragen.',
+        'page.live_meter_saved': 'Gespeichert: {entity}. Er gilt ab sofort.',
         'page.live_meter_unknown': '{entity} ist kein Sensor, der Energie aufwärts zählt.',
         'page.energy': 'Energie-Dashboard',
-        'page.energy_ok': 'Nutzt „{name}“ als Netzbezug.',
+        'page.energy_ok': 'Nutzt **{name}** als aus dem Netz bezogene Energie.',
         'page.energy_double': 'Es nutzt zusätzlich {others}: bitte dort entfernen, sonst wird der Verbrauch doppelt gezählt.',
-        'page.energy_switch': 'Um „{name}“ zu nutzen (der ganze Verlauf, Live-Zählerwerte, Lücken vom Portal gefüllt): '
-                              'Backup machen, dann Einstellungen > Dashboards > Energie öffnen, unter Netzbezug '
-                              '„{name}“ hinzufügen und {current} entfernen. Das lässt sich jederzeit rückgängig '
-                              'machen; die alten Statistiken bleiben.',
+        'page.energy_switch': '**{name}** enthält den ganzen Verlauf, die Live-Zählerwerte und die vom Portal gefüllten '
+                              'Lücken. So nutzt du sie im Energie-Dashboard:',
+        'page.fetch_now': 'Jetzt abrufen',
+        'page.fetch_requested': 'Wird vom Portal abgerufen, die Seite aktualisiert sich selbst.',
+        'page.live_meter_in_use': 'In Verwendung',
+        'page.live_meter_choose': 'Zähler wählen',
+        'page.energy_uses': 'Netzbezug derzeit',
+        'page.energy_step_backup': '**Einstellungen > Backup**: ein Backup erstellen.',
+        'page.energy_step_open': '**Einstellungen > Energie**, Abschnitt **Stromnetz**: beim Netzanschluss '
+                                 '**Netzanschluss bearbeiten** (Stift) öffnen.',
+        'page.energy_step_pick': 'Bei **Aus dem Netz bezogene Energie** „{name}“ statt {current} wählen und speichern.',
+        'page.energy_step_add': '**Netzanschluss hinzufügen** wählen, bei **Aus dem Netz bezogene Energie** „{name}“ '
+                                'auswählen und speichern.',
+        'page.energy_undo': 'Lässt sich jederzeit auf dem gleichen Weg rückgängig machen; die Statistiken des alten '
+                            'Sensors bleiben.',
         'page.energy_none': 'noch nichts',
         'page.energy_unknown': 'Die Einstellungen des Energie-Dashboards ließen sich nicht lesen.',
         'page.remove_title': 'Alles aus Home Assistant entfernen',

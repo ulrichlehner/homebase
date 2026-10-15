@@ -356,12 +356,6 @@ def test_a_deviating_day_is_notified_once(tmp_path, monkeypatch):
     assert len([s for s in hass.services if s[2].get('notification_id') == addon.DEVIATION_NOTIFICATION]) == 1
 
 
-def test_live_meter_entity_must_look_like_an_entity(tmp_path):
-    path = tmp_path / 'options.json'
-    path.write_text(json.dumps({'portal_username': 'u', 'portal_password': 'p', 'metering_point': METER,
-                                'live_meter_entity': 'Lakeside grid'}))
-    assert addon.load_options(path)[1] == [('problem.live_meter_entity', {'value': 'Lakeside grid'})]
-
 
 def test_status_entities_over_mqtt(tmp_path, monkeypatch):
     published = []
@@ -516,57 +510,34 @@ def test_live_meter_candidates_are_upward_energy_counters():
                              'name': 'Place grid Total energy consumption', 'state': '12345.678', 'unit': 'kWh'}
 
 
-class FakeSupervisor:
-    def __init__(self, options, status=200):
-        self.options, self.status, self.posted = options, status, []
-
-    def get(self, url, headers=None, timeout=None):
-        assert url == 'http://supervisor/addons/self/info'
-        return FakeResponse(200, {'data': {'options': self.options}})
-
-    def post(self, url, json=None, headers=None, timeout=None):
-        assert url == 'http://supervisor/addons/self/options'
-        self.posted.append(json)
-        return FakeResponse(self.status, {})
-
-
-class FakeResponse:
-    def __init__(self, status_code, body):
-        self.status_code, self.body, self.text = status_code, body, 'error text'
-
-    def raise_for_status(self):
-        if self.status_code != 200:
-            raise addon.requests.HTTPError(str(self.status_code))
-
-    def json(self):
-        return self.body
-
-
-def test_live_meter_choice_is_saved_into_the_configuration(tmp_path, monkeypatch):
-    stored = {'portal_username': 'u', 'portal_password': '!secret linznetz_password', 'metering_point': METER,
-              'site': 'Place', 'fetch_interval_hours': 12, 'live_meter_entity': ''}
-    supervisor = FakeSupervisor(stored)
-    monkeypatch.setattr(addon, 'requests', type('R', (), {'get': supervisor.get, 'post': supervisor.post,
-                                                          'RequestException': addon.requests.RequestException}))
+def test_live_meter_choice_is_kept_in_the_state(tmp_path):
     addon.web.write_status(tmp_path, live_meter_request={'entity': 'sensor.place_grid_total_energy_consumption'})
-    new = addon.handle_live_meter_request(FakeHass(), options(), tmp_path)
-    assert new.live_meter_entity == 'sensor.place_grid_total_energy_consumption'
-    # all options are sent back as stored: the secret stays a reference
-    assert supervisor.posted == [{'options': {**stored, 'live_meter_entity': 'sensor.place_grid_total_energy_consumption'}}]
+    addon.handle_live_meter_request(FakeHass(), tmp_path)
+    assert addon.read_state(tmp_path)['live_meter'] == 'sensor.place_grid_total_energy_consumption'
     status = addon.web.read_status(tmp_path)
     assert status['live_meter_result']['state'] == 'saved' and status['live_meter_request'] is None
+    addon.web.write_status(tmp_path, live_meter_request={'entity': ''})                  # back to portal only
+    addon.handle_live_meter_request(FakeHass(), tmp_path)
+    assert addon.read_state(tmp_path)['live_meter'] == ''
 
 
-def test_live_meter_choice_must_be_a_candidate_and_failures_are_shown(tmp_path, monkeypatch):
-    supervisor = FakeSupervisor({'live_meter_entity': ''}, status=400)
-    monkeypatch.setattr(addon, 'requests', type('R', (), {'get': supervisor.get, 'post': supervisor.post,
-                                                          'RequestException': addon.requests.RequestException}))
+def test_live_meter_choice_must_be_a_candidate(tmp_path):
     addon.web.write_status(tmp_path, live_meter_request={'entity': 'sensor.place_grid_power'})
-    assert addon.handle_live_meter_request(FakeHass(), options(), tmp_path).live_meter_entity == ''
-    assert addon.web.read_status(tmp_path)['live_meter_result']['state'] == 'unknown' and supervisor.posted == []
-    addon.web.write_status(tmp_path, live_meter_request={'entity': 'sensor.plug_energy'})
-    assert addon.handle_live_meter_request(FakeHass(), options(), tmp_path).live_meter_entity == ''
-    assert addon.web.read_status(tmp_path)['live_meter_result']['state'] == 'failed'
+    addon.handle_live_meter_request(FakeHass(), tmp_path)
+    assert 'live_meter' not in addon.read_state(tmp_path)
+    assert addon.web.read_status(tmp_path)['live_meter_result']['state'] == 'unknown'
+
+
+def test_the_fetch_button_fetches_before_the_interval_is_over(tmp_path, monkeypatch):
+    fetched = []
+    monkeypatch.setattr(addon, 'fetch_portal', lambda *a: fetched.append(a))
+    monkeypatch.setattr(addon.mqtt_status, 'broker', lambda: None)
+    write_readings(tmp_path, hours=2)
+    addon.write_state(tmp_path, {'portal_ok': NOW.isoformat()})                       # fetched just now
+    addon.run_once(FakeHass(), options(), tmp_path, 'Europe/Vienna', NOW)
+    assert fetched == []
+    addon.run_once(FakeHass(), options(), tmp_path, 'Europe/Vienna', NOW, fetch_now=True)
+    assert len(fetched) == 1
 
 
 def test_another_live_meter_starts_a_new_archive(tmp_path):
@@ -596,7 +567,7 @@ def test_a_plain_text_password_is_warned_about_once(tmp_path, monkeypatch):
     addon.check_password_secret(hass, tmp_path, 'de')
     addon.check_password_secret(hass, tmp_path, 'de')
     notes = [s[2] for s in hass.services if s[2].get('notification_id') == addon.SECRET_NOTIFICATION]
-    assert len(notes) == 1 and 'In YAML bearbeiten' in notes[0]['message'] and '6. Tab Info' in notes[0]['message']
+    assert len(notes) == 1 and '**In YAML bearbeiten**' in notes[0]['message'] and '6. Tab **Info**' in notes[0]['message']
     assert addon.web.read_status(tmp_path)['password_secret'] is False
     stored['portal_password'] = '!secret linznetz_password'
     addon.check_password_secret(hass, tmp_path, 'de')

@@ -10,9 +10,6 @@ configuration:
   site:
     name: Standort
     description: Name des Orts, wird so angezeigt wie eingegeben (z. B. „Home“ oder „Zweitwohnsitz Linz“). Die Statistik-IDs verwenden eine vereinfachte Form (linznetz_energy:zweitwohnsitz_linz_grid_consumption).
-  live_meter_entity:
-    name: Live-Zählerstand (optional)
-    description: Ein Live-Zählerstand des Zählers in Home Assistant (Gesamt in kWh), etwa aus dem wM-Bus-Funk des Zählers, z. B. sensor.home_grid_total_energy_consumption. Seine Werte werden zur Hauptquelle der Verbrauchsstatistik; das Portal prüft sie und füllt Lücken. Leer bedeutet nur Portal. Einfacher: auf der Seite der App (Benutzeroberfläche öffnen) aus einer Liste wählen.
   fetch_interval_hours:
     name: Abrufintervall Portal (Stunden)
     description: Wie oft neue Werte vom Portal geholt werden. Das Portal zeigt einen Tag erst ein bis zwei Tage später, 12 Stunden reichen.

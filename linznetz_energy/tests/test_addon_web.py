@@ -130,14 +130,18 @@ def test_energy_card_explains_the_switch_and_double_counting():
     switch = W.render_page({**base, 'energy': {'grid_from': ['sensor.lakeside_grid_total_energy_consumption'],
                                                'consumption_statistic': 'linznetz_energy:lakeside_grid_consumption',
                                                'uses_consumption': False}})
-    assert '<h2>Energie-Dashboard</h2>' in switch and '„Lakeside Netzbezug“ hinzufügen' in switch
-    assert 'sensor.lakeside_grid_total_energy_consumption entfernen' in switch
+    assert '<h2>Energie-Dashboard</h2>' in switch and '<ol class="steps">' in switch
+    assert '<strong>Einstellungen &gt; Backup</strong>' in switch
+    assert ('Bei <strong>Aus dem Netz bezogene Energie</strong> „Lakeside Netzbezug“ statt '
+            '<code>sensor.lakeside_grid_total_energy_consumption</code> wählen') in switch
+    first = W.render_page({**base, 'energy': {'grid_from': [], 'consumption_statistic': 'x', 'uses_consumption': False}})
+    assert '<strong>Netzanschluss hinzufügen</strong>' in first
     double = W.render_page({**base, 'energy': {'grid_from': ['linznetz_energy:lakeside_grid_consumption', 'sensor.x'],
                                                'consumption_statistic': 'linznetz_energy:lakeside_grid_consumption',
                                                'uses_consumption': True}})
-    assert 'Nutzt „Lakeside Netzbezug“ als Netzbezug.' in double and 'doppelt gezählt' in double
+    assert 'Nutzt <strong>Lakeside Netzbezug</strong>' in double and '<code>sensor.x</code>' in double
+    assert 'doppelt gezählt' in double
     assert '<h2>Energie-Dashboard</h2>' not in W.render_page(base)   # no card before the first run
-
 
 def test_remove_needs_the_confirmation_box(server):
     url, store, wake = server
@@ -174,14 +178,24 @@ def test_live_meter_card_lists_the_candidates():
                                   {'entity_id': 'sensor.b', 'name': 'B', 'state': '4', 'unit': 'Wh'}]}
     page = W.render_page(status)
     assert '<h2>Live meter</h2>' in page and 'action="live_meter"' in page
-    assert '<option value="sensor.a" selected>A &lt;grid&gt; · sensor.a · 12.3 kWh</option>' in page
+    assert '<option value="sensor.a" selected>A &lt;grid&gt; (12.3 kWh)</option>' in page
     assert '<option value="">None (portal only)</option>' in page
-    other = W.render_page({**status, 'live_meter': 'sensor.typed_by_hand'})      # kept, even if not listed
-    assert '<option value="sensor.typed_by_hand" selected>' in other
+    assert '<strong>A &lt;grid&gt;</strong><br><code>sensor.a</code> · 12.3 kWh' in page   # in use
+    other = W.render_page({**status, 'live_meter': 'sensor.gone'})                 # kept, even if not listed
+    assert '<option value="sensor.gone" selected>' in other
     assert '<h2>Live meter</h2>' not in W.render_page({'language': 'en'})        # before the first run
     saved = W.render_page({**status, 'live_meter_result': {'state': 'saved', 'entity': 'sensor.a'}})
     assert 'Saved: sensor.a.' in saved
 
+
+def test_fetch_button_records_the_request(server):
+    url, store, wake = server
+    assert 'action="fetch"' in W.render_page({'language': 'en'})
+    assert 'action="fetch"' not in W.render_page({'language': 'en', 'phase': 'removed'})
+    req = urllib.request.Request(url + '/fetch', data=b'', method='POST')
+    page = urllib.request.urlopen(req).read().decode()
+    assert 'Fetching from the portal' in page and wake.is_set() and W.read_status(store)['fetch_request'] is True
+    assert 'class="secondary small" disabled' in page
 
 def test_live_meter_post_records_the_request(server):
     url, store, wake = server
@@ -199,6 +213,7 @@ def test_live_meter_post_records_the_request(server):
 def test_plain_text_password_card_has_the_steps():
     page = W.render_page({'language': 'en', 'password_secret': False})
     assert '<h2>Portal password in plain text</h2>' in page and page.count('<li>') >= 6
-    assert '&quot;Edit in YAML&quot;' in page and 'The app works either way.' in page
+    assert '<strong>Edit in YAML</strong>' in page and '<code>secrets.yaml</code>' in page
+    assert 'The app works either way.' in page
     assert 'Portal password in plain text' not in W.render_page({'language': 'en', 'password_secret': True})
     assert 'Portal password in plain text' not in W.render_page({'language': 'en'})
