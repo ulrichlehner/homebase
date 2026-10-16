@@ -87,25 +87,26 @@ Quirks learned along the way:
 
 LN-666 specifies the energy counters in Wh: DIF/VIF `0E 03` for import, `0E 83 3C` for export.
 The real meter sends other energy records too, several times a day for about half an hour each.
-In a log of 28 hours (2026-10-14/15, about 20,000 telegrams, one every 5 s) there were 10 such
-phases of 26 to 39 minutes:
+In a log of four days (2026-10-12 to 16, 68,725 telegrams, one every 5 s, all kept anonymised in
+[`samples/`](samples/README.md)) there were 32 such phases of 22 to 52 minutes:
 
 | Record | Import | Export | Unit the VIF says | Phases | Digits |
 |---|---|---|---|---|---|
 | spec | `0E 03` | `0E 83 3C` | Wh | | the counter in Wh |
-| VIF 4, 5, 7 | `0E 04`, `0E 05`, `0E 07` | `0E 84 3C`, `0E 85 3C`, `0E 87 3C` | 10, 100, 10⁴ Wh | 4 | the counter in **Wh**, the VIF is wrong |
-| all zero | `0E 00` | `0E 80 3C` | 10⁻³ Wh | 6 | `000000000000` |
+| VIF 4 to 7 | `0E 04` … `0E 07` | `0E 84 3C` … `0E 87 3C` | 10 to 10⁴ Wh | 8 | the counter in **Wh**, the VIF is wrong |
+| VIF 7 | `0E 07` | `0E 87 3C` | 10⁴ Wh | 3 | the counter in **tenths of a Wh** (`1183890` at 118,389 Wh) |
+| all zero | `0E 00` | `0E 80 3C` | 10⁻³ Wh | 21 | `000000000000` |
 
-- In the VIF 4, 5 and 7 phases of that log the digits were the Wh counter: at every switch
-  between the spec record and these ones the value continues without a step (0 or 1 Wh, 5 to
-  16 s apart), and within the phases it keeps counting with the consumption.
+- In the wrong-VIF phases the digits continue the counter without a step at every switch (0 or
+  1 Wh, 5 to 16 s apart) and keep counting with the consumption, in Wh or in tenths of a Wh.
+- Since 2026-10-15 05:27 every phase was all zero.
 - Earlier phases behaved differently. On 2026-10-09 an earlier version of this driver, which read
   the digits as Wh whatever the VIF said, showed a few Wh where the counter stood near 90 kWh:
   that matches a VIF 7 record whose digits really were in 10⁴ Wh. On 2026-10-11 it showed about
   a tenth of the counter, which matches VIF 4 with digits really in 10 Wh. So the meter sends the
   same records sometimes with the right digits for their VIF and sometimes with Wh digits and a
-  wrong VIF. (A reading of one phase as "tenths of Wh" noted on 2026-10-12 is not confirmed.)
-- One telegram alone does not tell which of the two it is: `000000000008` can be 8 Wh with a
+  wrong VIF, and sometimes in tenths of a Wh.
+- One telegram alone does not tell which of these it is: `000000000008` can be 8 Wh with a
   wrong VIF or 8 × 10⁴ Wh with a right one. Telling them apart needs the previous counter value,
   and a wmbusmeters driver sees one telegram at a time. So no driver rule reads these records
   correctly every time; they can only be ignored.
@@ -121,8 +122,11 @@ consumption of the whole counter, so every phase books tens or hundreds of kWh t
 
 - the energy fields only match the records LN-666 specifies (`difvifkey = 0E03` and `0E833C`) and
   scale them normally (`vif_scaling = Auto`). Telegrams with any other energy record carry no
-  energy value; power and date still come through. In Home Assistant the energy sensors show
-  `unknown` for those telegrams, and the counter continues when the meter returns to the spec,
+  new energy value; power and date still come through. The running wmbusmeters keeps the last
+  value of a field, so the MQTT messages of such a phase repeat the last spec counter: in Home
+  Assistant the energy sensors stay flat and continue when the meter returns to the spec (seen
+  in the history: no `unknown`, no drop). The consumption of the phase lands in the telegram
+  after it,
 - keeps the field names of `amiplus` (`total_energy_consumption_kwh`,
   `total_energy_production_kwh`); voltages and tariff counters are left out, the meter does not
   send them,
@@ -143,10 +147,11 @@ Tests:
 smartmeter/tests/run.sh     # synthetic telegrams (tests/telegrams.txt), custom vs builtin amiplus
 ```
 
-The spec record gives the expected kWh, every other record gives no value, while the builtin
-`amiplus` reports the wrong ones. Verified locally against every captured real telegram (not
-committed): all `0E 03` records decode and are monotonic, all `0E 07` and `0E 00` records give no
-energy value. The public LN-666 test vector gives 18.565 / 16.604 kWh with both drivers. To try it
+`tests/telegrams_real.txt` adds 252 real telegrams (anonymised, around every switch between
+record kinds). Run one at a time, the spec record gives the expected kWh and every other record
+gives no value, while the builtin `amiplus` reports the wrong ones. All 68,725 telegrams of
+[`samples/`](samples/README.md) as one wmbusmeters run (as in the add-on): every spec telegram
+gives its counter, never decreasing, every other one repeats the last spec value. The public LN-666 test vector gives 18.565 / 16.604 kWh with both drivers. To try it
 on a telegram with your key:
 
 ```bash
@@ -224,19 +229,21 @@ stock file.
 - ends with `Started auto rtlwmbus … listening on t1`.
 
 To see telegrams, set `logtelegrams` to `true` in the Home tab for a while. The log lines contain
-the raw decrypted telegram, counters included.
+the raw decrypted telegram, counters included, and the add-on's start lines show the key: keep
+the log private. `tools/telegram_log.py` turns it into anonymised samples, see
+[`samples/`](samples/README.md).
 
 **6. Check Home Assistant.** Settings → Devices & services → MQTT → your meter:
 
 - import, export and powers show values again, entity IDs unchanged (no `_2` suffixes),
 - import and export are plausible against the meter display or the portal and only rise slowly,
-- during telegrams with a non-spec energy record the energy sensors show `unknown` instead of a
-  wrong value; HA ignores `unknown` states in the statistics (seen in operation, no jumps),
+- during telegrams with a non-spec energy record the energy sensors stay at the last value
+  instead of showing a wrong one, and continue afterwards (seen in operation, no jumps),
 - the old voltage and tariff entities stay unavailable and can be deleted.
 
 **Fallback without the discovery file:** define the MQTT sensors by hand in `configuration.yaml`
 (`state_topic: wmbusmeters/<NAME>`, `value_template: "{{ value_json.<field> }}"`, for import and export
-`"{{ value_json.get('<field>') }}"` so a non-spec telegram gives `unknown`, with `device_class: energy`, `state_class: total_increasing`, `unit_of_measurement: kWh`; powers
+`"{{ value_json.get('<field>') }}"` so a telegram without the field gives `unknown`, with `device_class: energy`, `state_class: total_increasing`, `unit_of_measurement: kWh`; powers
 with `device_class: power`, `state_class: measurement`, `kW`) and use the same `unique_id`s as in
 `ha/mqtt_discovery/amiplus_linznetz.json`. Keep that YAML out of the repo, it contains your meter
 name and ID.
