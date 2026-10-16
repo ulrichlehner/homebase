@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.2](https://github.com/ulrichlehner/homebase/compare/v1.6.1...v1.6.2) (2026-10-16)
+
+
+### Bug Fixes
+
+* price list upload in one step, feedback where the action was ([#54](https://github.com/ulrichlehner/homebase/issues/54)) ([df1106d](https://github.com/ulrichlehner/homebase/commit/df1106d8eb2da6de39073f66b3f5f8d6ae90bfa6))
+
 ## [1.6.1](https://github.com/ulrichlehner/homebase/compare/v1.6.0...v1.6.1) (2026-10-16)
 
 
