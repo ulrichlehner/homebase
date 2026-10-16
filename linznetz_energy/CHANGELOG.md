@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/ulrichlehner/homebase/compare/v1.6.2...v1.7.0) (2026-10-16)
+
+
+### Features
+
+* grid charges from the RIS, summer low rate, supplier fees with periods ([#56](https://github.com/ulrichlehner/homebase/issues/56)) ([d4f6981](https://github.com/ulrichlehner/homebase/commit/d4f6981e07239a52fb67d94d04feb0abb9097827))
+
 ## [1.6.2](https://github.com/ulrichlehner/homebase/compare/v1.6.1...v1.6.2) (2026-10-16)
 
 
