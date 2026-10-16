@@ -704,3 +704,121 @@ def test_live_hours_across_a_gap_are_split_by_the_power(tmp_path):
     assert hourly == {start: 300, start + timedelta(hours=1): 1500}               # an even split would give 700 / 1100
     assert summary['estimated'] == 0 and addon.livearchive.read_estimated(tmp_path, METER) == set()
     assert addon.web.read_status(tmp_path)['live_power'] == 'sensor.place_grid_current_power_consumption'
+
+
+# -- Costs ------------------------------------------------------------------------------------------
+
+LINZ_METER = 'AT0031000000000000000000000001234'      # made-up, LINZ NETZ operator code
+
+
+def test_costs_need_a_supplier_and_then_follow_the_prices(tmp_path, monkeypatch):
+    import prices
+    from datetime import date
+    monkeypatch.setattr(addon, 'fetch_portal', lambda *a: None)
+    monkeypatch.setattr(addon.mqtt_status, 'broker', lambda: None)
+    o = options(metering_point=LINZ_METER)
+    start = datetime(2026, 10, 1, tzinfo=ZONE).astimezone(UTC)
+    write_readings(tmp_path, hours=24, start=start, name=f'{LINZ_METER}_readings.csv')   # 0.4 kWh per hour
+    hass = FakeHass()
+    monkeypatch.setattr(prices, 'http_get', lambda url: (_ for _ in ()).throw(prices.requests.RequestException('offline')))
+    addon.run_once(hass, o, tmp_path, 'Europe/Vienna', NOW)
+    assert not [m for m, _ in hass.imports if m['statistic_id'].endswith('_grid_cost')]      # no supplier, no costs
+    # a fixed price contract from 1.10.: costs right away
+    addon.web.write_status(tmp_path, contract_request={'supplier': 'fixed', 'start': '2026-10-01',
+                                                       'energy_ct_kwh': '20', 'base_fee_month': '0'})
+    addon.handle_contract_request(tmp_path)
+    assert addon.web.read_status(tmp_path)['contract_result'] == {'state': 'saved'}
+    hass = FakeHass()
+    addon.run_once(hass, o, tmp_path, 'Europe/Vienna', NOW + timedelta(hours=1))
+    cost = [(m, s) for m, s in hass.imports if m['statistic_id'] == 'linznetz_energy:place_grid_cost']
+    assert cost and cost[0][0]['unit_of_measurement'] == 'EUR' and cost[0][0]['name'] == 'Place electricity cost'
+    stats = [s for _, chunk in cost for s in chunk]
+    first_day = [s for s in stats if s['start'] < start + timedelta(days=1)]
+    # 24 hours x 0.4 kWh x (20 ct energy + LINZ NETZ 2026: 5.57 + 0.487 + 0.1 + 0.583 + 0.037 ct) x 1.2 VAT,
+    # plus one day of the fixed grid fees (Leistungspreis 54, Pauschalen 19.02 + 3.796 EUR/year, Messentgelt 2.38 EUR/month)
+    per_kwh = (20 + 5.57 + 0.487 + 0.1 + 0.583 + 0.037) / 100
+    fixed_day = (54 + 19.02 + 3.796) / 365 + 2.38 / 31
+    assert first_day[-1]['sum'] == pytest.approx((24 * 0.4 * per_kwh + fixed_day) * 1.2, abs=0.001)
+    status = addon.web.read_status(tmp_path)['costs']
+    assert status['grid'] == 'LINZ NETZ' and status['contract']['supplier'] == 'Fixed price' and status['energy_ct'] == 20.0
+
+
+def test_go_green_prices_are_fetched_while_the_month_has_none(tmp_path):
+    import prices
+    from datetime import date
+    state = {}
+    prices.set_contract(state, 'gogreen_flex', 'strom flex future', date(2023, 3, 1), {})
+    calls = []
+    history = [{'fromDate': '2026-09-01', 'untilDate': '2026-09-30', 'energyPrice': 0.1726},
+               {'fromDate': '2026-10-01', 'untilDate': '2100-12-31', 'energyPrice': 0.2032}]
+
+    def get(url):
+        calls.append(url)
+        return json.dumps([{'key': 'GSFLEX', 'options': {'future': {'energyPrice': 0.005}}, 'history': history}]).encode()
+    now = datetime(2026, 10, 14, 10, tzinfo=UTC)
+    assert prices.update(tmp_path, state, now, ZONE, get) is None and len(calls) == 1
+    archive = {c.valid_from: c.value for c in prices.costs.read_archive(tmp_path / prices.ARCHIVE)}
+    assert archive == {date(2026, 9, 1): 17.76, date(2026, 10, 1): 20.82}      # the past months come along
+    prices.update(tmp_path, state, now + timedelta(hours=1), ZONE, get)
+    assert len(calls) == 1                                   # the month has its price: no more fetches
+    # November: not published yet, so retried at most every 6 hours
+    nov = datetime(2026, 11, 1, 8, tzinfo=UTC)
+    assert prices.update(tmp_path, state, nov, ZONE, get) == 'not published yet (latest: 10/2026)'
+    prices.update(tmp_path, state, nov + timedelta(hours=1), ZONE, get)
+    assert len(calls) == 2
+    prices.update(tmp_path, state, nov + timedelta(hours=7), ZONE, get)
+    assert len(calls) == 3
+
+def test_a_price_list_is_imported_into_the_archive(tmp_path):
+    import prices
+    (tmp_path / 'import').mkdir()
+    (tmp_path / 'import' / f'{METER}_prices.csv').write_text(
+        'valid_from;valid_to;kind;component;unit;value;vat\n'
+        '2024-04-01;2024-05-01;energy;Energiepreis;ct/kWh;8,00;0.2\n'
+        '2024-07-01;2025-01-01;subsidy;Stromkostenzuschuss;ct/kWh;-2.00;0\n'
+        'not;a;row\n')
+    done = addon.import_history(tmp_path, METER)
+    assert done == [('import.prices', {'file': f'{METER}_prices.csv', 'rows': 2, 'rejected': 1})]
+    assert len(prices.costs.read_archive(tmp_path / prices.ARCHIVE)) == 2
+    (tmp_path / 'import' / f'{METER}_prices.csv').write_text('a;b\n1;2\n')
+    assert addon.import_history(tmp_path, METER)[0][1]['reason_key'] == 'import.bad_header'
+
+
+def test_a_new_supplier_ends_the_previous_one():
+    import prices
+    from datetime import date
+    state = {}
+    prices.set_contract(state, 'gogreen_flex', 'strom flex future', date(2023, 3, 1), {})
+    prices.set_contract(state, 'fixed', '', date(2026, 11, 1), {'energy_ct_kwh': 15.0, 'base_fee_month': 3.0})
+    first, second = prices.contracts(state)
+    assert first['end'] == date(2026, 11, 1) and second['end'] is None
+    comps = prices.components(Path('/nonexistent'), LINZ_METER, state)
+    flex_fee = [c for c in comps if c.name == 'Online-Bonus']
+    assert flex_fee[0].valid_to == date(2026, 11, 1)
+    assert {c.source for c in comps if c.kind == 'grid'} == {'grid'}
+
+
+def test_an_invalid_contract_is_not_saved(tmp_path):
+    addon.web.write_status(tmp_path, contract_request={'supplier': 'gogreen_flex', 'product': 'gas', 'start': '2026-10-01'})
+    addon.handle_contract_request(tmp_path)
+    assert addon.web.read_status(tmp_path)['contract_result'] == {'state': 'invalid'}
+    assert 'contracts' not in addon.read_state(tmp_path)
+
+
+def test_writing_the_costs_keeps_what_the_live_update_stored(tmp_path, monkeypatch):
+    """The run's state copy is older than update_live's change of the live meter; writing the
+    costs must not bring the old entity back (the live archive would be cleared every hour)."""
+    import prices
+    monkeypatch.setattr(prices, 'http_get', lambda url: (_ for _ in ()).throw(prices.requests.RequestException('offline')))
+    addon.write_state(tmp_path, {'live_meter_entity': 'sensor.old'})
+    stale = addon.read_state(tmp_path)
+    addon.write_state(tmp_path, {'live_meter_entity': 'sensor.new'})              # what update_live stored
+    addon.write_costs(FakeHass(), options(), tmp_path, stale, [], ZONE, NOW, 'en')
+    assert addon.read_state(tmp_path)['live_meter_entity'] == 'sensor.new'
+
+
+def test_a_contract_with_a_non_number_is_not_saved(tmp_path):
+    addon.web.write_status(tmp_path, contract_request={'supplier': 'fixed', 'start': '2026-11-01',
+                                                       'energy_ct_kwh': 'nan', 'base_fee_month': '3'})
+    addon.handle_contract_request(tmp_path)
+    assert addon.web.read_status(tmp_path)['contract_result'] == {'state': 'invalid'}

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "homebase"
 version = "0.1.0"
-description = "LINZ NETZ smart meter readings: portal client, readings archive, fusion, Home Assistant client"
+description = "LINZ NETZ smart meter readings: portal client, readings archive, fusion, costs, Home Assistant client"
 requires-python = ">=3.11"
 dependencies = [
     "requests>=2.31,<3",

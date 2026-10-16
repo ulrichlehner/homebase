@@ -304,3 +304,44 @@ def test_live_meter_card_names_the_power_sensor():
     assert '<th>Power</th><td><code>sensor.a_power</code>' in page
     assert 'no power sensor on the same device' in W.render_page({**base, 'live_power': None})
     assert '<th>Power</th>' not in W.render_page(base)                          # before the first live update
+
+
+
+def test_costs_card_shows_contract_price_years_and_gaps():
+    status = {'language': 'de', 'statistics': {}, 'costs': {
+        'id': 'linznetz_energy:x_grid_cost', 'from': '06.03.2023', 'eur': 1234.5, 'years': {'2025': 612.4, '2026': 480.0},
+        'last12': 650.1, 'unpriced': ['2026-11'], 'energy_ct': 20.82, 'kwh_ct_gross': 32.75, 'grid': 'LINZ NETZ',
+        'fetch_error': 'not published yet (latest: 10/2026)',
+        'contract': {'supplier': 'go green energy (strom flex)', 'supplier_id': 'gogreen_flex',
+                     'product': 'strom flex future', 'start': '01.03.2023', 'start_iso': '2023-03-01', 'params': {}}}}
+    page = W.render_page(status)
+    assert '<h2>Kosten</h2>' in page and 'strom flex future seit 01.03.2023' in page
+    assert '32,75 ct/kWh inkl. Netz, Abgaben und USt. (Energiepreis 20,82 ct/kWh netto)' in page
+    assert 'noch nicht veröffentlicht' in page and 'pill warn' not in page.split('<h2>Kosten</h2>')[1].split('</table>')[0]
+    assert '2025: 612,40 €' in page and 'letzte 12 Monate: 650,10 €' in page and '2026-11' in page
+    assert '<option value="strom flex future" selected>' in page and 'action="contract"' in page
+    assert 'name="start" required value="2023-03-01"' in page                  # the current contract's start
+    ok = W.render_page({**status, 'costs': {**status['costs'], 'fetch_error': None}})   # the usual case
+    assert 'pill info">i' not in ok and 'failed' not in ok
+    empty = W.render_page({'language': 'en', 'statistics': {}, 'costs': {'contract': None, 'grid': 'LINZ NETZ'}})
+    assert 'not set yet: choose it below' in empty
+
+
+def test_contract_post_records_the_request(server):
+    url, store, wake = server
+    req = urllib.request.Request(url + '/contract', method='POST',
+                                 data=b'supplier=fixed&start=2026-11-01&energy_ct_kwh=15%2C9&base_fee_month=3')
+    page = urllib.request.urlopen(req).read().decode()
+    assert 'Saving, the page updates itself.' in page and wake.is_set()
+    assert W.read_status(store)['contract_request'] == {'supplier': 'fixed', 'start': '2026-11-01',
+                                                         'energy_ct_kwh': '15,9', 'base_fee_month': '3'}
+
+
+
+def test_energy_card_includes_the_cost_step_once_costs_exist():
+    energy = {'grid_from': ['sensor.x'], 'consumption_statistic': 'linznetz_energy:lakeside_grid_consumption',
+              'uses_consumption': False}
+    base = {'language': 'de', 'site': 'Lakeside', 'energy': energy}
+    assert '<li>Speichern.</li>' in W.render_page(base)
+    page = W.render_page({**base, 'costs': {'from': '06.03.2023', 'contract': None}})
+    assert '<strong>Kostenerfassung</strong>' in page and '„Lakeside Stromkosten“' in page
