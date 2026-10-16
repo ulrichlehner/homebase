@@ -46,11 +46,12 @@ from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from homebase import disaggregate, fusion, readings, livearchive
+from homebase import costs, disaggregate, fusion, readings, livearchive
 from homebase.hass import HomeAssistant, HomeAssistantError
 from homebase.portal import LinzNetzError, LoginError
 
 import mqtt_status
+import prices
 import requests
 import web
 from texts import t
@@ -98,6 +99,11 @@ class Options:
     def consumption_statistic(self) -> str:
         """The statistic for the Energy dashboard: the best source per hour."""
         return f'{STATISTIC_DOMAIN}:{self.site_id}_grid_consumption'
+
+    @property
+    def cost_statistic(self) -> str:
+        """The costs of the consumption statistic in EUR (grid, supplier, levies, VAT)."""
+        return f'{STATISTIC_DOMAIN}:{self.site_id}_grid_cost'
 
     @property
     def portal_statistic(self) -> str:
@@ -272,6 +278,9 @@ def import_history(store: Path, metering_point: str) -> list:
                 added = {k: v for k, v in incoming.items() if k not in existing}
                 readings.write_csv_file(target, {**existing, **added})
                 done.append(('import.readings', {'file': f.name, 'added': len(added), 'total': len(incoming)}))
+            elif f.name.endswith('_prices.csv'):
+                valid, rejected = prices.import_price_list(f, store)
+                done.append(('import.prices', {'file': f.name, 'rows': valid, 'rejected': rejected}))
             elif f.name.endswith('_reconstructed_15min.csv'):
                 with f.open(newline='') as fh:
                     header = next(csv.reader(fh, delimiter=';'), None)
@@ -454,12 +463,12 @@ def statistic_status(statistic_id: str, hours: list, zone: ZoneInfo) -> dict:
                      for a, b, n in statistic_gaps(hours)]}
 
 
-def import_statistic(hass, statistic_id: str, name: str, stats: list) -> None:
+def import_statistic(hass, statistic_id: str, name: str, stats: list, unit: str = 'kWh') -> None:
     metadata = {
         'source': statistic_id.split(':')[0],
         'statistic_id': statistic_id,
         'name': name,
-        'unit_of_measurement': 'kWh',
+        'unit_of_measurement': unit,
         'has_mean': False,
         'has_sum': True,
     }
@@ -576,9 +585,51 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
             logger.info('Imported %s: %d hours %s to %s, %.3f kWh', statistic_id, len(stats),
                         stats[0]['start'].isoformat(), stats[-1]['start'].isoformat(), stats[-1]['sum'])
             written[key] = statistic_status(statistic_id, hours, zone)
+            write_costs(hass, options, store, state, hours, zone, now, lang)
     web.write_status(store, phase='idle', detail='', statistics=written, last_run=now.isoformat())
     web.write_status(store, energy=energy_status(hass, options))
     publish_status(options, inputs, lang, state, check)
+
+
+def write_costs(hass, options: Options, store: Path, state: dict, hours: list, zone: ZoneInfo, now: datetime,
+                lang: str) -> None:
+    """The cost statistic from the consumption hours and the prices (see prices, homebase.costs).
+    Nothing is written before the first energy price (no contract and no price list yet)."""
+    fetch_error = prices.update(store, state, now, zone)
+    write_state(store, state)
+    comps = prices.components(store, options.metering_point, state)
+    cost_hours = costs.cost_hours([(h.start, h.wh) for h in hours], comps, zone)
+    if cost_hours:
+        stats = prices.to_stats(cost_hours)
+        import_statistic(hass, options.cost_statistic, t(lang, 'stat.cost', site=options.site), stats, unit='EUR')
+        logger.info('Imported %s: %d hours from %s, %.2f EUR', options.cost_statistic, len(stats),
+                    stats[0]['start'].isoformat(), stats[-1]['sum'])
+    web.write_status(store, costs=prices.status(options.cost_statistic, cost_hours, state, comps, zone, now,
+                                                options.metering_point, fetch_error))
+
+
+def handle_contract_request(store: Path) -> None:
+    """Carries out the supplier contract set on the add-on page."""
+    request = web.read_status(store).get('contract_request')
+    if request is None:
+        return
+    state = read_state(store)
+    try:
+        start = datetime.strptime(request['start'], '%Y-%m-%d').date()
+        supplier = prices.tariffs.SUPPLIERS[request['supplier']]
+        params = {k: float(str(request.get(k, v)).replace(',', '.')) for k, v in supplier.defaults.items()}
+        product = request.get('product', '')
+        if supplier.products and product not in supplier.products:
+            raise ValueError(product)
+    except (KeyError, ValueError) as err:
+        logger.warning('Contract not saved: %s', err)
+        web.write_status(store, contract_request=None, contract_result={'state': 'invalid'})
+        return
+    prices.set_contract(state, supplier.id, product, start, params)
+    state.pop('price_fetch', None)   # fetch the new contract's price right away
+    write_state(store, state)
+    logger.info('Supplier contract from %s: %s %s', start, supplier.name, product)
+    web.write_status(store, contract_request=None, contract_result={'state': 'saved'})
 
 
 def remove_portal_statistic(hass, options: Options, store: Path, state: dict) -> None:
@@ -731,7 +782,7 @@ def handle_removal_request(hass, options: Options, store: Path) -> None:
 def remove_all(hass, options: Options) -> None:
     """Deletes what the add-on created in Home Assistant: its statistics, the MQTT device and its
     notifications. Its own files stay (they go when it is uninstalled with "delete data")."""
-    ids = [options.consumption_statistic, options.portal_statistic]
+    ids = [options.consumption_statistic, options.cost_statistic, options.portal_statistic]
     existing = [m['statistic_id'] for m in hass.statistics_metadata(ids)]
     if existing:
         hass.clear_statistics(existing)
@@ -887,6 +938,7 @@ def main(argv=None) -> int:
                 tz = config.get('time_zone') or 'Europe/Vienna'
                 handle_removal_request(hass, options, store)
                 handle_live_meter_request(hass, store)
+                handle_contract_request(store)
                 options = replace(options, live_meter_entity=read_state(store).get('live_meter', ''))
                 try:
                     web.write_status(store, live_meter=options.live_meter_entity,

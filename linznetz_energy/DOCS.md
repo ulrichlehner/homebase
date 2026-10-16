@@ -133,6 +133,56 @@ hour around a reception gap is split by the power readings, and an hour in which
 off is still empty. A day later the portal has the whole day: the empty hour gets the portal value,
 and the add-on checks the live hours against the portal.
 
+## Costs
+
+The add-on also writes the costs of the consumption, as on the bills of grid operator and supplier
+together: the statistic `linznetz_energy:<site>_grid_cost`, shown as "<Site> electricity cost" (in
+German "<Site> Stromkosten"), a running total in EUR. In the Energy dashboard, pick it at the grid
+connection under **Cost tracking**, **Use an entity tracking the total costs**. (For a statistic
+like "<Site> grid consumption", Home Assistant offers only this option; a fixed price or a price
+sensor cannot be chosen there.)
+
+Every hour costs:
+
+- the kWh of the hour times every per-kWh price valid then: the supplier's energy price, the grid
+  charges (Netznutzung, Netzverlust) and the levies (Elektrizitätsabgabe, Erneuerbaren-Förderbeitrag),
+- its share of the fixed fees: the supplier's basic fee, the grid's Leistungspreis and Messentgelt,
+  the Erneuerbaren-Pauschalen, spread evenly over the hours of their month or year,
+- 20 % VAT on all of it; a subsidy such as the Stromkostenzuschuss is deducted after VAT, as on the bill.
+
+**Grid operator.** It follows from the metering point. The add-on knows the charges and levies of
+LINZ NETZ since 2023 and is updated when they change (usually in January). For another grid
+operator only the supplier is counted until its charges are added.
+
+**Supplier.** You can switch suppliers, so the supplier is set on the add-on page under **Costs**,
+**Set the supplier**, from a date:
+
+| Supplier | Prices |
+| --- | --- |
+| go green energy (strom flex) | the energy price changes every month; the add-on reads it from go green's monthly price file on [its flex price page](https://www.gogreenenergy.at/flexpreisentwicklung.html) as soon as it is published, and keeps it. Basic fee and online bonus as in the price sheet (editable). |
+| Fixed price | any supplier with a price guarantee: energy price and basic fee as entered |
+
+A new supplier from a date ends the previous one; the costs before stay as they were. More
+suppliers can be added to the add-on as modules.
+
+**Earlier months.** go green publishes only the current month's price. Months before the add-on
+fetched them have no energy price; the page lists them under **Months without energy price**
+(they count grid charges, levies and fees only). A price list fills them: upload
+`<metering point>_prices.csv` under **Import older history**, for example with the monthly prices
+from your bills:
+
+```text
+valid_from;valid_to;kind;component;unit;value;vat
+2025-01-01;2025-02-01;energy;Energiepreis;ct/kWh;12.50;0.2
+2024-07-01;2025-01-01;subsidy;Stromkostenzuschuss;ct/kWh;-2.00;0
+```
+
+`kind` is `energy`, `grid`, `levy` or `subsidy`; `unit` is `ct/kWh`, `EUR/month` or `EUR/year`;
+values are net, `vat` as a fraction; `valid_to` is the first day no longer covered (empty: open).
+For go green's "future" products the energy price includes the future surcharge (the bill lists
+it separately). The prices are kept in `prices.csv` in the add-on folder; importing the same list
+again changes nothing.
+
 ## Live meter readings (optional)
 
 Any entity in Home Assistant that has the meter's energy counter live (a total in kWh) can serve as
@@ -214,6 +264,8 @@ the add-on's page inside Home Assistant. It shows
 - the statistic with its range, total and sources, its gaps (hours no source covers, for example
   months the portal no longer has; older readings fill them, see below), and the live vs portal check,
 - the live meter choice (see above),
+- the costs: grid operator, supplier, the price now, totals per year, months without energy price, and the
+  form to set the supplier,
 - the Energy dashboard card, the history import and the result of the last import,
 - at the bottom, removing everything from Home Assistant (see "Uninstalling").
 
@@ -260,7 +312,7 @@ So, before uninstalling:
 
 1. If the Energy dashboard uses "<Site> grid consumption", switch it back to another source first.
 2. On the add-on page, at the bottom: **Remove everything from Home Assistant**. It deletes the
-   statistic, the device with its status entities and the add-on's notifications, and pauses the
+   statistics (consumption and costs), the device with its status entities and the add-on's notifications, and pauses the
    add-on so nothing is created again. (It refuses while the Energy dashboard still uses the
    statistic. Changed your mind? **Reactivate** brings everything back within an hour.)
 3. Uninstall the add-on and tick the option to also delete its data: that removes its own files

@@ -34,6 +34,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Optional
 
+from homebase import tariffs
 from texts import TEXTS, language, t
 
 logger = logging.getLogger('addon.web')
@@ -153,6 +154,15 @@ button.small { padding: 4px 12px; font-size: 14px; margin: 0; vertical-align: ba
 .steps li::marker { color: var(--muted); font-weight: 500; }
 .steps + p { margin-top: 14px; }
 .gaps { margin: 6px 0; }
+ul.plain { list-style: none; padding: 0; margin: 0 0 4px; }
+.contract { margin-top: 18px; display: grid; gap: 12px; }
+.contract h3 { margin: 0; font-size: 17px; font-weight: 500; }
+.contract label { display: grid; gap: 6px; font-size: 14px; color: var(--muted); font-weight: 500; }
+.contract input, .contract select { height: 44px; font: inherit; color: var(--text); background: var(--card);
+                                    border: 1px solid var(--divider); border-radius: 8px; padding: 0 12px; }
+.contract button { justify-self: start; width: auto; margin: 0; padding: 0 24px; height: 48px; font-size: 16px; }
+.contract p { margin: 0; }
+.contract [hidden] { display: none; }
 table + p, table + form { margin-top: 14px; }
 .check { display: flex; gap: 10px; align-items: flex-start; margin-top: 4px; }
 .check input { margin-top: 5px; }
@@ -228,6 +238,74 @@ def _rich(text: str) -> str:
     return re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', out)
 
 
+def _eur(value: float) -> str:
+    return f'{value:,.2f}'.replace(',', ' ').replace('.', ',') if value is not None else ''
+
+
+def _costs_card(lang: str, status: dict) -> str:
+    """The Costs card: grid operator, supplier contract, price now, per year, gaps, and the form
+    to set the supplier."""
+    c = status.get('costs') or {}
+    contract = c.get('contract')
+    rows = [(t(lang, 'page.costs_grid'), html.escape(c['grid']) if c.get('grid') else
+             f'<span class="muted">{html.escape(t(lang, "page.costs_grid_unknown"))}</span>')]
+    rows.append((t(lang, 'page.costs_supplier'),
+                 f'<strong>{html.escape(contract["supplier"])}</strong><br>'
+                 f'{html.escape(t(lang, "page.costs_since", product=contract["product"] or "", start=contract["start"]))}'
+                 if contract else f'<span class="muted">{html.escape(t(lang, "page.costs_no_contract"))}</span>'))
+    if contract:
+        price = (html.escape(t(lang, 'page.costs_price_line', gross=_eur(c['kwh_ct_gross']), energy=_eur(c['energy_ct'])))
+                 if c.get('energy_ct') is not None else f'<span class="muted">{html.escape(t(lang, "page.costs_price_none"))}</span>')
+        if (c.get('fetch_error') or '').startswith('not published yet'):
+            price += f'<br><span class="pill info">i</span> {html.escape(t(lang, "page.costs_price_pending"))}'
+        elif c.get('fetch_error'):
+            price += f'<br><span class="pill warn">!</span> {html.escape(t(lang, "page.costs_fetch_error", error=c["fetch_error"]))}'
+        rows.append((t(lang, 'page.costs_price'), price))
+    if c.get('years') and 'last12' in c:
+        years = ''.join(f'<li>{html.escape(y)}: {_eur(v)} €</li>' for y, v in c['years'].items())
+        rows.append((t(lang, 'page.costs_years'), f'<ul class="plain">{years}</ul>'
+                     f'<span class="muted">{html.escape(t(lang, "page.costs_last12", eur=_eur(c["last12"])))}</span>'))
+    if c.get('unpriced'):
+        rows.append((t(lang, 'page.costs_unpriced'), f'<span class="pill info">{len(c["unpriced"])}</span> '
+                     f'{html.escape(", ".join(c["unpriced"]))}<br><span class="muted">'
+                     f'{html.escape(t(lang, "page.costs_unpriced_hint"))}</span>'))
+    if c.get('from') and c.get('id'):
+        rows.append((t(lang, 'page.costs_statistic'), f'<code>{html.escape(c["id"])}</code><br>'
+                     f'{html.escape(t(lang, "page.costs_statistic_line", eur=_eur(c.get("eur", 0.0)), first=c["from"]))}'))
+    result = (status.get('contract_result') or {}).get('state')
+    result_html = ({'saved': f'<p><span class="pill ok">ok</span> {html.escape(t(lang, "page.contract_saved"))}</p>',
+                    'invalid': f'<p><span class="pill warn">!</span> {html.escape(t(lang, "page.contract_invalid"))}</p>'}
+                   .get(result, ''))
+    current = contract or {}
+    params = current.get('params', {})
+    suppliers = ''.join(f'<option value="{s.id}"{" selected" if s.id == current.get("supplier_id") else ""}>'
+                        f'{html.escape(s.name)}</option>' for s in tariffs.SUPPLIERS.values())
+    products = ''.join(f'<option value="{html.escape(p)}"{" selected" if p == current.get("product") else ""}>'
+                       f'{html.escape(p)}</option>' for p in tariffs.SUPPLIERS['gogreen_flex'].products)
+    flex, fixed = tariffs.SUPPLIERS['gogreen_flex'].defaults, tariffs.SUPPLIERS['fixed'].defaults
+
+    def field(name, label, value, only):
+        return (f'<label data-only="{only}">{html.escape(t(lang, label))}'
+                f'<input name="{name}" inputmode="decimal" value="{html.escape(str(value))}"></label>')
+    form = (f'<form method="post" action="contract" class="contract">'
+            f'<h3>{t(lang, "page.contract")}</h3>'
+            f'<label>{t(lang, "page.contract_supplier")}<select name="supplier" id="supplier">{suppliers}</select></label>'
+            f'<label data-only="gogreen_flex">{t(lang, "page.contract_product")}<select name="product">{products}</select></label>'
+            f'<label>{t(lang, "page.contract_start")}<input type="date" name="start" required></label>'
+            + field('energy_ct_kwh', 'page.contract_energy', params.get('energy_ct_kwh', fixed['energy_ct_kwh']), 'fixed')
+            + field('base_fee_month', 'page.contract_base_fee', params.get('base_fee_month', flex['base_fee_month']), 'any')
+            + field('online_bonus_month', 'page.contract_online_bonus',
+                    round(params.get('online_bonus_month', flex['online_bonus_month']), 6), 'gogreen_flex')
+            + f'<p class="muted">{html.escape(t(lang, "page.contract_hint"))}</p>'
+            f'<button type="submit">{t(lang, "page.contract_save")}</button></form>'
+            '<script>(function(){var s=document.getElementById("supplier");function show(){'
+            'document.querySelectorAll(".contract [data-only]").forEach(function(l){var o=l.getAttribute("data-only");'
+            'var on=o==="any"||o===s.value;l.hidden=!on;l.querySelectorAll("input,select").forEach(function(i){i.disabled=!on;});});}'
+            's.addEventListener("change",show);show();})();</script>')
+    return (f'<div class="card"><h2>{t(lang, "page.costs")}</h2><p class="lead">{html.escape(t(lang, "page.costs_lead"))}</p>'
+            f'<table>{_rows(rows)}</table>{result_html}{form}</div>')
+
+
 def render_page(status: dict, message=None) -> str:
     """The page in the language of HA (`status['language']`). `message` is a (text key,
     values) pair shown on top, e.g. the result of an upload."""
@@ -240,7 +318,8 @@ def render_page(status: dict, message=None) -> str:
     detail = status.get('detail', '')
     detail = t(lang, detail) if detail in TEXTS['en'] else detail
     busy = (phase not in ('idle', 'setup', 'removed') or status.get('import_pending') or status.get('removal_request')
-            or status.get('live_meter_request') or status.get('fetch_request'))
+            or status.get('live_meter_request') or status.get('fetch_request')
+            or status.get('contract_request'))
     refresh = '<meta http-equiv="refresh" content="5">' if busy else ''
 
     setup = status.get('setup') or []
@@ -331,6 +410,8 @@ def render_page(status: dict, message=None) -> str:
                        f'<label class="check"><input type="checkbox" name="confirm" value="yes" required> '
                        f'{html.escape(t(lang, "page.remove_check"))}</label>'
                        f'<button type="submit" class="danger">{t(lang, "page.remove_button")}</button></form></div>')
+    costs_html = _costs_card(lang, status) if 'costs' in status or 'statistics' in status else ''
+
     live_meter_html = ''
     if 'live_candidates' in status:
         current = status.get('live_meter') or ''
@@ -386,8 +467,10 @@ def render_page(status: dict, message=None) -> str:
             current = ', '.join(f'`{g}`' for g in energy['grid_from'])
             used = _rich(current) if current else f'<span class="muted">{t(lang, "page.energy_none")}</span>'
             keys = ('page.energy_step_backup', 'page.energy_step_open',
-                    'page.energy_step_pick' if current else 'page.energy_step_add')
-            steps = ''.join(f'<li>{_rich(t(lang, k, name=name, current=current))}</li>' for k in keys)
+                    'page.energy_step_pick' if current else 'page.energy_step_add',
+                    'page.energy_step_cost' if (status.get('costs') or {}).get('from') else 'page.energy_step_save')
+            cost = t(lang, 'stat.cost', site=status.get('site', ''))
+            steps = ''.join(f'<li>{_rich(t(lang, k, name=name, current=current, cost=cost))}</li>' for k in keys)
             body = (f'<table>{_rows([(t(lang, "page.energy_uses"), used)])}</table>'
                     f'<p class="lead">{_rich(t(lang, "page.energy_switch", name=name))}</p>'
                     f'<ol class="steps">{steps}</ol>'
@@ -438,6 +521,7 @@ def render_page(status: dict, message=None) -> str:
         (t(lang, 'page.stat_consumption'), stat_row('consumption')),
     ] + ([(t(lang, 'page.gaps'), gaps_row('consumption'))] if stats.get('consumption') else []) + [
     ])}</table></div>
+{costs_html}
 {live_meter_html}
 {energy_html}
 <div class="card"><h2>{t(lang, 'page.import_title')}</h2>
@@ -576,6 +660,11 @@ class Handler(BaseHTTPRequestHandler):
             self.wake.set()
             logger.info('Requested on the add-on page: portal fetch')
             self._done(('page.fetch_requested', {}))
+        elif path == '/contract':
+            fields = {k: v[0].strip() for k, v in parse_qs(body).items() if v}
+            write_status(self.store, contract_request=fields, contract_result=None)
+            self.wake.set()
+            self._done(('page.contract_requested', {}))
         elif path == '/live_meter':
             entity = (parse_qs(body).get('entity') or [''])[0].strip()
             if entity and not re.fullmatch(r'sensor\.[a-z0-9_]+', entity):
@@ -586,7 +675,7 @@ class Handler(BaseHTTPRequestHandler):
             self._done(('page.live_meter_requested', {}))
 
 
-ACTIONS = ('/upload', '/fetch', '/live_meter', '/remove', '/resume')
+ACTIONS = ('/upload', '/fetch', '/live_meter', '/contract', '/remove', '/resume')
 
 
 def start(store: Path, wake: threading.Event, port: int = PORT) -> ThreadingHTTPServer:

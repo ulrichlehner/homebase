@@ -290,6 +290,18 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-16: costs. The add-on writes `linznetz_energy:<site>_grid_cost` (EUR, running total) for the
+  Energy dashboard's "total costs" option (the only cost option HA offers for an external statistic).
+  Per hour: kWh x the per-kWh prices valid then, plus the fixed fees spread over their month or year,
+  VAT, subsidies after VAT. Grid charges and levies per grid operator in `homebase.tariffs.GRID`
+  (LINZ NETZ since 2023, updated each January); the operator follows from the metering point.
+  Suppliers are modules with one interface: go green flex reads the current month from go green's
+  published Flexberechnung file, a fixed-price module covers any price guarantee. Online sources
+  checked: go green publishes only the current month (the Internet Archive has 4 old files),
+  E-Control's tariff calculator gives the grid operator by postcode but its price calculation is
+  captcha-protected and current-only, durchblicker has no interface. So earlier months come from a
+  one-time price list (from the bills) imported on the add-on page. Recalculated against the real
+  bills, every full billing year since 2023 matches both bills to within a few cents.
 - 2026-10-15: the counter inside a reception gap is split by the meter's power (the sensor of the
   same device, found via the entity registry; minute means kept 14 days in `…_live_power.csv`).
   Real data, 14 hours at a gap with portal values: even split off by 29.9 Wh on average (max 101),
