@@ -46,7 +46,7 @@ TEXTS = {
                          'a minute; the app page shows the progress.',
         'download_done.title': 'LINZ NETZ Energy: first download done',
         'download_done.text': '{count} quarter-hour readings from {first} to {last}. Older history can be uploaded on '
-                              'the app page (Open Web UI, "Import older history").',
+                              'the app page (Open Web UI, "Import older readings").',
         'no_data.title': 'LINZ NETZ Energy: no data',
         'no_data.text': 'The portal has no readings for this metering point. Is the quarter-hour analysis '
                         '("Viertelstundenauswertung") switched on in the portal?',
@@ -104,7 +104,6 @@ TEXTS = {
         'page.prices_upload_button': 'Upload price list',
         'page.prices_upload_hint': 'A file prices.csv (or any name ending in _prices.csv) with one row per price; the '
                                    'format is in the documentation, section "Costs".',
-        'page.file_prices': 'prices for the costs, for months before the supplier publishes them (also ..._prices.csv)',
         'page.costs_statistic': 'Statistic',
         'page.costs_statistic_line': '{eur} € since {first}',
         'page.contract': 'Set the supplier',
@@ -232,8 +231,8 @@ TEXTS = {
         'page.gap_line': '{first} to {last} ({hours} hours)',
         'page.gaps_more': 'and {count} more',
         'page.gaps_hint': 'No source covers these hours. Older readings (for example the readings.csv of the '
-                          'homebase tools) fill them via "Import older history" below.',
-        'page.import_title': 'Import older history',
+                          'homebase tools) fill them via "Import older readings" below.',
+        'page.import_title': 'Import older readings',
         'page.import_lead': 'The portal keeps only about 36 months. Older data from the homebase tools can be added '
                             'here; the files are checked and imported right away, and importing the same file again '
                             'changes nothing.',
@@ -301,7 +300,7 @@ TEXTS = {
                          'eine Minute; die Seite der App zeigt den Fortschritt.',
         'download_done.title': 'LINZ NETZ Energy: erster Download fertig',
         'download_done.text': '{count} Viertelstundenwerte vom {first} bis {last}. Ältere Daten lassen sich auf der '
-                              'Seite der App hochladen (Web-UI öffnen, „Ältere Daten importieren“).',
+                              'Seite der App hochladen (Web-UI öffnen, „Ältere Messwerte importieren“).',
         'no_data.title': 'LINZ NETZ Energy: keine Daten',
         'no_data.text': 'Das Portal hat keine Werte für diesen Zählpunkt. Ist im Portal die Viertelstundenauswertung '
                         'eingeschaltet?',
@@ -358,7 +357,6 @@ TEXTS = {
         'page.prices_upload_button': 'Preisliste hochladen',
         'page.prices_upload_hint': 'Eine Datei prices.csv (oder ein Name, der auf _prices.csv endet) mit einer Zeile je Preis; '
                                    'das Format steht in der Dokumentation, Abschnitt „Costs“.',
-        'page.file_prices': 'Preise für die Kosten, für Monate, bevor der Lieferant sie veröffentlicht (auch …_prices.csv)',
         'page.costs_statistic': 'Statistik',
         'page.costs_statistic_line': '{eur} € seit {first}',
         'page.contract': 'Lieferant festlegen',
@@ -490,8 +488,8 @@ TEXTS = {
         'page.gap_line': '{first} bis {last} ({hours} Stunden)',
         'page.gaps_more': 'und {count} weitere',
         'page.gaps_hint': 'Für diese Stunden hat keine Quelle Werte. Ältere Messwerte (etwa die readings.csv der '
-                          'homebase-Werkzeuge) füllen sie über „Ältere Daten importieren“ unten.',
-        'page.import_title': 'Ältere Daten importieren',
+                          'homebase-Werkzeuge) füllen sie über „Ältere Messwerte importieren“ unten.',
+        'page.import_title': 'Ältere Messwerte importieren',
         'page.import_lead': 'Das Portal hält nur etwa 36 Monate. Ältere Daten aus den homebase-Werkzeugen lassen sich '
                             'hier ergänzen; die Dateien werden geprüft und sofort importiert, dieselbe Datei nochmals '
                             'zu importieren ändert nichts.',

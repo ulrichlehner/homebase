@@ -98,7 +98,7 @@ def test_page_follows_the_language_of_home_assistant():
                               'lines': [['import.failed', {'file': 'x.csv', 'reason_key': 'import.other_meter'}]]}}
     page = W.render_page(status)
     assert '<html lang="de">' in page and 'Standort home · Zählpunkt AT0000000' in page   # full metering point
-    assert 'Letzter Portal-Abruf' in page and 'Ältere Daten importieren' in page and 'aktuell' in page
+    assert 'Letzter Portal-Abruf' in page and 'Ältere Messwerte importieren' in page and 'aktuell' in page
     assert 'x.csv: nicht importiert (die Datei gehört zu einem anderen Zählpunkt)' in page
     assert 'Dateien auswählen oder hierher ziehen' in page and 'Hochladen und importieren' in page
     assert '<html lang="en">' in W.render_page({**status, 'language': 'fr'})            # fallback
@@ -256,7 +256,7 @@ def test_statistics_card_lists_gaps():
     page = W.render_page({'language': 'de', 'statistics': {'consumption': {
         **stat, 'gaps': [{'from': '01.09.2023 00:00', 'to': '01.10.2023 00:00', 'hours': 720}]}}})
     assert '<th>Lücken</th>' in page and '01.09.2023 00:00 bis 01.10.2023 00:00 (720 Stunden)' in page
-    assert '„Ältere Daten importieren“' in page
+    assert '„Ältere Messwerte importieren“' in page
     many = W.render_page({'language': 'en', 'statistics': {'consumption': {
         **stat, 'gaps': [{'from': str(i), 'to': str(i), 'hours': 1} for i in range(7)]}}})
     assert 'and 2 more' in many
@@ -370,7 +370,7 @@ def test_costs_card_guides_through_the_setup():
     assert '<strong>Kostenerfassung</strong>' in half and '„Lakeside Stromkosten“' in half
     complete = W.render_page({**base, 'costs': {**costs, 'unpriced': []}, 'energy': {'grid_from': [], 'uses_cost': True}})
     assert 'alle Monate haben einen Energiepreis' in complete and 'das Energie-Dashboard nutzt die Kosten' in complete
-    assert 'action="upload?to=costs"' not in complete
+    assert 'action="upload?to=costs"' in complete                               # always there for later corrections
 
 
 def test_a_price_list_uploaded_in_the_card_returns_there(server):

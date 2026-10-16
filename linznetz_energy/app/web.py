@@ -360,7 +360,7 @@ def _costs_card(lang: str, status: dict) -> str:
              f'<li><strong>{t(lang, "page.step_dashboard")}</strong><br>{step3}</li></ol>')
     return (f'<div class="card" id="costs"><h2>{t(lang, "page.costs")}</h2><p class="lead">{html.escape(t(lang, "page.costs_lead"))}</p>'
             f'{result_html}{import_html}{steps}<table>{_rows(rows)}</table>'
-            f'{upload if c.get("unpriced") or pi else ""}{form}</div>')
+            f'{upload}{form}</div>')
 
 
 def render_page(status: dict, message=None) -> str:
@@ -588,7 +588,6 @@ def render_page(status: dict, message=None) -> str:
 <ul class="files">
 <li><code>&lt;{t(lang, 'page.metering_point')}&gt;_readings.csv</code><span class="muted">{t(lang, 'page.file_readings')}</span></li>
 <li><code>&lt;{t(lang, 'page.metering_point')}&gt;_reconstructed_15min.csv</code><span class="muted">{t(lang, 'page.file_reconstructed')}</span></li>
-<li><code>prices.csv</code><span class="muted">{t(lang, 'page.file_prices')}</span></li>
 </ul>
 {pending}
 <form method="post" action="upload" enctype="multipart/form-data">
