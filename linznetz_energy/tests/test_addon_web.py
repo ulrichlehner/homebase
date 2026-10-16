@@ -337,7 +337,7 @@ def test_contract_post_records_the_request_and_returns_to_the_card(server):
                                  data=b'supplier=fixed&start=2026-11-01&energy_ct_kwh=15%2C9&base_fee_month=3')
     with pytest.raises(urllib.error.HTTPError) as err:
         urllib.request.build_opener(NoRedirect).open(req)
-    assert err.value.code == 303 and err.value.headers['Location'] == './#costs' and wake.is_set()
+    assert err.value.code == 303 and err.value.headers['Location'] == './#contract' and wake.is_set()
     status = W.read_status(store)
     assert status['contract_request'] == {'supplier': 'fixed', 'start': '2026-11-01', 'energy_ct_kwh': '15,9',
                                           'base_fee_month': '3'}
@@ -383,7 +383,7 @@ def test_a_price_list_uploaded_in_the_card_returns_there(server):
     req = urllib.request.Request(url + '/upload?to=costs', data=body, headers={'Content-Type': ctype}, method='POST')
     with pytest.raises(urllib.error.HTTPError) as err:
         urllib.request.build_opener(NoRedirect).open(req)
-    assert err.value.headers['Location'] == './#costs' and (store / 'import' / 'prices.csv').exists()
+    assert err.value.headers['Location'] == './#price-upload' and (store / 'import' / 'prices.csv').exists()
     assert W.read_status(store)['prices_import'] == {'state': 'importing'} and 'notice' not in W.read_status(store)
 
 
@@ -391,3 +391,16 @@ def test_a_price_list_uploaded_in_the_card_returns_there(server):
 def test_months_are_shown_as_ranges():
     assert W._month_ranges(['2023-03', '2023-04', '2023-05', '2023-12', '2024-01', '2025-06']) == \
         '03/2023 – 05/2023, 12/2023 – 01/2024, 06/2025'
+
+
+
+def test_card_feedback_sits_where_the_action_was():
+    contract = {'supplier': 'go green energy (strom flex)', 'supplier_id': 'gogreen_flex', 'product': 'strom flex future',
+                'start': '01.03.2023', 'start_iso': '2023-03-01', 'params': {}}
+    page = W.render_page({'language': 'en', 'statistics': {}, 'contract_result': {'state': 'saved'},
+                          'prices_import': {'state': 'done', 'lines': [['import.prices', {'file': 'prices.csv', 'rows': 40, 'rejected': 0}]]},
+                          'costs': {'contract': contract, 'grid': 'LINZ NETZ', 'unpriced': []}})
+    upload = page.split('id="price-upload"')[1].split('</form>')[0]
+    assert 'prices.csv: 40 prices taken over' in upload
+    form = page.split('id="contract"')[1].split('</form>')[0]
+    assert 'Saved, the costs are calculated.' in form
