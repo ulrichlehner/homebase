@@ -290,6 +290,18 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-16: grid charges online. The SNE-V in the RIS (OGD API `data.bka.gv.at/ris/api/v2.6`,
+  BrKons, Gesetzesnummer 20010107) has the network level 7 charges per area as text since the 2026
+  version (§ 5: flat rate, per-kWh price, summer low price; § 6: grid loss); older versions have
+  their tables as images, so the built-in table stays for 2023 to 2025 and as the fallback. Read
+  once a day, today's and next January's version, into the archive (source `ris:SNE-V`); the card
+  says whether they were checked, and a notification warns if no source has the current year.
+  Metering fee and levies come from other regulations and stay built-in. New: per-kWh rows with a
+  time window, for the summer low price from 1.4.2026 (April to September, 10 to 16 h, 20 % off
+  the grid usage charge; the window is from LINZ NETZ, not the regulation). go green's basic fee
+  and online bonus are recorded from the month they are first seen, a change starts a new period;
+  fetched supplier rows count only inside that supplier's contract; an imported price list wins
+  over everything for its period.
 - 2026-10-16: costs. The add-on writes `linznetz_energy:<site>_grid_cost` (EUR, running total) for the
   Energy dashboard's "total costs" option (the only cost option HA offers for an external statistic).
   Per hour: kWh x the per-kWh prices valid then, plus the fixed fees spread over their month or year,

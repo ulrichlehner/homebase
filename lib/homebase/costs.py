@@ -8,11 +8,13 @@ imported price list or a fixed price), and subsidies. Each component has a unit:
   EUR/year    fixed, spread evenly over the hours of its calendar year
   EUR/month   fixed, spread evenly over the hours of its calendar month
 
+A per-kWh component can be limited to a time window (`window`, local months and hours), such as
+the grid operator's summer low rate.
+
 and a VAT rate. A charge is identified by kind and name: when several components of the same
 charge are valid on a day (a supplier's fetched monthly price and a fixed price contract starting
 mid-month, an imported grid row and the built-in one), only the last one in the list counts, so
-nothing is counted twice. The add-on lists the built-in grid table first, then the archive, then
-the contracts. Amounts are net; the cost of an hour is the sum over the components that count, each with its VAT (a subsidy such as the Stromkostenzuschuss has none: it is deducted
+nothing is counted twice (the add-on's order: linznetz_energy/app/prices.components). Amounts are net; the cost of an hour is the sum over the components that count, each with its VAT (a subsidy such as the Stromkostenzuschuss has none: it is deducted
 after VAT). Fixed components count for every hour of their period, also hours without a
 consumption value, so a year sums up to the bill's fixed fees.
 
@@ -24,6 +26,7 @@ from __future__ import annotations
 
 import calendar
 import csv
+import re
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -32,7 +35,7 @@ from zoneinfo import ZoneInfo
 
 UNITS = ('ct/kWh', 'EUR/year', 'EUR/month')
 KINDS = ('energy', 'grid', 'levy', 'subsidy')
-HEADER = ['valid_from', 'valid_to', 'kind', 'component', 'unit', 'value', 'vat', 'source']
+HEADER = ['valid_from', 'valid_to', 'kind', 'component', 'unit', 'value', 'vat', 'source', 'window']
 HOUR = timedelta(hours=1)
 ZONE = ZoneInfo('Europe/Vienna')
 
@@ -49,9 +52,19 @@ class Component:
     valid_from: date
     valid_to: Optional[date] = None
     source: str = ''
+    window: str = ''                  # 'MM-MM HH-HH' (local): only in these months and hours, e.g. '04-09 10-16'
 
     def valid_on(self, day: date) -> bool:
         return self.valid_from <= day and (self.valid_to is None or day < self.valid_to)
+
+    def in_window(self, local: datetime) -> bool:
+        """Is a per-kWh component with a time window valid for the hour starting at `local`?"""
+        if not self.window:
+            return True
+        months, hours = self.window.split()
+        m1, m2 = (int(x) for x in months.split('-'))
+        h1, h2 = (int(x) for x in hours.split('-'))
+        return m1 <= local.month <= m2 and h1 <= local.hour < h2
 
     def key(self) -> tuple:
         """Identifies a component in the archive: a newer value for the same period replaces it."""
@@ -86,7 +99,7 @@ def cost_of_hour(start: datetime, kwh: Optional[float], components: Iterable[Com
     total, priced = 0.0, False
     for c in (components if resolved else effective(components, day)):
         if c.unit == 'ct/kWh':
-            if kwh is None:
+            if kwh is None or not c.in_window(local):
                 continue
             net = kwh * c.value / 100
             if c.kind == 'energy':
@@ -142,7 +155,8 @@ def parse_row(row: dict, source: str = '') -> Optional[Component]:
     row is not valid."""
     try:
         unit, kind = row['unit'].strip(), row['kind'].strip()
-        if unit not in UNITS or kind not in KINDS:
+        window = (row.get('window') or '').strip()
+        if unit not in UNITS or kind not in KINDS or (window and not re.fullmatch(r'\d{2}-\d{2} \d{2}-\d{2}', window)):
             return None
         valid_to = (row.get('valid_to') or '').strip()
         return Component(kind=kind, name=row['component'].strip(), unit=unit,
@@ -150,7 +164,8 @@ def parse_row(row: dict, source: str = '') -> Optional[Component]:
                          vat=float((row.get('vat') or '0').replace(',', '.')),
                          valid_from=date.fromisoformat(row['valid_from'].strip()),
                          valid_to=date.fromisoformat(valid_to) if valid_to else None,
-                         source=(row.get('source') or source).strip())
+                         source=(row.get('source') or source).strip(),
+                         window=window)
     except (KeyError, ValueError, AttributeError):
         return None
 
@@ -162,7 +177,7 @@ def write_archive(path: Path, components: Iterable[Component]) -> None:
         writer.writerow(HEADER)
         for c in sorted(components, key=lambda c: (c.valid_from, c.kind, c.name)):
             writer.writerow([c.valid_from.isoformat(), c.valid_to.isoformat() if c.valid_to else '', c.kind,
-                             c.name, c.unit, f'{c.value:g}', f'{c.vat:g}', c.source])
+                             c.name, c.unit, f'{c.value:g}', f'{c.vat:g}', c.source, c.window])
     tmp.replace(path)
 
 
@@ -183,6 +198,18 @@ def month_component(kind: str, name: str, month: date, value: float, vat: float,
     start = month.replace(day=1)
     end = (start + timedelta(days=32)).replace(day=1)
     return Component(kind, name, 'ct/kWh', value, vat, start, end, source)
+
+
+def clip(components: Iterable[Component], start: date, end: Optional[date]) -> list:
+    """The components limited to [start, end) (a contract period); those outside it dropped."""
+    out = []
+    for c in components:
+        a = max(c.valid_from, start)
+        ends = [e for e in (c.valid_to, end) if e is not None]
+        b = min(ends) if ends else None
+        if b is None or a < b:
+            out.append(replace(c, valid_from=a, valid_to=b))
+    return out
 
 
 def until(components: Iterable[Component], end: date) -> list:
