@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/ulrichlehner/homebase/compare/v1.6.0...v1.6.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* the Costs card guides through the setup and reports in place ([#52](https://github.com/ulrichlehner/homebase/issues/52)) ([b554c79](https://github.com/ulrichlehner/homebase/commit/b554c79e3239dc183e82f82ef798a5015c832e6e))
+
 ## [1.6.0](https://github.com/ulrichlehner/homebase/compare/v1.5.0...v1.6.0) (2026-10-16)
 
 
