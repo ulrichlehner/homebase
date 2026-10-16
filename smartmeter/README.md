@@ -161,7 +161,7 @@ DRIVER=drivers/amiplus_linznetz.xmq ./wmbus-test.sh analyze [KEY] [HEX]
 ## Install in Home Assistant (wmbusmeters add-on 3.1.0, HA OS)
 
 First installed with HA OS 18.3, Core 2026.9.4, add-on `wmbusmeters-ha-addon` 3.0.0-RC1 and the
-official Mosquitto broker; updated to add-on 3.1.0 on 2026-10-16. Steps 1 and 2 before step 3.
+official Mosquitto broker; updated to add-on 3.1.0 on 2026-10-16. Step 1 before step 2.
 
 **1. Add the driver.** Add-on web UI → tab **Drivers** → add a driver:
 
@@ -169,16 +169,12 @@ official Mosquitto broker; updated to add-on 3.1.0 on 2026-10-16. Steps 1 and 2 
   and wmbusmeters only loads `*.xmq` files,
 - content: `drivers/amiplus_linznetz.xmq` from this repo, Save.
 
-The add-on copies `/data/drivers` to its `wmbusmeters.drivers.d` folder on every start.
+The add-on copies `/data/drivers` to its `wmbusmeters.drivers.d` folder on every start. Leave
+`wmbusmeters config location` at its default `/homeassistant/wmbusmeters`: the add-on rebuilds
+that folder from its own settings on every start (a location under `/config`, from older
+versions, is moved there automatically).
 
-**2. Move the config location into the HA configuration.** Tab **Home** →
-`wmbusmeters config location` → set `/homeassistant/wmbusmeters`, save, restart the add-on.
-This version mounts the HA configuration as `/homeassistant`. A location under `/config` is an
-empty folder inside the container; per the add-on's `run.sh`, files there are lost when the add-on
-is updated (a plain restart was not tested). The folder `/addon_configs/…_wmbusmeters` does not
-exist for this add-on either.
-
-**3. Switch the meter.** Tab **Home** → Meters → `driver = amiplus_linznetz`, `id`, `key`, `name`.
+**2. Switch the meter.** Tab **Home** → Meters → `driver = amiplus_linznetz`, `id`, `key`, `name`.
 The `id` is the one from the add-on log, not the meter number from the portal. Save, restart the
 add-on.
 
@@ -218,7 +214,7 @@ upstream. Everything that differs:
 
 Field names, quantities and the `unique_id`s of the entities are those of the stock driver.
 
-**4. Check the add-on log:**
+**3. Check the add-on log:**
 
 - no `No such driver`, no restart loop,
 - ends with `Started auto rtlwmbus … listening on t1`.
@@ -228,7 +224,7 @@ the raw decrypted telegram, counters included, and the add-on's start lines show
 the log private. `tools/telegram_log.py` turns it into anonymised samples, see
 [`samples/`](samples/README.md). Set it back to `false` afterwards.
 
-**5. Check Home Assistant.** Settings → Devices & services → MQTT → your meter:
+**4. Check Home Assistant.** Settings → Devices & services → MQTT → your meter:
 
 - import, export and powers show values, entity IDs unchanged (no `_2` suffixes),
 - import and export are plausible against the meter display or the portal and only rise slowly,
@@ -243,7 +239,7 @@ the log private. `tools/telegram_log.py` turns it into anonymised samples, see
 |---|---|
 | restart loop, `No such driver amiplus … triggered a removal of the builtin driver`, exit status 5 | the driver declared `detect` = `DEV,01,02`, same as `amiplus` (fixed: dummy triplet) |
 | `File …/amiplus_linznetz.json not found`, then `Removing topic …` | add-on 3.0.x without the discovery file of earlier versions of this repo; update to 3.1.0 |
-| file under `/config/wmbusmeters` missing after an add-on update | add-on `/config` is ephemeral (step 2) |
+| file under `/config/wmbusmeters` missing after an add-on update | add-on 3.0.0-RC1 with a config location under `/config` (ephemeral); 3.1.0 moves it to `/homeassistant/wmbusmeters` |
 | energy values 1000× too high after switching the driver | `override_vif_unit` is ignored by older wmbusmeters builds |
 | hourly bars of 90 to 100 kWh, value briefly 1/10 or 1/10 000 of the counter | non-spec energy records read by an earlier driver version |
 | entity IDs still carry the old name after deleting and re-adding the device | HA restores entity IDs via the `unique_id`; rename them by hand in the entity settings |
