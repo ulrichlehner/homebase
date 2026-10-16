@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/ulrichlehner/homebase/compare/v1.5.0...v1.6.0) (2026-10-16)
+
+
+### Features
+
+* electricity costs for the Energy dashboard ([#50](https://github.com/ulrichlehner/homebase/issues/50)) ([dbad445](https://github.com/ulrichlehner/homebase/commit/dbad445efac585e3025d5a816f22d4b676b00de1))
+
 ## [1.5.0](https://github.com/ulrichlehner/homebase/compare/v1.4.0...v1.5.0) (2026-10-15)
 
 
