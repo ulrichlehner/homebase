@@ -154,6 +154,10 @@ Every hour costs:
 LINZ NETZ since 2023 and is updated when they change (usually in January). For another grid
 operator only the supplier is counted until its charges are added.
 
+The **Costs** card on the add-on page walks through the setup in three steps and shows the state of
+each: set the supplier, upload prices for earlier months (optional), use the costs in the Energy
+dashboard. After saving, the card shows "being calculated" and updates itself until the costs are there.
+
 **Supplier.** You can switch suppliers, so the supplier is set on the add-on page under **Costs**,
 **Set the supplier**, from a date:
 
@@ -168,9 +172,9 @@ suppliers can be added to the add-on as modules.
 **Earlier months.** go green shows the last 13 months; the add-on keeps every month it has
 fetched, so from then on nothing is missing. Older months have no energy price; the page lists
 them under **Months without energy price** (they count grid charges, levies and fees only). A
-price list fills them: upload
-`<metering point>_prices.csv` under **Import older history**, for example with the monthly prices
-from your bills:
+price list fills them: upload it in the **Costs** card (**Upload price list**, shown while months
+are missing) or under **Import older history**, as `prices.csv` or any name ending in
+`_prices.csv`, for example with the monthly prices from your bills:
 
 ```text
 valid_from;valid_to;kind;component;unit;value;vat
