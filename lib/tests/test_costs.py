@@ -133,3 +133,67 @@ def test_go_green_history_keeps_mid_month_changes():
     assert (a.valid_from, a.valid_to) == (date(2026, 8, 1), date(2026, 8, 15))
     assert (b.valid_from, b.valid_to) == (date(2026, 8, 15), date(2026, 9, 1))
     assert (c.valid_from, c.valid_to) == (date(2026, 9, 1), date(2026, 10, 1))
+
+
+def test_a_charge_with_a_time_window_counts_only_inside_it(tmp_path):
+    snap = Component('grid', 'Abschlag', 'ct/kWh', -1.0, 0.0, date(2026, 4, 1), None, 'grid', '04-09 10-16')
+    assert costs.cost_of_hour(at(2026, 6, 1, 12), 1.0, [snap])[0] == pytest.approx(-0.01)
+    for outside in (at(2026, 6, 1, 16), at(2026, 6, 1, 9), at(2026, 10, 1, 12)):
+        assert costs.cost_of_hour(outside, 1.0, [snap])[0] == 0
+    path = tmp_path / 'prices.csv'
+    costs.write_archive(path, [snap])
+    assert costs.read_archive(path) == [snap]
+    assert costs.parse_row({'valid_from': '2026-04-01', 'kind': 'grid', 'component': 'x', 'unit': 'ct/kWh',
+                            'value': '1', 'window': '4-9 10-16'}) is None
+
+
+def test_clip_limits_components_to_a_contract_period():
+    a = Component('energy', 'Grundpauschale', 'EUR/month', 2.5, 0.2, date(2023, 3, 1))
+    b = costs.month_component('energy', 'Energiepreis', date(2022, 12, 1), 10.0, 0.2, 'x')
+    clipped = costs.clip([a, b], date(2024, 1, 1), date(2025, 1, 1))
+    assert [(c.valid_from, c.valid_to) for c in clipped] == [(date(2024, 1, 1), date(2025, 1, 1))]
+
+
+SNE5 = ('<p>Netzebene 7</p><p>Bereich Wien: nicht gemessene Leist. 3 000 /Jahr 9,99</p>'
+        '<p>Bereich Linz: gemessene Leistung 1,00 nicht gemessene Leist. 5 400 /Jahr 5,57 4,46</p>'
+        '<p>Bereich Graz: nicht gemessene Leist. 1 000 /Jahr 7,77</p>')
+SNE6 = '<p>6. Wien: - - - 0,1 0,2 0,3 0,9</p><p>7. Linz: - - - 0,066 0,126 0,324 0,487</p>'
+
+
+def ris_json(par5_from='2026-04-01', par6_from='2026-01-01') -> bytes:
+    """Shaped like a RIS OGD search result (synthetic)."""
+    def doc(par, start, url):
+        return {'Data': {'Metadaten': {'Bundesrecht': {'BrKons': {'ArtikelParagraphAnlage': par,
+                                                                  'Inkrafttretensdatum': start}}},
+                         'Dokumentliste': {'ContentReference': {'ContentType': 'MainDocument',
+                                                                'Urls': {'ContentUrl': [{'DataType': 'Html', 'Url': url}]}}}}}
+    return json.dumps({'OgdSearchResult': {'OgdDocumentResults': {'OgdDocumentReference': [
+        doc('§ 5', par5_from, 'p5'), doc('§ 6', par6_from, 'p6')]}}}).encode()
+
+
+def test_the_grid_charges_are_read_from_the_sne_v():
+    assert tariffs.parse_sne_ne7(SNE5, SNE6, 'Linz') == {'flat_eur_year': 54.0, 'kwh_ct': 5.57, 'summer_ct': 4.46,
+                                                        'loss_ct': 0.487}
+    pages = {'p5': SNE5.encode(), 'p6': SNE6.encode()}
+    got = tariffs.fetch_grid('003100', date(2026, 10, 16), lambda url: pages.get(url) or ris_json())
+    assert {(c.name, c.value, c.valid_from, c.window) for c in got} == {
+        ('Netznutzung Arbeitspreis', 5.57, date(2026, 4, 1), ''),
+        ('Leistungspreis pauschal', 54.0, date(2026, 4, 1), ''),
+        ('Netzverlustentgelt', 0.487, date(2026, 1, 1), ''),
+        ('Netznutzung Sommer-Nieder-Abschlag', -1.11, date(2026, 4, 1), tariffs.SNAP_WINDOW)}
+    assert all(c.source == 'ris:SNE-V' for c in got)
+    with pytest.raises(ValueError):
+        tariffs.parse_sne_ne7('<p>Tabelle als Bild</p>', SNE6, 'Linz')
+    no_summer = {'p5': SNE5.replace(' 4,46', '').encode(), 'p6': SNE6.encode()}
+    got = tariffs.fetch_grid('003100', date(2026, 10, 16), lambda url: no_summer.get(url) or ris_json())
+    assert {c.name: c.value for c in got}['Netznutzung Sommer-Nieder-Abschlag'] == 0.0
+
+
+def test_go_green_fees_are_read_with_the_month_they_were_seen():
+    data = json.dumps([{'key': 'GSFLEX', 'basicCharge': 2.9,
+                        'options': {'OnlineBonus': {'basicCharge': -0.9}, 'plus': {'basicCharge': 1.7}}}]).encode()
+    fees = tariffs.parse_flex_fees(data, 'strom flex future', date(2026, 10, 1), 'gogreen_flex:api')
+    assert {(c.name, c.value, c.valid_from) for c in fees} == {('Grundpauschale', 2.9, date(2026, 10, 1)),
+                                                              ('Online-Bonus', -0.9, date(2026, 10, 1))}
+    assert len(tariffs.parse_flex_fees(data, 'strom flex plus', date(2026, 10, 1), 'x')) == 3
+    assert tariffs.parse_flex_fees(b'[]', 'strom flex', date(2026, 10, 1), 'x') == []

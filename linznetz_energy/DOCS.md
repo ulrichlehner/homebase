@@ -151,8 +151,18 @@ Every hour costs:
 - 20 % VAT on all of it; a subsidy such as the Stromkostenzuschuss is deducted after VAT, as on the bill.
 
 **Grid operator.** It follows from the metering point. The add-on knows the charges and levies of
-LINZ NETZ since 2023 and is updated when they change (usually in January). For another grid
-operator only the supplier is counted until its charges are added.
+LINZ NETZ since 2023. Once a day it also reads the grid usage charge, the flat rate and the grid
+loss charge from the current regulation (Systemnutzungsentgelte-Verordnung, SNE-V) in the Austrian
+legal information system [RIS](https://www.ris.bka.gv.at), from December on also next January's
+version, and keeps them. So new grid charges count without an add-on update. The card shows
+"grid charges checked today"; if the RIS cannot be read, the built-in charges count. If neither
+has charges for the current year, the card and a Home Assistant notification say so: the costs
+then use the last known charges until an add-on update. The metering fee and the levies come
+from other regulations and are updated with the add-on. For another grid operator only the
+supplier is counted until its charges are added.
+
+From 1 April 2026 the grid usage charge is 20 % lower from April to September between 10:00
+and 16:00 (Sommer-Nieder-Arbeitspreis); the add-on counts these hours with the lower price.
 
 The **Costs** card on the add-on page walks through the setup in three steps and shows the state of
 each: set the supplier, upload prices for earlier months (optional), use the costs in the Energy
@@ -163,7 +173,7 @@ dashboard. After saving, the card shows "being calculated" and updates itself un
 
 | Supplier | Prices |
 | --- | --- |
-| go green energy (strom flex) | the energy price changes every month; the add-on reads it from the same data go green's [flex price page](https://www.gogreenenergy.at/flexpreisentwicklung.html) shows (the last 13 months), as soon as a new month is published, and keeps it. Basic fee and online bonus as in the price sheet (editable); the "plus" products add their monthly fee. |
+| go green energy (strom flex) | the energy price changes every month; the add-on reads it from the same data go green's [flex price page](https://www.gogreenenergy.at/flexpreisentwicklung.html) shows (the last 13 months), as soon as a new month is published, and keeps it. Basic fee and online bonus: as entered for the contract until the add-on first reads them from go green, then as published, each change from the month it is seen (the online bonus only if the contract has one); the "plus" products add their monthly fee. |
 | Fixed price | any supplier with a price guarantee: energy price and basic fee as entered |
 
 A new supplier from a date ends the previous one; the costs before stay as they were. More
@@ -184,7 +194,9 @@ valid_from;valid_to;kind;component;unit;value;vat
 `kind` is `energy`, `grid`, `levy` or `subsidy`; `unit` is `ct/kWh`, `EUR/month` or `EUR/year`;
 values are net, `vat` as a fraction; `valid_to` is the first day no longer covered (empty: open).
 For go green's "future" products the energy price includes the future surcharge (the bill lists
-it separately). The prices are kept in `prices.csv` in the add-on folder; importing the same list
+it separately). A price list has the last word: its rows replace fetched or built-in values of
+the same charge for their period, for example a basic fee that differed for some months.
+`window` (optional, last column) limits a per-kWh row to months and hours, such as `04-09 10-16`. The prices are kept in `prices.csv` in the add-on folder; importing the same list
 again changes nothing.
 
 ## Live meter readings (optional)

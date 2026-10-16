@@ -327,6 +327,18 @@ def test_costs_card_shows_contract_price_years_and_gaps():
     assert 'not set yet: choose it below' in empty
 
 
+
+def test_costs_card_says_where_the_grid_charges_come_from():
+    base = {'language': 'en', 'statistics': {}, 'costs': {'contract': None, 'grid': 'LINZ NETZ'}}
+    def grid_row(g):
+        page = W.render_page({**base, 'costs': {**base['costs'], 'grid_status': g}})
+        return page.split('Grid operator')[1].split('</tr>')[0]
+    assert 'checked today' in grid_row({'state': 'online'})
+    assert 'pill info' in grid_row({'state': 'table', 'error': 'offline'}) and 'offline' in grid_row({'state': 'table', 'error': 'offline'})
+    outdated = grid_row({'state': 'outdated', 'year': 2027})
+    assert 'pill warn' in outdated and 'for 2027 are missing' in outdated
+    assert 'pill' not in grid_row({})
+
 def test_contract_post_records_the_request_and_returns_to_the_card(server):
     url, store, wake = server
 

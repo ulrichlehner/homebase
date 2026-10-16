@@ -271,8 +271,15 @@ def _costs_card(lang: str, status: dict) -> str:
     to set the supplier."""
     c = status.get('costs') or {}
     contract = c.get('contract')
-    rows = [(t(lang, 'page.costs_grid'), html.escape(c['grid']) if c.get('grid') else
-             f'<span class="muted">{html.escape(t(lang, "page.costs_grid_unknown"))}</span>')]
+    grid = html.escape(c['grid']) if c.get('grid') else f'<span class="muted">{html.escape(t(lang, "page.costs_grid_unknown"))}</span>'
+    g = c.get('grid_status') or {}
+    if g.get('state') == 'online':
+        grid += f'<br><span class="muted">{html.escape(t(lang, "page.costs_grid_online"))}</span>'
+    elif g.get('state') == 'table':
+        grid += f'<br><span class="pill info">i</span> {html.escape(t(lang, "page.costs_grid_table", error=g.get("error") or "–"))}'
+    elif g.get('state') == 'outdated':
+        grid += f'<br><span class="pill warn">!</span> {html.escape(t(lang, "page.costs_grid_outdated", year=g.get("year", "")))}'
+    rows = [(t(lang, 'page.costs_grid'), grid)]
     rows.append((t(lang, 'page.costs_supplier'),
                  f'<strong>{html.escape(contract["supplier"])}</strong><br>'
                  f'{html.escape(t(lang, "page.costs_since", product=contract["product"] or "", start=contract["start"]))}'

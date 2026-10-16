@@ -846,3 +846,83 @@ def test_a_price_list_uploaded_in_the_card_reports_back_there(tmp_path, monkeypa
     addon.run_once(FakeHass(), options(), tmp_path, 'Europe/Vienna', NOW)
     assert addon.web.read_status(tmp_path)['prices_import'] == {
         'state': 'done', 'lines': [['import.prices', {'file': 'prices.csv', 'rows': 1, 'rejected': 1}]]}
+
+
+def test_grid_charges_are_checked_online_and_a_missing_year_is_reported(tmp_path, monkeypatch):
+    import prices
+    from datetime import date
+    from test_costs import SNE5, SNE6, ris_json
+    pages = {'p5': SNE5.encode(), 'p6': SNE6.encode()}
+    calls = []
+
+    def get(url):
+        calls.append(url)
+        return pages.get(url) or ris_json()
+    state = {}
+    now = datetime(2026, 10, 16, 8, tzinfo=UTC)
+    assert prices.update_grid(tmp_path, state, now, ZONE, LINZ_METER, get) == {'state': 'online'}
+    assert {c.source for c in prices.costs.read_archive(tmp_path / prices.ARCHIVE)} == {'ris:SNE-V'}
+    n = len(calls)
+    prices.update_grid(tmp_path, state, now + timedelta(hours=1), ZONE, LINZ_METER, get)
+    assert len(calls) == n                                                   # once a day
+    offline = lambda url: (_ for _ in ()).throw(prices.requests.RequestException('offline'))   # noqa: E731
+    later = datetime(2026, 10, 25, 8, tzinfo=UTC)
+    assert prices.update_grid(tmp_path, state, later, ZONE, LINZ_METER, offline)['state'] == 'table'
+    # a year neither the table nor the RIS has: warn once, in HA too
+    monkeypatch.setattr(prices, 'http_get', offline)
+    o = options(metering_point=LINZ_METER)
+    addon.write_state(tmp_path, {'grid_confirmed': '2026-10-16', 'grid_check': '2027-01-05T08:00:00+00:00'})
+    prices.set_contract(st := addon.read_state(tmp_path), 'fixed', '', date(2026, 10, 1), {'energy_ct_kwh': 20})
+    addon.write_state(tmp_path, st)
+    from types import SimpleNamespace
+    hours = [SimpleNamespace(start=datetime(2027, 1, 5, 7, tzinfo=UTC), wh=400)]
+    hass = FakeHass()
+    now27 = datetime(2027, 1, 5, 8, tzinfo=UTC)
+    addon.write_costs(hass, o, tmp_path, {}, hours, ZONE, now27, 'en')
+    assert addon.web.read_status(tmp_path)['costs']['grid_status']['state'] == 'outdated'
+    created = [c for c in hass.services if c[1] == 'create' and c[2]['notification_id'] == addon.GRID_NOTIFICATION]
+    assert len(created) == 1 and '2027' in created[0][2]['title']
+    addon.write_costs(hass, o, tmp_path, {}, hours, ZONE, now27 + timedelta(hours=1), 'en')
+    assert len([c for c in hass.services if c[1] == 'create' and c[2]['notification_id'] == addon.GRID_NOTIFICATION]) == 1
+    # the add-on update brings the year (here: the RIS answers again): the notification goes away
+    monkeypatch.setattr(prices, 'http_get', get)
+    addon.write_costs(hass, o, tmp_path, {}, hours, ZONE, now27 + timedelta(days=1), 'en')
+    assert [c for c in hass.services if c[1] == 'dismiss' and c[2]['notification_id'] == addon.GRID_NOTIFICATION]
+
+
+def test_supplier_fees_count_per_period_and_a_price_list_wins(tmp_path):
+    import prices
+    from datetime import date
+    C = prices.costs.Component
+    state = {}
+    prices.set_contract(state, 'gogreen_flex', 'strom flex future', date(2023, 3, 1), {'online_bonus_month': 0})
+    prices.set_contract(state, 'fixed', '', date(2027, 6, 1), {'energy_ct_kwh': 15.0})
+    src = 'gogreen_flex:api'
+    prices.costs.write_archive(tmp_path / prices.ARCHIVE, [
+        C('energy', 'Grundpauschale', 'EUR/month', 3.0, 0.2, date(2026, 11, 1), None, src),
+        C('energy', 'Online-Bonus', 'EUR/month', -0.9, 0.2, date(2026, 11, 1), None, src),     # the contract has no bonus
+        C('energy', 'Grundpauschale', 'EUR/month', 2.0, 0.2, date(2027, 1, 1), date(2027, 2, 1), 'import'),
+    ])
+    comps = prices.components(tmp_path, LINZ_METER, state)
+    fee = lambda day: {c.name: c.value for c in prices.costs.effective(comps, day) if c.unit == 'EUR/month' and c.kind == 'energy'}   # noqa: E731
+    assert fee(date(2026, 10, 1)) == {'Grundpauschale': 2.5, 'Online-Bonus': 0.0}          # the contract's values
+    assert fee(date(2026, 12, 1)) == {'Grundpauschale': 3.0, 'Online-Bonus': 0.0}          # what go green published
+    assert fee(date(2027, 1, 15))['Grundpauschale'] == 2.0                                 # the price list wins
+    assert fee(date(2027, 7, 1)) == {'Grundpauschale': 0.0}                                # the next contract's own fee
+
+
+def test_an_unchanged_fee_starts_no_new_period(tmp_path):
+    import prices
+    from datetime import date
+    state = {}
+    prices.set_contract(state, 'gogreen_flex', 'strom flex', date(2023, 3, 1), {})
+
+    def get(month):
+        return lambda url: json.dumps([{'key': 'GSFLEX', 'basicCharge': 2.5, 'options': {'OnlineBonus': {'basicCharge': -0.833333}},
+                                        'history': [{'fromDate': f'2026-{month:02d}-01', 'untilDate': '2100-12-31',
+                                                     'energyPrice': 0.2}]}]).encode()
+    for month in (10, 11, 12):
+        prices.update(tmp_path, state, datetime(2026, month, 2, 8, tzinfo=UTC), ZONE, get(month))
+    fees = [c for c in prices.costs.read_archive(tmp_path / prices.ARCHIVE) if c.unit == 'EUR/month']
+    assert sorted((c.name, c.valid_from) for c in fees) == [('Grundpauschale', date(2026, 10, 1)),
+                                                          ('Online-Bonus', date(2026, 10, 1))]

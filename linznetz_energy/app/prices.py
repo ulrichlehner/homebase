@@ -52,26 +52,43 @@ def set_contract(state: dict, supplier: str, product: str, start: date, params: 
 
 
 def components(store: Path, metering_point: str, state: dict) -> list:
-    """Every price component: the grid operator's, the archive's (fetched and imported prices)
-    and the contracts' fixed ones (fees, a fixed price), each contract's cut off where the next
-    one starts."""
+    """Every price component, in the order in which a later one replaces an earlier one of the
+    same charge (homebase.costs.effective):
+
+      1. the grid operator's built-in table,
+      2. grid charges fetched online (the SNE-V in the RIS),
+      3. each contract's own values (fees, a fixed price), cut off where the next contract starts,
+      4. what its supplier published (monthly prices, fees), only inside that contract's period
+         (the online bonus only if the contract has one),
+      5. imported price lists, so a period can always be corrected by hand."""
+    archive = costs.read_archive(store / ARCHIVE)
     out = []
     operator = tariffs.grid_operator(metering_point)
     if operator:
         out += tariffs.GRID[operator]['components']
-    out += costs.read_archive(store / ARCHIVE)
+    out += [c for c in archive if c.source.startswith('ris:')]
+    fetched = []
     for c in contracts(state):
         supplier = tariffs.SUPPLIERS.get(c['supplier'])
-        if supplier:
-            fixed = supplier.components(c)
-            out += costs.until(fixed, c['end']) if c['end'] else fixed
+        if not supplier:
+            continue
+        own = supplier.components(c)
+        out += costs.until(own, c['end']) if c['end'] else own
+        no_bonus = str(c.get('params', {}).get('online_bonus_month', '')).strip() in ('0', '0.0', '-0.0')
+        rows = [a for a in archive if a.source.startswith(f'{supplier.id}:')
+                and not (a.name == 'Online-Bonus' and no_bonus)]
+        fetched += costs.clip(rows, c['start'], c['end'])
+    out += fetched
+    out += [c for c in archive if c.source == 'import' or not (c.source.startswith('ris:')
+            or any(c.source.startswith(f'{sid}:') for sid in tariffs.SUPPLIERS))]
     return out
 
 
 def update(store: Path, state: dict, now: datetime, zone: ZoneInfo,
-           get: Callable[[str], bytes] = http_get) -> Optional[str]:
+           get: Optional[Callable[[str], bytes]] = None) -> Optional[str]:
     """Fetches the current month's price from the current contract's supplier while the archive
     has none; returns an error text if a fetch failed."""
+    get = get or http_get
     today = now.astimezone(zone).date()
     current = next((c for c in reversed(contracts(state)) if c['start'] <= today), None)
     if not current:
@@ -88,23 +105,70 @@ def update(store: Path, state: dict, now: datetime, zone: ZoneInfo,
         return state.get('price_fetch_error')
     state['price_fetch'] = now.isoformat()
     try:
-        new = supplier.fetch(current, get)
+        new = supplier.fetch(current, get, today) if supplier.id == 'gogreen_flex' else supplier.fetch(current, get)
     except (requests.RequestException, ValueError, KeyError) as err:
         state['price_fetch_error'] = str(err)[:200]
         logger.warning('Could not fetch the price of %s: %s', supplier.name, err)
         return state['price_fetch_error']
+    new = [c for c in new if not _same_fee(archive, c)]
     merged, changed = costs.merge(archive, new)
     if changed:
         costs.write_archive(store / ARCHIVE, merged)
         for c in new:
             logger.info('Price from %s: %s %s %g %s', supplier.name, c.valid_from, c.name, c.value, c.unit)
-    if not any(c.valid_on(today) for c in new):
+    if not any(c.valid_on(today) and c.unit == 'ct/kWh' for c in new):
         # the supplier still shows an earlier month: the new one is not published yet
         latest = max((c.valid_from for c in new), default=None)
         state['price_fetch_error'] = f'not published yet (latest: {latest:%m/%Y})' if latest else 'no price published'
         return state['price_fetch_error']
     state.pop('price_fetch_error', None)
     return None
+
+
+def _same_fee(archive: list, fee: costs.Component) -> bool:
+    """Is a fetched fee (EUR/month, valid from the month it was seen) the same as the latest one
+    already recorded from that source? Then nothing changed and no new period starts."""
+    if fee.unit == 'ct/kWh':
+        return False
+    earlier = [a for a in archive if (a.kind, a.name, a.source) == (fee.kind, fee.name, fee.source)
+               and a.valid_from <= fee.valid_from]
+    return bool(earlier) and max(earlier, key=lambda a: a.valid_from).value == fee.value
+
+
+GRID_CHECK_EVERY = timedelta(hours=24)
+
+
+def update_grid(store: Path, state: dict, now: datetime, zone: ZoneInfo, metering_point: str,
+                get: Optional[Callable[[str], bytes]] = None) -> dict:
+    """Checks the grid operator's charges in the SNE-V (RIS) once a day and keeps them in the
+    archive. Returns the grid price status for the page: 'online' (confirmed today), 'table'
+    (not confirmed, but the built-in table covers the current year) or 'outdated' (neither)."""
+    operator = tariffs.grid_operator(metering_point)
+    if not operator:
+        return {'state': 'unknown'}
+    get = get or http_get
+    today = now.astimezone(zone).date()
+    last = state.get('grid_check')
+    if not last or now - datetime.fromisoformat(last) >= GRID_CHECK_EVERY:
+        state['grid_check'] = now.isoformat()
+        try:
+            new = tariffs.fetch_grid(operator, today, get)
+            merged, changed = costs.merge(costs.read_archive(store / ARCHIVE), new)
+            if changed:
+                costs.write_archive(store / ARCHIVE, merged)
+                for c in new:
+                    logger.info('Grid charge from the SNE-V: from %s %s %g %s', c.valid_from, c.name, c.value, c.unit)
+            state['grid_confirmed'] = today.isoformat()
+            state.pop('grid_error', None)
+        except (requests.RequestException, ValueError, KeyError, TypeError) as err:
+            state['grid_error'] = str(err)[:200]
+            logger.warning('Could not check the grid charges in the SNE-V: %s', err)
+    if state.get('grid_confirmed') and today - date.fromisoformat(state['grid_confirmed']) <= timedelta(days=3):
+        return {'state': 'online'}
+    table_years = {c.valid_from.year for c in tariffs.GRID[operator]['components'] if c.name == 'Netznutzung Arbeitspreis'}
+    ris = [c for c in costs.read_archive(store / ARCHIVE) if c.source.startswith('ris:') and c.name == 'Netznutzung Arbeitspreis']
+    covered = today.year in table_years or any(c.valid_from.year == today.year for c in ris)
+    return {'state': 'table' if covered else 'outdated', 'error': state.get('grid_error'), 'year': today.year}
 
 
 def import_price_list(path: Path, store: Path) -> tuple:
@@ -128,7 +192,7 @@ def to_stats(cost_hours: list) -> list:
 
 
 def status(statistic_id: str, cost_hours: list, state: dict, comps: list, zone: ZoneInfo, now: datetime,
-           metering_point: str, fetch_error: Optional[str]) -> dict:
+           metering_point: str, fetch_error: Optional[str], grid: Optional[dict] = None) -> dict:
     """What the add-on page shows about the costs."""
     today = now.astimezone(zone).date()
     years: dict = defaultdict(float)
@@ -157,4 +221,5 @@ def status(statistic_id: str, cost_hours: list, state: dict, comps: list, zone: 
                      if contract and contract['supplier'] in tariffs.SUPPLIERS else None),
         'grid': tariffs.GRID[operator]['name'] if operator else None,
         'fetch_error': fetch_error,
+        'grid_status': grid or {},
     }

@@ -72,6 +72,7 @@ IMPORT_NOTIFICATION = 'linznetz_energy_import'
 DOWNLOAD_NOTIFICATION = 'linznetz_energy_download'
 SETUP_NOTIFICATION = 'linznetz_energy_setup'
 SECRET_NOTIFICATION = 'linznetz_energy_secret'
+GRID_NOTIFICATION = 'linznetz_energy_grid_prices'
 DEVIATION_NOTIFICATION = 'linznetz_energy_deviation'
 LIVE_HISTORY_DAYS = 10            # how far back the first read of the live counter goes (HA's default purge_keep_days)
 CHECK_DAYS = 7                  # days of live/portal comparison for the status and the notification
@@ -603,9 +604,15 @@ def write_costs(hass, options: Options, store: Path, state: dict, hours: list, z
     The state is read afresh: the run's own copy predates update_live's changes."""
     state = read_state(store)
     fetch_error = prices.update(store, state, now, zone)
-    write_state(store, state)
+    grid = prices.update_grid(store, state, now, zone, options.metering_point)
     comps = prices.components(store, options.metering_point, state)
     cost_hours = costs.cost_hours([(h.start, h.wh) for h in hours], comps, zone)
+    if grid.get('state') == 'outdated' and cost_hours and state.get('grid_warned') != grid['year']:
+        notify(hass, GRID_NOTIFICATION, t(lang, 'grid_outdated.title', year=grid['year']), t(lang, 'grid_outdated.text', year=grid['year']))
+        state['grid_warned'] = grid['year']
+    elif grid.get('state') != 'outdated' and state.pop('grid_warned', None):
+        notify(hass, GRID_NOTIFICATION, '', None)
+    write_state(store, state)
     if cost_hours:
         stats = prices.to_stats(cost_hours)
         import_statistic(hass, options.cost_statistic, t(lang, 'stat.cost', site=options.site), stats, unit='EUR')
@@ -615,7 +622,7 @@ def write_costs(hass, options: Options, store: Path, state: dict, hours: list, z
     if (web.read_status(store).get('contract_result') or {}).get('state') == 'calculating':
         changes['contract_result'] = {'state': 'saved'}
     web.write_status(store, costs=prices.status(options.cost_statistic, cost_hours, state, comps, zone, now,
-                                                options.metering_point, fetch_error), **changes)
+                                                options.metering_point, fetch_error, grid), **changes)
 
 
 def handle_contract_request(store: Path) -> None:
@@ -752,6 +759,7 @@ def handle_live_meter_request(hass, store: Path) -> None:
 
 
 ALL_NOTIFICATIONS = (LOGIN_NOTIFICATION, IMPORT_NOTIFICATION, DOWNLOAD_NOTIFICATION, SETUP_NOTIFICATION, SECRET_NOTIFICATION,
+                     GRID_NOTIFICATION,
                      DEVIATION_NOTIFICATION)
 
 
