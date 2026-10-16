@@ -100,10 +100,10 @@ TEXTS = {
                                     'costs**, then pick "{cost}" and save.',
         'page.step_dashboard_later': 'after step 1, once the costs are calculated',
         'page.prices_importing': 'The price list is being imported and the costs recalculated, the page updates itself.',
-        'page.prices_upload': 'Price list (CSV)',
-        'page.prices_upload_button': 'Upload price list',
-        'page.prices_upload_hint': 'A file prices.csv (or any name ending in _prices.csv) with one row per price; the '
-                                   'format is in the documentation, section "Costs".',
+        'page.prices_upload': 'Choose a price list or drop it here',
+        'page.prices_uploading': 'Uploading …',
+        'page.prices_upload_hint': 'CSV file prices.csv (or any name ending in _prices.csv), one row per price; it is '
+                                   'imported right away. Format: documentation, section "Costs".',
         'page.costs_statistic': 'Statistic',
         'page.costs_statistic_line': '{eur} € since {first}',
         'page.contract': 'Set the supplier',
@@ -353,10 +353,10 @@ TEXTS = {
                                     'Gesamtkosten erfasst** wählen, dann „{cost}“ auswählen und speichern.',
         'page.step_dashboard_later': 'nach Schritt 1, sobald die Kosten berechnet sind',
         'page.prices_importing': 'Die Preisliste wird übernommen und die Kosten neu berechnet, die Seite aktualisiert sich selbst.',
-        'page.prices_upload': 'Preisliste (CSV)',
-        'page.prices_upload_button': 'Preisliste hochladen',
-        'page.prices_upload_hint': 'Eine Datei prices.csv (oder ein Name, der auf _prices.csv endet) mit einer Zeile je Preis; '
-                                   'das Format steht in der Dokumentation, Abschnitt „Costs“.',
+        'page.prices_upload': 'Preisliste auswählen oder hierher ziehen',
+        'page.prices_uploading': 'Wird hochgeladen …',
+        'page.prices_upload_hint': 'CSV-Datei prices.csv (oder ein Name, der auf _prices.csv endet), eine Zeile je Preis; sie '
+                                   'wird sofort übernommen. Format: Dokumentation, Abschnitt „Costs“.',
         'page.costs_statistic': 'Statistik',
         'page.costs_statistic_line': '{eur} € seit {first}',
         'page.contract': 'Lieferant festlegen',

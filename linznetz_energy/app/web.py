@@ -163,13 +163,13 @@ ul.plain { list-style: none; padding: 0; margin: 0 0 4px; }
 .contract button { justify-self: start; width: auto; margin: 0; padding: 0 24px; height: 48px; font-size: 16px; }
 .contract p { margin: 0; }
 .contract [hidden] { display: none; }
-.result { margin: 0 0 12px; }
+.result { margin: 12px 0 0; }
 .setup-steps { margin: 0 0 18px; }
 .setup-steps li { line-height: 1.5; }
-.price-upload { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
-.price-upload label { display: grid; gap: 6px; font-size: 14px; color: var(--muted); font-weight: 500; flex: 1 1 260px; }
-.price-upload button { margin: 0; }
-.price-upload + p { margin: 6px 0 0; }
+.price-upload { margin-top: 16px; }
+.drop.compact { padding: 18px 16px; }
+.drop.compact svg { width: 28px; height: 28px; }
+.drop.compact strong { font-size: 16px; }
 table + p, table + form { margin-top: 14px; }
 .check { display: flex; gap: 10px; align-items: flex-start; margin-top: 4px; }
 .check input { margin-top: 5px; }
@@ -310,10 +310,21 @@ def _costs_card(lang: str, status: dict) -> str:
         import_html = ''.join(f'<p class="result"><span class="pill {"ok" if k == "import.prices" else "warn"}">'
                               f'{"ok" if k == "import.prices" else "!"}</span> {html.escape(_text(lang, [k, v]))}</p>'
                               for k, v in pi['lines'])
-    upload = (f'<form method="post" action="upload?to=costs" enctype="multipart/form-data" class="price-upload">'
-              f'<label>{t(lang, "page.prices_upload")}<input type="file" name="files" accept=".csv" required></label>'
-              f'<button type="submit" class="secondary">{t(lang, "page.prices_upload_button")}</button></form>'
-              f'<p class="muted">{html.escape(t(lang, "page.prices_upload_hint"))}</p>')
+    # one action: choosing or dropping a file uploads it right away (no second button)
+    upload = (f'<form method="post" action="upload?to=costs" enctype="multipart/form-data" class="price-upload" id="price-upload">'
+              f'<label class="drop compact" id="price-drop">'
+              f'<input type="file" name="files" accept=".csv" id="price-file">'
+              f'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>'
+              f'<strong id="price-title">{t(lang, "page.prices_upload")}</strong>'
+              f'<span class="muted">{html.escape(t(lang, "page.prices_upload_hint"))}</span></label>{import_html}</form>'
+              '<script>(function(){var f=document.getElementById("price-upload"),i=document.getElementById("price-file"),'
+              'd=document.getElementById("price-drop"),t=document.getElementById("price-title");'
+              f'function send(){{if(!i.files.length)return;t.textContent={json.dumps(t(lang, "page.prices_uploading"))};'
+              'd.classList.add("over");f.submit();}'
+              'i.addEventListener("change",send);'
+              '["dragenter","dragover"].forEach(function(e){d.addEventListener(e,function(v){v.preventDefault();d.classList.add("over");});});'
+              '["dragleave"].forEach(function(e){d.addEventListener(e,function(v){v.preventDefault();d.classList.remove("over");});});'
+              'd.addEventListener("drop",function(v){v.preventDefault();i.files=v.dataTransfer.files;send();});})();</script>')
     current = contract or {}
     params = current.get('params', {})
     suppliers = ''.join(f'<option value="{s.id}"{" selected" if s.id == current.get("supplier_id") else ""}>'
@@ -325,7 +336,7 @@ def _costs_card(lang: str, status: dict) -> str:
     def field(name, label, value, only):
         return (f'<label data-only="{only}">{html.escape(t(lang, label))}'
                 f'<input name="{name}" inputmode="decimal" value="{html.escape(str(value))}"></label>')
-    form = (f'<form method="post" action="contract" class="contract">'
+    form = (f'<form method="post" action="contract" class="contract" id="contract">'
             f'<h3>{t(lang, "page.contract")}</h3>'
             f'<label>{t(lang, "page.contract_supplier")}<select name="supplier" id="supplier">{suppliers}</select></label>'
             f'<label data-only="gogreen_flex">{t(lang, "page.contract_product")}<select name="product">{products}</select></label>'
@@ -336,7 +347,7 @@ def _costs_card(lang: str, status: dict) -> str:
             + field('online_bonus_month', 'page.contract_online_bonus',
                     round(params.get('online_bonus_month', flex['online_bonus_month']), 6), 'gogreen_flex')
             + f'<p class="muted">{html.escape(t(lang, "page.contract_hint"))}</p>'
-            f'<button type="submit">{t(lang, "page.contract_save")}</button></form>'
+            f'<button type="submit">{t(lang, "page.contract_save")}</button>{result_html}</form>'
             '<script>(function(){var s=document.getElementById("supplier");function show(){'
             'document.querySelectorAll(".contract [data-only]").forEach(function(l){var o=l.getAttribute("data-only");'
             'var on=o==="any"||o===s.value;l.hidden=!on;l.querySelectorAll("input,select").forEach(function(i){i.disabled=!on;});});}'
@@ -359,7 +370,7 @@ def _costs_card(lang: str, status: dict) -> str:
              f'<li><strong>{t(lang, "page.step_prices")}</strong><br>{step2}</li>'
              f'<li><strong>{t(lang, "page.step_dashboard")}</strong><br>{step3}</li></ol>')
     return (f'<div class="card" id="costs"><h2>{t(lang, "page.costs")}</h2><p class="lead">{html.escape(t(lang, "page.costs_lead"))}</p>'
-            f'{result_html}{import_html}{steps}<table>{_rows(rows)}</table>'
+            f'{steps}<table>{_rows(rows)}</table>'
             f'{upload}{form}</div>')
 
 
@@ -706,7 +717,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wake.set()
             logger.info('Uploaded %s, importing', ', '.join(names))
             if to_costs:
-                self._done(None, 'costs')
+                self._done(None, 'price-upload')
             else:
                 self._done(('page.uploaded', {'files': ', '.join(names)}))
             return
@@ -729,7 +740,7 @@ class Handler(BaseHTTPRequestHandler):
             fields = {k: v[0].strip() for k, v in parse_qs(body).items() if v}
             write_status(self.store, contract_request=fields, contract_result={'state': 'pending'})
             self.wake.set()
-            self._done(None, 'costs')
+            self._done(None, 'contract')
         elif path == '/live_meter':
             entity = (parse_qs(body).get('entity') or [''])[0].strip()
             if entity and not re.fullmatch(r'sensor\.[a-z0-9_]+', entity):

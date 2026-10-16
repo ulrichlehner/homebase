@@ -172,7 +172,7 @@ suppliers can be added to the add-on as modules.
 **Earlier months.** go green shows the last 13 months; the add-on keeps every month it has
 fetched, so from then on nothing is missing. Older months have no energy price; the page lists
 them under **Months without energy price** (they count grid charges, levies and fees only). A
-price list fills them: upload it in the **Costs** card (**Upload price list**), as `prices.csv`
+price list fills them: choose it or drop it in the **Costs** card (it uploads right away), as `prices.csv`
 or any name ending in `_prices.csv`, for example with the monthly prices from your bills:
 
 ```text
