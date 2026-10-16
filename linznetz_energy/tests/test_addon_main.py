@@ -430,10 +430,12 @@ def test_energy_status_reads_the_grid_sources():
     hass = FakeHass()
     status = addon.energy_status(hass, options())
     assert status == {'grid_from': ['sensor.place_grid_total_energy_consumption'],   # solar is ignored
-                      'consumption_statistic': 'linznetz_energy:place_grid_consumption', 'uses_consumption': False}
+                      'consumption_statistic': 'linznetz_energy:place_grid_consumption', 'uses_consumption': False,
+                      'uses_cost': False}
     hass.energy_prefs = {'energy_sources': [{'type': 'grid', 'flow_from': [
-        {'stat_energy_from': 'linznetz_energy:place_grid_consumption'}]}]}
-    assert addon.energy_status(hass, options())['uses_consumption'] is True
+        {'stat_energy_from': 'linznetz_energy:place_grid_consumption', 'stat_cost': 'linznetz_energy:place_grid_cost'}]}]}
+    status = addon.energy_status(hass, options())
+    assert status['uses_consumption'] is True and status['uses_cost'] is True
 
 
 
@@ -727,9 +729,10 @@ def test_costs_need_a_supplier_and_then_follow_the_prices(tmp_path, monkeypatch)
     addon.web.write_status(tmp_path, contract_request={'supplier': 'fixed', 'start': '2026-10-01',
                                                        'energy_ct_kwh': '20', 'base_fee_month': '0'})
     addon.handle_contract_request(tmp_path)
-    assert addon.web.read_status(tmp_path)['contract_result'] == {'state': 'saved'}
+    assert addon.web.read_status(tmp_path)['contract_result'] == {'state': 'calculating'}   # the page keeps refreshing
     hass = FakeHass()
     addon.run_once(hass, o, tmp_path, 'Europe/Vienna', NOW + timedelta(hours=1))
+    assert addon.web.read_status(tmp_path)['contract_result'] == {'state': 'saved'}         # until the costs are there
     cost = [(m, s) for m, s in hass.imports if m['statistic_id'] == 'linznetz_energy:place_grid_cost']
     assert cost and cost[0][0]['unit_of_measurement'] == 'EUR' and cost[0][0]['name'] == 'Place electricity cost'
     stats = [s for _, chunk in cost for s in chunk]
@@ -822,3 +825,24 @@ def test_a_contract_with_a_non_number_is_not_saved(tmp_path):
                                                        'energy_ct_kwh': 'nan', 'base_fee_month': '3'})
     addon.handle_contract_request(tmp_path)
     assert addon.web.read_status(tmp_path)['contract_result'] == {'state': 'invalid'}
+
+
+
+def test_a_price_list_needs_no_metering_point_in_its_name(tmp_path):
+    (tmp_path / 'import').mkdir()
+    (tmp_path / 'import' / 'prices.csv').write_text(
+        'valid_from;valid_to;kind;component;unit;value;vat\n2024-04-01;2024-05-01;energy;Energiepreis;ct/kWh;8;0.2\n')
+    assert addon.import_history(tmp_path, METER) == [('import.prices', {'file': 'prices.csv', 'rows': 1, 'rejected': 0})]
+
+
+def test_a_price_list_uploaded_in_the_card_reports_back_there(tmp_path, monkeypatch):
+    monkeypatch.setattr(addon, 'fetch_portal', lambda *a: None)
+    monkeypatch.setattr(addon.mqtt_status, 'broker', lambda: None)
+    write_readings(tmp_path, hours=2)
+    (tmp_path / 'import').mkdir()
+    (tmp_path / 'import' / 'prices.csv').write_text(
+        'valid_from;valid_to;kind;component;unit;value;vat\n2026-10-01;2026-11-01;energy;Energiepreis;ct/kWh;20;0.2\nbad\n')
+    addon.web.write_status(tmp_path, prices_import={'state': 'importing'})
+    addon.run_once(FakeHass(), options(), tmp_path, 'Europe/Vienna', NOW)
+    assert addon.web.read_status(tmp_path)['prices_import'] == {
+        'state': 'done', 'lines': [['import.prices', {'file': 'prices.csv', 'rows': 1, 'rejected': 1}]]}

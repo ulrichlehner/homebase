@@ -46,7 +46,7 @@ TEXTS = {
                          'a minute; the app page shows the progress.',
         'download_done.title': 'LINZ NETZ Energy: first download done',
         'download_done.text': '{count} quarter-hour readings from {first} to {last}. Older history can be uploaded on '
-                              'the app page (Open Web UI, "Import older history").',
+                              'the app page (Open Web UI, "Import older readings").',
         'no_data.title': 'LINZ NETZ Energy: no data',
         'no_data.text': 'The portal has no readings for this metering point. Is the quarter-hour analysis '
                         '("Viertelstundenauswertung") switched on in the portal?',
@@ -83,8 +83,27 @@ TEXTS = {
         'page.costs_years': 'Per year',
         'page.costs_last12': 'last 12 months: {eur} €',
         'page.costs_unpriced': 'Months without energy price',
-        'page.costs_unpriced_hint': 'These months count only grid charges, levies and fees. A price list fills them '
-                                    '(see the documentation, "Costs").',
+        'page.costs_unpriced_hint': 'These months count only grid charges, levies and fees so far. A price list with '
+                                    'the monthly energy prices (for example from your bills) fills them: upload it below.',
+        'page.contract_calculating': 'Saved. The costs are being calculated, the page updates itself.',
+        'page.step_supplier': 'Set the supplier',
+        'page.step_supplier_done': '{supplier}, {product} since {start}',
+        'page.step_supplier_todo': 'choose it below under "Set the supplier" and save',
+        'page.step_prices': 'Prices for earlier months (optional)',
+        'page.step_prices_done': 'every month has an energy price',
+        'page.step_prices_todo': '{count} months without energy price: upload a price list below',
+        'page.step_prices_later': 'after step 1',
+        'page.step_dashboard': 'Use it in the Energy dashboard',
+        'page.step_dashboard_done': 'the Energy dashboard uses the costs',
+        'page.step_dashboard_todo': 'In **Settings > Energy**, section **Electricity grid**, open **Edit grid connection** '
+                                    '(pencil). Under **Cost tracking**, choose the option **Use an entity tracking the total '
+                                    'costs**, then pick "{cost}" and save.',
+        'page.step_dashboard_later': 'after step 1, once the costs are calculated',
+        'page.prices_importing': 'The price list is being imported and the costs recalculated, the page updates itself.',
+        'page.prices_upload': 'Price list (CSV)',
+        'page.prices_upload_button': 'Upload price list',
+        'page.prices_upload_hint': 'A file prices.csv (or any name ending in _prices.csv) with one row per price; the '
+                                   'format is in the documentation, section "Costs".',
         'page.costs_statistic': 'Statistic',
         'page.costs_statistic_line': '{eur} € since {first}',
         'page.contract': 'Set the supplier',
@@ -97,7 +116,7 @@ TEXTS = {
         'page.contract_hint': 'A new supplier from a date ends the previous one; the costs before stay as they were.',
         'page.contract_save': 'Save',
         'page.contract_requested': 'Saving, the page updates itself.',
-        'page.contract_saved': 'Saved. The costs are recalculated.',
+        'page.contract_saved': 'Saved, the costs are calculated.',
         'page.contract_invalid': 'Not saved: please check the date and the numbers.',
         'deviation.title': 'LINZ NETZ Energy: live meter and portal differ',
         'deviation.text': 'On these days the live meter readings differ from the portal by more than 2 % '
@@ -212,8 +231,8 @@ TEXTS = {
         'page.gap_line': '{first} to {last} ({hours} hours)',
         'page.gaps_more': 'and {count} more',
         'page.gaps_hint': 'No source covers these hours. Older readings (for example the readings.csv of the '
-                          'homebase tools) fill them via "Import older history" below.',
-        'page.import_title': 'Import older history',
+                          'homebase tools) fill them via "Import older readings" below.',
+        'page.import_title': 'Import older readings',
         'page.import_lead': 'The portal keeps only about 36 months. Older data from the homebase tools can be added '
                             'here; the files are checked and imported right away, and importing the same file again '
                             'changes nothing.',
@@ -281,7 +300,7 @@ TEXTS = {
                          'eine Minute; die Seite der App zeigt den Fortschritt.',
         'download_done.title': 'LINZ NETZ Energy: erster Download fertig',
         'download_done.text': '{count} Viertelstundenwerte vom {first} bis {last}. Ältere Daten lassen sich auf der '
-                              'Seite der App hochladen (Web-UI öffnen, „Ältere Daten importieren“).',
+                              'Seite der App hochladen (Web-UI öffnen, „Ältere Messwerte importieren“).',
         'no_data.title': 'LINZ NETZ Energy: keine Daten',
         'no_data.text': 'Das Portal hat keine Werte für diesen Zählpunkt. Ist im Portal die Viertelstundenauswertung '
                         'eingeschaltet?',
@@ -317,8 +336,27 @@ TEXTS = {
         'page.costs_years': 'Pro Jahr',
         'page.costs_last12': 'letzte 12 Monate: {eur} €',
         'page.costs_unpriced': 'Monate ohne Energiepreis',
-        'page.costs_unpriced_hint': 'In diesen Monaten zählen nur Netzentgelte, Abgaben und Gebühren. Eine Preisliste füllt '
-                                    'sie (siehe Dokumentation, „Costs“).',
+        'page.costs_unpriced_hint': 'In diesen Monaten zählen bisher nur Netzentgelte, Abgaben und Gebühren. Eine Preisliste '
+                                    'mit den monatlichen Energiepreisen (etwa aus den Rechnungen) füllt sie: unten hochladen.',
+        'page.contract_calculating': 'Gespeichert. Die Kosten werden berechnet, die Seite aktualisiert sich selbst.',
+        'page.step_supplier': 'Lieferant festlegen',
+        'page.step_supplier_done': '{supplier}, {product} seit {start}',
+        'page.step_supplier_todo': 'unten unter „Lieferant festlegen“ auswählen und speichern',
+        'page.step_prices': 'Preise für ältere Monate (optional)',
+        'page.step_prices_done': 'alle Monate haben einen Energiepreis',
+        'page.step_prices_todo': '{count} Monate ohne Energiepreis: unten eine Preisliste hochladen',
+        'page.step_prices_later': 'nach Schritt 1',
+        'page.step_dashboard': 'Im Energie-Dashboard verwenden',
+        'page.step_dashboard_done': 'das Energie-Dashboard nutzt die Kosten',
+        'page.step_dashboard_todo': 'In **Einstellungen > Energie**, Abschnitt **Stromnetz**, **Netzanschluss bearbeiten** '
+                                    '(Stift) öffnen. Bei **Kostenerfassung** die Option **Eine Entität verwenden, die die '
+                                    'Gesamtkosten erfasst** wählen, dann „{cost}“ auswählen und speichern.',
+        'page.step_dashboard_later': 'nach Schritt 1, sobald die Kosten berechnet sind',
+        'page.prices_importing': 'Die Preisliste wird übernommen und die Kosten neu berechnet, die Seite aktualisiert sich selbst.',
+        'page.prices_upload': 'Preisliste (CSV)',
+        'page.prices_upload_button': 'Preisliste hochladen',
+        'page.prices_upload_hint': 'Eine Datei prices.csv (oder ein Name, der auf _prices.csv endet) mit einer Zeile je Preis; '
+                                   'das Format steht in der Dokumentation, Abschnitt „Costs“.',
         'page.costs_statistic': 'Statistik',
         'page.costs_statistic_line': '{eur} € seit {first}',
         'page.contract': 'Lieferant festlegen',
@@ -331,7 +369,7 @@ TEXTS = {
         'page.contract_hint': 'Ein neuer Lieferant ab einem Datum beendet den bisherigen; die Kosten davor bleiben, wie sie waren.',
         'page.contract_save': 'Speichern',
         'page.contract_requested': 'Wird gespeichert, die Seite aktualisiert sich selbst.',
-        'page.contract_saved': 'Gespeichert. Die Kosten werden neu berechnet.',
+        'page.contract_saved': 'Gespeichert, die Kosten sind berechnet.',
         'page.contract_invalid': 'Nicht gespeichert: bitte Datum und Zahlen prüfen.',
         'deviation.title': 'LINZ NETZ Energy: Live-Zähler und Portal weichen ab',
         'deviation.text': 'An diesen Tagen weichen die Live-Werte des Zählers um mehr als 2 % vom Portal ab '
@@ -450,8 +488,8 @@ TEXTS = {
         'page.gap_line': '{first} bis {last} ({hours} Stunden)',
         'page.gaps_more': 'und {count} weitere',
         'page.gaps_hint': 'Für diese Stunden hat keine Quelle Werte. Ältere Messwerte (etwa die readings.csv der '
-                          'homebase-Werkzeuge) füllen sie über „Ältere Daten importieren“ unten.',
-        'page.import_title': 'Ältere Daten importieren',
+                          'homebase-Werkzeuge) füllen sie über „Ältere Messwerte importieren“ unten.',
+        'page.import_title': 'Ältere Messwerte importieren',
         'page.import_lead': 'Das Portal hält nur etwa 36 Monate. Ältere Daten aus den homebase-Werkzeugen lassen sich '
                             'hier ergänzen; die Dateien werden geprüft und sofort importiert, dieselbe Datei nochmals '
                             'zu importieren ändert nichts.',

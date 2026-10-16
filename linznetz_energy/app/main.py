@@ -267,9 +267,13 @@ def import_history(store: Path, metering_point: str) -> list:
     done = []
     for f in files:
         try:
-            if not f.name.startswith(metering_point + '_'):
+            is_prices = f.name == 'prices.csv' or f.name.endswith('_prices.csv')   # not tied to a meter
+            if not is_prices and not f.name.startswith(metering_point + '_'):
                 raise ValueError('import.other_meter')
-            if f.name.endswith('_readings.csv'):
+            if is_prices:
+                valid, rejected = prices.import_price_list(f, store)
+                done.append(('import.prices', {'file': f.name, 'rows': valid, 'rejected': rejected}))
+            elif f.name.endswith('_readings.csv'):
                 target = store / f'{metering_point}_readings.csv'
                 try:
                     incoming = readings.read_csv_file(f)
@@ -279,9 +283,6 @@ def import_history(store: Path, metering_point: str) -> list:
                 added = {k: v for k, v in incoming.items() if k not in existing}
                 readings.write_csv_file(target, {**existing, **added})
                 done.append(('import.readings', {'file': f.name, 'added': len(added), 'total': len(incoming)}))
-            elif f.name.endswith('_prices.csv'):
-                valid, rejected = prices.import_price_list(f, store)
-                done.append(('import.prices', {'file': f.name, 'rows': valid, 'rejected': rejected}))
             elif f.name.endswith('_reconstructed_15min.csv'):
                 with f.open(newline='') as fh:
                     header = next(csv.reader(fh, delimiter=';'), None)
@@ -499,6 +500,9 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
     imported = import_history(store, options.metering_point)
     if imported:
         web.write_status(store, last_import={'at': now.isoformat(), 'lines': [list(i) for i in imported]})
+        price_lines = [[k, v] for k, v in imported if k == 'import.prices' or v.get('file', '').endswith('prices.csv')]
+        if price_lines or (web.read_status(store).get('prices_import') or {}).get('state') == 'importing':
+            web.write_status(store, prices_import={'state': 'done', 'lines': price_lines})
         notify(hass, IMPORT_NOTIFICATION, t(lang, 'import.title'),
                '\n'.join(f'- {render(lang, key, values)}' for key, values in imported))
     web.write_status(store, import_pending=False)
@@ -607,8 +611,11 @@ def write_costs(hass, options: Options, store: Path, state: dict, hours: list, z
         import_statistic(hass, options.cost_statistic, t(lang, 'stat.cost', site=options.site), stats, unit='EUR')
         logger.info('Imported %s: %d hours from %s, %.2f EUR', options.cost_statistic, len(stats),
                     stats[0]['start'].isoformat(), stats[-1]['sum'])
+    changes = {}
+    if (web.read_status(store).get('contract_result') or {}).get('state') == 'calculating':
+        changes['contract_result'] = {'state': 'saved'}
     web.write_status(store, costs=prices.status(options.cost_statistic, cost_hours, state, comps, zone, now,
-                                                options.metering_point, fetch_error))
+                                                options.metering_point, fetch_error), **changes)
 
 
 def handle_contract_request(store: Path) -> None:
@@ -634,7 +641,7 @@ def handle_contract_request(store: Path) -> None:
     state.pop('price_fetch', None)   # fetch the new contract's price right away
     write_state(store, state)
     logger.info('Supplier contract from %s: %s %s', start, supplier.name, product)
-    web.write_status(store, contract_request=None, contract_result={'state': 'saved'})
+    web.write_status(store, contract_request=None, contract_result={'state': 'calculating'})
 
 
 def remove_portal_statistic(hass, options: Options, store: Path, state: dict) -> None:
@@ -809,13 +816,15 @@ def energy_status(hass, options: Options) -> Optional[dict]:
         if ': not_found:' not in str(err):   # not_found: the Energy dashboard was never set up
             return None
         prefs = {}
-    grid_from = []
+    grid_from, cost_from = [], []
 
     def collect(node):
         if isinstance(node, dict):
             for key, value in node.items():
                 if key == 'stat_energy_from' and isinstance(value, str):
                     grid_from.append(value)
+                elif key == 'stat_cost' and isinstance(value, str):
+                    cost_from.append(value)
                 else:
                     collect(value)
         elif isinstance(node, list):
@@ -823,7 +832,8 @@ def energy_status(hass, options: Options) -> Optional[dict]:
                 collect(item)
     collect([s for s in prefs.get('energy_sources', []) if s.get('type') == 'grid'])
     return {'grid_from': grid_from, 'consumption_statistic': options.consumption_statistic,
-            'uses_consumption': options.consumption_statistic in grid_from}
+            'uses_consumption': options.consumption_statistic in grid_from,
+            'uses_cost': options.cost_statistic in cost_from}
 
 
 def publish_status(options: Options, inputs: Inputs, lang: str, state: dict, check: Optional[dict]) -> None:

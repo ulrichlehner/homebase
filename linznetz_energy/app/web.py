@@ -163,6 +163,13 @@ ul.plain { list-style: none; padding: 0; margin: 0 0 4px; }
 .contract button { justify-self: start; width: auto; margin: 0; padding: 0 24px; height: 48px; font-size: 16px; }
 .contract p { margin: 0; }
 .contract [hidden] { display: none; }
+.result { margin: 0 0 12px; }
+.setup-steps { margin: 0 0 18px; }
+.setup-steps li { line-height: 1.5; }
+.price-upload { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.price-upload label { display: grid; gap: 6px; font-size: 14px; color: var(--muted); font-weight: 500; flex: 1 1 260px; }
+.price-upload button { margin: 0; }
+.price-upload + p { margin: 6px 0 0; }
 table + p, table + form { margin-top: 14px; }
 .check { display: flex; gap: 10px; align-items: flex-start; margin-top: 4px; }
 .check input { margin-top: 5px; }
@@ -242,6 +249,23 @@ def _eur(value: float) -> str:
     return f'{value:,.2f}'.replace(',', ' ').replace('.', ',') if value is not None else ''
 
 
+def _month_ranges(months: list) -> str:
+    """'2023-03', '2023-04', '2023-06' -> '03/2023 – 04/2023, 06/2023'."""
+    def index(m):
+        y, mo = m.split('-')
+        return int(y) * 12 + int(mo) - 1
+    fmt = lambda i: f'{i % 12 + 1:02d}/{i // 12}'   # noqa: E731
+    out, run = [], []
+    for i in sorted(index(m) for m in months):
+        if run and i != run[-1] + 1:
+            out.append(run)
+            run = []
+        run.append(i)
+    if run:
+        out.append(run)
+    return ', '.join(fmt(r[0]) if len(r) == 1 else f'{fmt(r[0])} – {fmt(r[-1])}' for r in out)
+
+
 def _costs_card(lang: str, status: dict) -> str:
     """The Costs card: grid operator, supplier contract, price now, per year, gaps, and the form
     to set the supplier."""
@@ -267,15 +291,29 @@ def _costs_card(lang: str, status: dict) -> str:
                      f'<span class="muted">{html.escape(t(lang, "page.costs_last12", eur=_eur(c["last12"])))}</span>'))
     if c.get('unpriced'):
         rows.append((t(lang, 'page.costs_unpriced'), f'<span class="pill info">{len(c["unpriced"])}</span> '
-                     f'{html.escape(", ".join(c["unpriced"]))}<br><span class="muted">'
+                     f'{html.escape(_month_ranges(c["unpriced"]))}<br><span class="muted">'
                      f'{html.escape(t(lang, "page.costs_unpriced_hint"))}</span>'))
     if c.get('from') and c.get('id'):
         rows.append((t(lang, 'page.costs_statistic'), f'<code>{html.escape(c["id"])}</code><br>'
                      f'{html.escape(t(lang, "page.costs_statistic_line", eur=_eur(c.get("eur", 0.0)), first=c["from"]))}'))
     result = (status.get('contract_result') or {}).get('state')
-    result_html = ({'saved': f'<p><span class="pill ok">ok</span> {html.escape(t(lang, "page.contract_saved"))}</p>',
-                    'invalid': f'<p><span class="pill warn">!</span> {html.escape(t(lang, "page.contract_invalid"))}</p>'}
+    result_html = ({'pending': f'<p class="result"><span class="pill run">…</span> {html.escape(t(lang, "page.contract_calculating"))}</p>',
+                    'calculating': f'<p class="result"><span class="pill run">…</span> {html.escape(t(lang, "page.contract_calculating"))}</p>',
+                    'saved': f'<p class="result"><span class="pill ok">ok</span> {html.escape(t(lang, "page.contract_saved"))}</p>',
+                    'invalid': f'<p class="result"><span class="pill warn">!</span> {html.escape(t(lang, "page.contract_invalid"))}</p>'}
                    .get(result, ''))
+    pi = status.get('prices_import') or {}
+    import_html = ''
+    if pi.get('state') == 'importing':
+        import_html = f'<p class="result"><span class="pill run">…</span> {html.escape(t(lang, "page.prices_importing"))}</p>'
+    elif pi.get('lines'):
+        import_html = ''.join(f'<p class="result"><span class="pill {"ok" if k == "import.prices" else "warn"}">'
+                              f'{"ok" if k == "import.prices" else "!"}</span> {html.escape(_text(lang, [k, v]))}</p>'
+                              for k, v in pi['lines'])
+    upload = (f'<form method="post" action="upload?to=costs" enctype="multipart/form-data" class="price-upload">'
+              f'<label>{t(lang, "page.prices_upload")}<input type="file" name="files" accept=".csv" required></label>'
+              f'<button type="submit" class="secondary">{t(lang, "page.prices_upload_button")}</button></form>'
+              f'<p class="muted">{html.escape(t(lang, "page.prices_upload_hint"))}</p>')
     current = contract or {}
     params = current.get('params', {})
     suppliers = ''.join(f'<option value="{s.id}"{" selected" if s.id == current.get("supplier_id") else ""}>'
@@ -303,8 +341,26 @@ def _costs_card(lang: str, status: dict) -> str:
             'document.querySelectorAll(".contract [data-only]").forEach(function(l){var o=l.getAttribute("data-only");'
             'var on=o==="any"||o===s.value;l.hidden=!on;l.querySelectorAll("input,select").forEach(function(i){i.disabled=!on;});});}'
             's.addEventListener("change",show);show();})();</script>')
-    return (f'<div class="card"><h2>{t(lang, "page.costs")}</h2><p class="lead">{html.escape(t(lang, "page.costs_lead"))}</p>'
-            f'<table>{_rows(rows)}</table>{result_html}{form}</div>')
+    # the setup as steps, each with its state and the next action
+    energy = status.get('energy') or {}
+    done = lambda text: f'<span class="pill ok">✓</span> {text}'           # noqa: E731
+    todo = lambda text: f'<span class="pill run">→</span> {text}'          # noqa: E731
+    optional = lambda text: f'<span class="pill info">○</span> {text}'     # noqa: E731
+    step1 = (done(html.escape(t(lang, 'page.step_supplier_done', supplier=contract['supplier'], product=contract['product'],
+                                 start=contract['start']))) if contract else todo(html.escape(t(lang, 'page.step_supplier_todo'))))
+    step2 = (optional(html.escape(t(lang, 'page.step_prices_todo', count=len(c['unpriced'])))) if c.get('unpriced')
+             else done(html.escape(t(lang, 'page.step_prices_done'))) if contract and c.get('from')
+             else optional(html.escape(t(lang, 'page.step_prices_later'))))
+    step3 = (done(html.escape(t(lang, 'page.step_dashboard_done'))) if energy.get('uses_cost')
+             else todo(_rich(t(lang, 'page.step_dashboard_todo', cost=t(lang, 'stat.cost', site=status.get('site', '')))))
+             if contract and c.get('from') else optional(html.escape(t(lang, 'page.step_dashboard_later'))))
+    steps = (f'<ol class="steps setup-steps">'
+             f'<li><strong>{t(lang, "page.step_supplier")}</strong><br>{step1}</li>'
+             f'<li><strong>{t(lang, "page.step_prices")}</strong><br>{step2}</li>'
+             f'<li><strong>{t(lang, "page.step_dashboard")}</strong><br>{step3}</li></ol>')
+    return (f'<div class="card" id="costs"><h2>{t(lang, "page.costs")}</h2><p class="lead">{html.escape(t(lang, "page.costs_lead"))}</p>'
+            f'{result_html}{import_html}{steps}<table>{_rows(rows)}</table>'
+            f'{upload}{form}</div>')
 
 
 def render_page(status: dict, message=None) -> str:
@@ -320,7 +376,9 @@ def render_page(status: dict, message=None) -> str:
     detail = t(lang, detail) if detail in TEXTS['en'] else detail
     busy = (phase not in ('idle', 'setup', 'removed') or status.get('import_pending') or status.get('removal_request')
             or status.get('live_meter_request') or status.get('fetch_request')
-            or status.get('contract_request'))
+            or status.get('contract_request')
+            or (status.get('contract_result') or {}).get('state') in ('pending', 'calculating')
+            or (status.get('prices_import') or {}).get('state') == 'importing')
     refresh = '<meta http-equiv="refresh" content="5">' if busy else ''
 
     setup = status.get('setup') or []
@@ -593,13 +651,15 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _done(self, message: tuple) -> None:
+    def _done(self, message: Optional[tuple], anchor: str = '') -> None:
         """Answers a form with a redirect to the page (303, relative, so it works under any Ingress
         path): the browser shows the page itself, its refresh and reload do not repeat the action.
-        The message is shown once on that page."""
-        write_status(self.store, notice=[message[0], message[1]])
+        The message is shown once on top of the page; actions of a card (`anchor`) show their
+        state in that card instead and return to it."""
+        if message:
+            write_status(self.store, notice=[message[0], message[1]])
         self.send_response(303)
-        self.send_header('Location', './')
+        self.send_header('Location', './' + (f'#{anchor}' if anchor else ''))
         self.send_header('Content-Length', '0')
         self.send_header('Cache-Control', 'no-store')
         self.end_headers()
@@ -632,6 +692,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         length = int(self.headers.get('Content-Length') or 0)
+        to_costs = 'to=costs' in self.path.split('?', 1)[-1]
         if path == '/upload':
             if length > MAX_UPLOAD:
                 self._done(('page.too_large', {}))
@@ -641,10 +702,13 @@ class Handler(BaseHTTPRequestHandler):
                 self._done(('page.no_file', {}))
                 return
             names = [store_upload(self.store / 'import', name, data).name for name, data in files]
-            write_status(self.store, import_pending=True)
+            write_status(self.store, import_pending=True, **({'prices_import': {'state': 'importing'}} if to_costs else {}))
             self.wake.set()
             logger.info('Uploaded %s, importing', ', '.join(names))
-            self._done(('page.uploaded', {'files': ', '.join(names)}))
+            if to_costs:
+                self._done(None, 'costs')
+            else:
+                self._done(('page.uploaded', {'files': ', '.join(names)}))
             return
         # the main loop does the work (it holds the connection to HA); the page only asks
         body = self.rfile.read(min(length, 4096)).decode(errors='replace')
@@ -663,9 +727,9 @@ class Handler(BaseHTTPRequestHandler):
             self._done(('page.fetch_requested', {}))
         elif path == '/contract':
             fields = {k: v[0].strip() for k, v in parse_qs(body).items() if v}
-            write_status(self.store, contract_request=fields, contract_result=None)
+            write_status(self.store, contract_request=fields, contract_result={'state': 'pending'})
             self.wake.set()
-            self._done(('page.contract_requested', {}))
+            self._done(None, 'costs')
         elif path == '/live_meter':
             entity = (parse_qs(body).get('entity') or [''])[0].strip()
             if entity and not re.fullmatch(r'sensor\.[a-z0-9_]+', entity):

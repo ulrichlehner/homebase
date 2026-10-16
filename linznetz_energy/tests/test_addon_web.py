@@ -98,7 +98,7 @@ def test_page_follows_the_language_of_home_assistant():
                               'lines': [['import.failed', {'file': 'x.csv', 'reason_key': 'import.other_meter'}]]}}
     page = W.render_page(status)
     assert '<html lang="de">' in page and 'Standort home · Zählpunkt AT0000000' in page   # full metering point
-    assert 'Letzter Portal-Abruf' in page and 'Ältere Daten importieren' in page and 'aktuell' in page
+    assert 'Letzter Portal-Abruf' in page and 'Ältere Messwerte importieren' in page and 'aktuell' in page
     assert 'x.csv: nicht importiert (die Datei gehört zu einem anderen Zählpunkt)' in page
     assert 'Dateien auswählen oder hierher ziehen' in page and 'Hochladen und importieren' in page
     assert '<html lang="en">' in W.render_page({**status, 'language': 'fr'})            # fallback
@@ -256,7 +256,7 @@ def test_statistics_card_lists_gaps():
     page = W.render_page({'language': 'de', 'statistics': {'consumption': {
         **stat, 'gaps': [{'from': '01.09.2023 00:00', 'to': '01.10.2023 00:00', 'hours': 720}]}}})
     assert '<th>Lücken</th>' in page and '01.09.2023 00:00 bis 01.10.2023 00:00 (720 Stunden)' in page
-    assert '„Ältere Daten importieren“' in page
+    assert '„Ältere Messwerte importieren“' in page
     many = W.render_page({'language': 'en', 'statistics': {'consumption': {
         **stat, 'gaps': [{'from': str(i), 'to': str(i), 'hours': 1} for i in range(7)]}}})
     assert 'and 2 more' in many
@@ -318,7 +318,7 @@ def test_costs_card_shows_contract_price_years_and_gaps():
     assert '<h2>Kosten</h2>' in page and 'strom flex future seit 01.03.2023' in page
     assert '32,75 ct/kWh inkl. Netz, Abgaben und USt. (Energiepreis 20,82 ct/kWh netto)' in page
     assert 'noch nicht veröffentlicht' in page and 'pill warn' not in page.split('<h2>Kosten</h2>')[1].split('</table>')[0]
-    assert '2025: 612,40 €' in page and 'letzte 12 Monate: 650,10 €' in page and '2026-11' in page
+    assert '2025: 612,40 €' in page and 'letzte 12 Monate: 650,10 €' in page and '11/2026' in page
     assert '<option value="strom flex future" selected>' in page and 'action="contract"' in page
     assert 'name="start" required value="2023-03-01"' in page                  # the current contract's start
     ok = W.render_page({**status, 'costs': {**status['costs'], 'fetch_error': None}})   # the usual case
@@ -327,16 +327,23 @@ def test_costs_card_shows_contract_price_years_and_gaps():
     assert 'not set yet: choose it below' in empty
 
 
-def test_contract_post_records_the_request(server):
+def test_contract_post_records_the_request_and_returns_to_the_card(server):
     url, store, wake = server
+
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **kw):
+            return None
     req = urllib.request.Request(url + '/contract', method='POST',
                                  data=b'supplier=fixed&start=2026-11-01&energy_ct_kwh=15%2C9&base_fee_month=3')
-    page = urllib.request.urlopen(req).read().decode()
-    assert 'Saving, the page updates itself.' in page and wake.is_set()
-    assert W.read_status(store)['contract_request'] == {'supplier': 'fixed', 'start': '2026-11-01',
-                                                         'energy_ct_kwh': '15,9', 'base_fee_month': '3'}
-
-
+    with pytest.raises(urllib.error.HTTPError) as err:
+        urllib.request.build_opener(NoRedirect).open(req)
+    assert err.value.code == 303 and err.value.headers['Location'] == './#costs' and wake.is_set()
+    status = W.read_status(store)
+    assert status['contract_request'] == {'supplier': 'fixed', 'start': '2026-11-01', 'energy_ct_kwh': '15,9',
+                                          'base_fee_month': '3'}
+    assert status['contract_result'] == {'state': 'pending'} and 'notice' not in status      # shown in the card
+    page = W.render_page({**status, 'statistics': {}})
+    assert 'Saved. The costs are being calculated' in page and 'http-equiv="refresh"' in page
 
 def test_energy_card_includes_the_cost_step_once_costs_exist():
     energy = {'grid_from': ['sensor.x'], 'consumption_statistic': 'linznetz_energy:lakeside_grid_consumption',
@@ -345,3 +352,42 @@ def test_energy_card_includes_the_cost_step_once_costs_exist():
     assert '<li>Speichern.</li>' in W.render_page(base)
     page = W.render_page({**base, 'costs': {'from': '06.03.2023', 'contract': None}})
     assert '<strong>Kostenerfassung</strong>' in page and '„Lakeside Stromkosten“' in page
+
+
+
+def test_costs_card_guides_through_the_setup():
+    base = {'language': 'de', 'site': 'Lakeside', 'statistics': {}}
+    fresh = W.render_page({**base, 'costs': {'contract': None, 'grid': 'LINZ NETZ'}})
+    assert 'unten unter „Lieferant festlegen“ auswählen und speichern' in fresh
+    assert 'nach Schritt 1, sobald die Kosten berechnet sind' in fresh
+    contract = {'supplier': 'go green energy (strom flex)', 'supplier_id': 'gogreen_flex', 'product': 'strom flex future',
+                'start': '01.03.2023', 'start_iso': '2023-03-01', 'params': {}}
+    costs = {'id': 'x', 'from': '06.03.2023', 'eur': 1.0, 'years': {}, 'last12': 0, 'unpriced': ['2023-03', '2023-04'],
+             'contract': contract, 'grid': 'LINZ NETZ'}
+    half = W.render_page({**base, 'costs': costs, 'energy': {'grid_from': [], 'uses_consumption': False, 'uses_cost': False}})
+    assert 'go green energy (strom flex), strom flex future seit 01.03.2023' in half
+    assert '2 Monate ohne Energiepreis: unten eine Preisliste hochladen' in half and 'action="upload?to=costs"' in half
+    assert '<strong>Kostenerfassung</strong>' in half and '„Lakeside Stromkosten“' in half
+    complete = W.render_page({**base, 'costs': {**costs, 'unpriced': []}, 'energy': {'grid_from': [], 'uses_cost': True}})
+    assert 'alle Monate haben einen Energiepreis' in complete and 'das Energie-Dashboard nutzt die Kosten' in complete
+    assert 'action="upload?to=costs"' in complete                               # always there for later corrections
+
+
+def test_a_price_list_uploaded_in_the_card_returns_there(server):
+    url, store, wake = server
+
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **kw):
+            return None
+    ctype, body = multipart([('prices.csv', b'valid_from;valid_to;kind;component;unit;value;vat\n')])
+    req = urllib.request.Request(url + '/upload?to=costs', data=body, headers={'Content-Type': ctype}, method='POST')
+    with pytest.raises(urllib.error.HTTPError) as err:
+        urllib.request.build_opener(NoRedirect).open(req)
+    assert err.value.headers['Location'] == './#costs' and (store / 'import' / 'prices.csv').exists()
+    assert W.read_status(store)['prices_import'] == {'state': 'importing'} and 'notice' not in W.read_status(store)
+
+
+
+def test_months_are_shown_as_ranges():
+    assert W._month_ranges(['2023-03', '2023-04', '2023-05', '2023-12', '2024-01', '2025-06']) == \
+        '03/2023 – 05/2023, 12/2023 – 01/2024, 06/2025'
