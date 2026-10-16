@@ -160,8 +160,8 @@ DRIVER=drivers/amiplus_linznetz.xmq ./wmbus-test.sh analyze [KEY] [HEX]
 
 ## Install in Home Assistant (wmbusmeters add-on 3.1.0, HA OS)
 
-First installed with HA OS 18.3, Core 2026.9.4, add-on `wmbusmeters-ha-addon` 3.0.0-RC1 and the
-official Mosquitto broker; updated to add-on 3.1.0 on 2026-10-16. Step 1 before step 2.
+Running on HA OS 18.3 with add-on `wmbusmeters-ha-addon` 3.1.0 and the official Mosquitto
+broker. Step 1 before step 2.
 
 **1. Add the driver.** Add-on web UI → tab **Drivers** → add a driver:
 
@@ -171,8 +171,7 @@ official Mosquitto broker; updated to add-on 3.1.0 on 2026-10-16. Step 1 before 
 
 The add-on copies `/data/drivers` to its `wmbusmeters.drivers.d` folder on every start. Leave
 `wmbusmeters config location` at its default `/homeassistant/wmbusmeters`: the add-on rebuilds
-that folder from its own settings on every start (a location under `/config`, from older
-versions, is moved there automatically).
+that folder from its own settings on every start.
 
 **2. Switch the meter.** Tab **Home** → Meters → `driver = amiplus_linznetz`, `id`, `key`, `name`.
 The `id` is the one from the add-on log, not the meter number from the portal. Save, restart the
@@ -193,13 +192,6 @@ file is needed: the driver's fields give six entities, import and export (kWh,
 `total_increasing`, `energy`), both powers (kW, `measurement`, `power`), the device date and time
 and the signal strength. A telegram without a field keeps the entity's previous state. The
 `unique_id`s are `wmbusmeters_<id>_<field>`, the same as with the stock `amiplus`.
-
-Coming from add-on 3.0.x with the discovery file of earlier versions of this repo
-(`/config/wmbusmeters/etc/mqtt_discovery/amiplus_linznetz.json`): the update keeps the energy,
-power and signal entities with their entity IDs and history (seen on 2026-10-16: no `unknown`,
-no drop, the counter ran through the update). The device date entity is replaced
-(`device_date_time` → `device_datetime`), the timestamp entity is gone. The file is no longer
-read and can be deleted.
 
 ### Differences from the stock `amiplus`
 
@@ -238,8 +230,6 @@ the log private. `tools/telegram_log.py` turns it into anonymised samples, see
 | Symptom | Cause |
 |---|---|
 | restart loop, `No such driver amiplus … triggered a removal of the builtin driver`, exit status 5 | the driver declared `detect` = `DEV,01,02`, same as `amiplus` (fixed: dummy triplet) |
-| `File …/amiplus_linznetz.json not found`, then `Removing topic …` | add-on 3.0.x without the discovery file of earlier versions of this repo; update to 3.1.0 |
-| file under `/config/wmbusmeters` missing after an add-on update | add-on 3.0.0-RC1 with a config location under `/config` (ephemeral); 3.1.0 moves it to `/homeassistant/wmbusmeters` |
 | energy values 1000× too high after switching the driver | `override_vif_unit` is ignored by older wmbusmeters builds |
 | hourly bars of 90 to 100 kWh, value briefly 1/10 or 1/10 000 of the counter | non-spec energy records read by an earlier driver version |
 | entity IDs still carry the old name after deleting and re-adding the device | HA restores entity IDs via the `unique_id`; rename them by hand in the entity settings |
