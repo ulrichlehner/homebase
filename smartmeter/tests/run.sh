@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Runs the synthetic telegrams in telegrams.txt through the custom driver and the builtin
-# amiplus driver. The custom driver must give identical kWh for all VIF variants; the builtin
-# one is shown for comparison (it is expected to be wrong for 0E04/0E07).
+# Runs the synthetic telegrams in telegrams.txt and the anonymised real ones in telegrams_real.txt
+# through the custom driver and the builtin amiplus driver. The custom driver must give the
+# expected kWh for the spec records and no value for all others; the builtin one is shown for
+# comparison (it is expected to be wrong for 0E04 to 0E07).
 # Needs wmbusmeters from ./wmbus-test.sh setup. Nothing is written outside this repo.
 set -euo pipefail
 
@@ -27,5 +28,5 @@ while read -r name hex want_in want_out; do
   printf '%-14s %-4s custom: %s / %s kWh   builtin amiplus: %s / %s kWh\n' "$name" "$status" \
     "${got_in:-?}" "${got_out:-?}" \
     "$(field "$builtin_json" total_energy_consumption_kwh)" "$(field "$builtin_json" total_energy_production_kwh)"
-done < "$DIR/tests/telegrams.txt"
+done < <(cat "$DIR/tests/telegrams.txt" "$DIR/tests/telegrams_real.txt")
 exit $fail
