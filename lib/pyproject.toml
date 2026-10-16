@@ -11,7 +11,6 @@ dependencies = [
     "requests>=2.31,<3",
     "websocket-client>=1.7,<2",
     "tzdata",
-    "openpyxl>=3.1,<4",
 ]
 
 [tool.setuptools]

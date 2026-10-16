@@ -1,8 +1,7 @@
-import io
+import json
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-import openpyxl
 import pytest
 
 from homebase import costs, tariffs
@@ -83,36 +82,32 @@ def test_the_grid_operator_follows_from_the_metering_point():
     assert on(date(2026, 6, 1))['Netznutzung Arbeitspreis'] == 5.57
 
 
-def flex_excel(month='Oktober 2026', rows=(('strom flex', 20.32), ('strom flex future ', 20.82))) -> bytes:
-    """A file shaped like go green's Flexberechnung (synthetic values)."""
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.append(['Arbeitspreise - strom flex', 'Arbeitspreise - gas flex'])
-    ws.append([month, month])
-    ws.append(['Arbeitspreis in Cent/kWh', 'ohne USt.', 'mit 20% USt.'])
-    for name, net in rows:
-        ws.append([name, net, round(net * 1.2, 3), 'gas flex', 7.98, 9.576])
-    out = io.BytesIO()
-    wb.save(out)
-    return out.getvalue()
+def flex_json(history=(('2026-09-01', '2026-09-30', 0.1726), ('2026-10-01', '2100-12-31', 0.2032))) -> bytes:
+    """Shaped like go green's product JSON (synthetic values)."""
+    return json.dumps([{'key': 'GSFLEX', 'type': 'ELECTRICITY', 'name': 'strom flex', 'basicCharge': 2.5,
+                        'options': {'future': {'energyPrice': 0.005, 'basicCharge': 0},
+                                    'plus': {'energyPrice': 0, 'basicCharge': 1.66666}},
+                        'history': [{'fromDate': a, 'untilDate': b, 'energyPrice': v} for a, b, v in history]}]).encode()
 
 
-def test_go_green_flex_reads_the_current_month_from_the_published_excel():
-    page = b'<a href="/dam/jcr:abc/Flexberechnung_GGE_Oktober_2026_BK.xlsx">Excel</a>'
-    files = {tariffs.GoGreenFlex.page: page,
-             'https://www.gogreenenergy.at/dam/jcr:abc/Flexberechnung_GGE_Oktober_2026_BK.xlsx': flex_excel()}
+def test_go_green_flex_reads_the_monthly_prices_from_the_price_interface():
+    gogreen = tariffs.SUPPLIERS['gogreen_flex']
     contract = {'supplier': 'gogreen_flex', 'product': 'strom flex future', 'start': date(2023, 3, 1)}
-    [price] = tariffs.SUPPLIERS['gogreen_flex'].fetch(contract, files.__getitem__)
-    assert (price.valid_from, price.valid_to, price.value, price.unit) == (date(2026, 10, 1), date(2026, 11, 1), 20.82, 'ct/kWh')
-    with pytest.raises(ValueError):
-        tariffs.parse_flex_excel(flex_excel(), 'strom something else')
-    with pytest.raises(ValueError):
-        tariffs.SUPPLIERS['gogreen_flex'].fetch(contract, lambda url: b'<html>no link</html>')
+    sep, octo = gogreen.fetch(contract, {gogreen.api: flex_json()}.__getitem__)
+    assert (sep.valid_from, sep.valid_to, sep.value) == (date(2026, 9, 1), date(2026, 10, 1), 17.76)   # + future 0.5 ct
+    assert (octo.valid_from, octo.valid_to, octo.value) == (date(2026, 10, 1), date(2026, 11, 1), 20.82)
+    plain = gogreen.fetch({**contract, 'product': 'strom flex'}, lambda url: flex_json())
+    assert [c.value for c in plain] == [17.26, 20.32]
+    for broken in (b'[]', b'not json', json.dumps([{'key': 'GSFLEX', 'history': []}]).encode()):
+        with pytest.raises(ValueError):
+            gogreen.fetch(contract, lambda url, b=broken: b)
 
 
 def test_supplier_fees_come_from_the_contract():
-    flex = tariffs.SUPPLIERS['gogreen_flex'].components({'start': date(2023, 3, 1), 'params': {}})
+    flex = tariffs.SUPPLIERS['gogreen_flex'].components({'start': date(2023, 3, 1), 'product': 'strom flex future', 'params': {}})
     assert {c.name: c.value for c in flex} == {'Grundpauschale': 2.5, 'Online-Bonus': -0.833333}
+    plus = tariffs.SUPPLIERS['gogreen_flex'].components({'start': date(2023, 3, 1), 'product': 'strom flex plus', 'params': {}})
+    assert {c.name: c.value for c in plus}['Option plus'] == 1.66666
     fixed = tariffs.SUPPLIERS['fixed'].components({'start': date(2026, 6, 1), 'end': date(2027, 6, 1),
                                                    'params': {'energy_ct_kwh': 15.9, 'base_fee_month': 4.0}})
     assert {(c.name, c.value, c.valid_to) for c in fixed} == {('Energiepreis', 15.9, date(2027, 6, 1)),

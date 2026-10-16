@@ -749,33 +749,25 @@ def test_go_green_prices_are_fetched_while_the_month_has_none(tmp_path):
     state = {}
     prices.set_contract(state, 'gogreen_flex', 'strom flex future', date(2023, 3, 1), {})
     calls = []
-    import openpyxl, io as _io
-
-    def excel():
-        wb = openpyxl.Workbook()
-        wb.active.append(['Oktober 2026'])
-        wb.active.append(['strom flex future ', 20.82, 24.98])
-        out = _io.BytesIO()
-        wb.save(out)
-        return out.getvalue()
+    history = [{'fromDate': '2026-09-01', 'untilDate': '2026-09-30', 'energyPrice': 0.1726},
+               {'fromDate': '2026-10-01', 'untilDate': '2100-12-31', 'energyPrice': 0.2032}]
 
     def get(url):
         calls.append(url)
-        return b'<a href="/dam/x/Flexberechnung_GGE_Oktober_2026_BK.xlsx">' if url.endswith('.html') else excel()
+        return json.dumps([{'key': 'GSFLEX', 'options': {'future': {'energyPrice': 0.005}}, 'history': history}]).encode()
     now = datetime(2026, 10, 14, 10, tzinfo=UTC)
-    assert prices.update(tmp_path, state, now, ZONE, get) is None and len(calls) == 2
-    [c] = [c for c in prices.costs.read_archive(tmp_path / prices.ARCHIVE) if c.name == 'Energiepreis']
-    assert (c.valid_from, c.value) == (date(2026, 10, 1), 20.82)
+    assert prices.update(tmp_path, state, now, ZONE, get) is None and len(calls) == 1
+    archive = {c.valid_from: c.value for c in prices.costs.read_archive(tmp_path / prices.ARCHIVE)}
+    assert archive == {date(2026, 9, 1): 17.76, date(2026, 10, 1): 20.82}      # the past months come along
     prices.update(tmp_path, state, now + timedelta(hours=1), ZONE, get)
-    assert len(calls) == 2                                   # the month has its price: no more fetches
+    assert len(calls) == 1                                   # the month has its price: no more fetches
     # November: not published yet, so retried at most every 6 hours
     nov = datetime(2026, 11, 1, 8, tzinfo=UTC)
     assert prices.update(tmp_path, state, nov, ZONE, get) == 'not published yet (latest: 10/2026)'
     prices.update(tmp_path, state, nov + timedelta(hours=1), ZONE, get)
-    assert len(calls) == 4
+    assert len(calls) == 2
     prices.update(tmp_path, state, nov + timedelta(hours=7), ZONE, get)
-    assert len(calls) == 6
-
+    assert len(calls) == 3
 
 def test_a_price_list_is_imported_into_the_archive(tmp_path):
     import prices

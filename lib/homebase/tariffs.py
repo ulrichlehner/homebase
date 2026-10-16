@@ -18,8 +18,7 @@ A contract is {supplier, product, start, end?, params}. More suppliers are added
 
 from __future__ import annotations
 
-import io
-import re
+import json
 from datetime import date
 from typing import Callable, Optional
 
@@ -73,57 +72,51 @@ def grid_operator(metering_point: str) -> Optional[str]:
 
 # -- Suppliers ----------------------------------------------------------------------------
 
-MONTHS_DE = {m: i for i, m in enumerate(['januar', 'februar', 'märz', 'april', 'mai', 'juni', 'juli', 'august',
-                                           'september', 'oktober', 'november', 'dezember'], 1)}
-MONTHS_DE['jänner'] = 1
-
-
 class GoGreenFlex:
-    """go green energy, "strom flex" family: the energy price changes every month. go green
-    publishes it as an Excel file ("Flexberechnung") on its flex price page; it holds the
-    current month's net price of every flex product (the future products include their
-    surcharge). Fees from the price sheet."""
+    """go green energy, "strom flex" family: the energy price changes every month. go green's
+    price page reads it from a public JSON interface (`api`) that returns the product with its
+    net energy price of the last 13 months, its basic charge and its options ("future": a
+    surcharge per kWh, "plus": a monthly charge, online bonus). Fees as in the price sheet,
+    editable in the contract."""
     id = 'gogreen_flex'
     name = 'go green energy (strom flex)'
-    page = 'https://www.gogreenenergy.at/flexpreisentwicklung.html'
+    api = 'https://www.gogreenenergy.at/.rest/calculator/v1/products?includeHistory=true&products=GSFLEX'
     products = ('strom flex', 'strom flex plus', 'strom flex future', 'strom flex plus future')
     defaults = {'base_fee_month': 2.50, 'online_bonus_month': -0.833333}
+    plus_fee_month = 1.66666   # option "plus" (one bill for electricity and gas)
 
     def components(self, contract: dict) -> list:
         p = {**self.defaults, **contract.get('params', {})}
         start, end, src = contract['start'], contract.get('end'), f'{self.id}:fees'
-        return [Component('energy', 'Grundpauschale', 'EUR/month', float(p['base_fee_month']), VAT, start, end, src),
+        fees = [Component('energy', 'Grundpauschale', 'EUR/month', float(p['base_fee_month']), VAT, start, end, src),
                 Component('energy', 'Online-Bonus', 'EUR/month', float(p['online_bonus_month']), VAT, start, end, src)]
+        if 'plus' in contract.get('product', ''):
+            fees.append(Component('energy', 'Option plus', 'EUR/month', self.plus_fee_month, VAT, start, end, src))
+        return fees
 
     def fetch(self, contract: dict, get: Callable[[str], bytes]) -> list:
-        page = get(self.page).decode('utf-8', 'replace')
-        link = re.search(r'href="([^"]*Flexberechnung[^"]*\.xlsx)"', page)
-        if not link:
-            raise ValueError('no Flexberechnung link on the flex price page')
-        url = link.group(1)
-        if url.startswith('/'):
-            url = 'https://www.gogreenenergy.at' + url
-        month, price = parse_flex_excel(get(url), contract['product'])
-        return [month_component('energy', 'Energiepreis', month, price, VAT, f'{self.id}:{url.rsplit("/", 1)[-1]}')]
+        return parse_flex_history(get(self.api), contract['product'], f'{self.id}:api')
 
 
-def parse_flex_excel(data: bytes, product: str) -> tuple:
-    """(first day of the month, net ct/kWh of `product`) from go green's Flexberechnung file."""
-    import openpyxl   # only needed here
-    sheet = openpyxl.load_workbook(io.BytesIO(data), data_only=True, read_only=True).worksheets[0]
-    month, price = None, None
-    for row in sheet.iter_rows(values_only=True):
-        cells = [c for c in row if c is not None]
-        for c in cells:
-            if month is None and isinstance(c, str):
-                m = re.fullmatch(r'\s*([A-Za-zäÄ]+)\s+(\d{4})\s*', c)
-                if m and m.group(1).lower() in MONTHS_DE:
-                    month = date(int(m.group(2)), MONTHS_DE[m.group(1).lower()], 1)
-        if price is None and cells and isinstance(cells[0], str) and cells[0].strip().lower() == product.lower():
-            price = next((float(c) for c in cells[1:] if isinstance(c, (int, float))), None)
-    if month is None or price is None:
-        raise ValueError(f'no price for {product!r} in the Flexberechnung file')
-    return month, price
+def parse_flex_history(data: bytes, product: str, source: str) -> list:
+    """The monthly net energy prices (ct/kWh) of a strom flex `product` from go green's product
+    JSON; the "future" products include the option's surcharge per kWh."""
+    try:
+        item = next(p for p in json.loads(data) if p.get('key') == 'GSFLEX')
+    except (ValueError, StopIteration, AttributeError, TypeError):
+        raise ValueError('no strom flex product in the price data') from None
+    surcharge = item.get('options', {}).get('future', {}).get('energyPrice', 0.0) if 'future' in product else 0.0
+    out = []
+    for entry in item.get('history') or []:
+        try:
+            start = date.fromisoformat(entry['fromDate'])
+            value = round((float(entry['energyPrice']) + float(surcharge)) * 100, 4)
+        except (KeyError, TypeError, ValueError):
+            continue
+        out.append(month_component('energy', 'Energiepreis', start, value, VAT, source))
+    if not out:
+        raise ValueError('no price history in the price data')
+    return out
 
 
 class FixedPrice:

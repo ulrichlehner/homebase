@@ -159,15 +159,16 @@ operator only the supplier is counted until its charges are added.
 
 | Supplier | Prices |
 | --- | --- |
-| go green energy (strom flex) | the energy price changes every month; the add-on reads it from go green's monthly price file on [its flex price page](https://www.gogreenenergy.at/flexpreisentwicklung.html) as soon as it is published, and keeps it. Basic fee and online bonus as in the price sheet (editable). |
+| go green energy (strom flex) | the energy price changes every month; the add-on reads it from the same data go green's [flex price page](https://www.gogreenenergy.at/flexpreisentwicklung.html) shows (the last 13 months), as soon as a new month is published, and keeps it. Basic fee, online bonus and the "plus" fee as in the price sheet (editable). |
 | Fixed price | any supplier with a price guarantee: energy price and basic fee as entered |
 
 A new supplier from a date ends the previous one; the costs before stay as they were. More
 suppliers can be added to the add-on as modules.
 
-**Earlier months.** go green publishes only the current month's price. Months before the add-on
-fetched them have no energy price; the page lists them under **Months without energy price**
-(they count grid charges, levies and fees only). A price list fills them: upload
+**Earlier months.** go green shows the last 13 months; the add-on keeps every month it has
+fetched, so from then on nothing is missing. Older months have no energy price; the page lists
+them under **Months without energy price** (they count grid charges, levies and fees only). A
+price list fills them: upload
 `<metering point>_prices.csv` under **Import older history**, for example with the monthly prices
 from your bills:
 

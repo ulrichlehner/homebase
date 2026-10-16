@@ -295,12 +295,13 @@ own approach and take over what improves it (already reflected in the steps abov
   Per hour: kWh x the per-kWh prices valid then, plus the fixed fees spread over their month or year,
   VAT, subsidies after VAT. Grid charges and levies per grid operator in `homebase.tariffs.GRID`
   (LINZ NETZ since 2023, updated each January); the operator follows from the metering point.
-  Suppliers are modules with one interface: go green flex reads the current month from go green's
-  published Flexberechnung file, a fixed-price module covers any price guarantee. Online sources
-  checked: go green publishes only the current month (the Internet Archive has 4 old files),
-  E-Control's tariff calculator gives the grid operator by postcode but its price calculation is
-  captcha-protected and current-only, durchblicker has no interface. So earlier months come from a
-  one-time price list (from the bills) imported on the add-on page. Recalculated against the real
+  Suppliers are modules with one interface: go green flex reads the public JSON behind go green's
+  flex price page (`.rest/calculator/v1/products?includeHistory=true&products=GSFLEX`: net energy
+  price of the last 13 months, basic charge, options), a fixed-price module covers any price
+  guarantee. Other sources checked: go green's monthly Excel (current month only), E-Control's
+  tariff calculator (grid operator by postcode works, the price calculation is captcha-protected
+  and current-only), durchblicker (no interface). Months older than 13 months come from a one-time
+  price list (from the bills) imported on the add-on page. Recalculated against the real
   bills, every full billing year since 2023 matches both bills to within a few cents.
 - 2026-10-15: the counter inside a reception gap is split by the meter's power (the sensor of the
   same device, found via the entity registry; minute means kept 14 days in `…_live_power.csv`).

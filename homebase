@@ -167,7 +167,7 @@ case "$cmd" in
     ensure_image
     # the sources are mounted, so the tests run against the working tree (pytest.ini sets the paths)
     docker run --rm -v "$PWD:/src" -w /src "$IMAGE" sh -c \
-      'pip install -q pytest pyyaml openpyxl >/dev/null && python3 -m pytest -q -p no:cacheprovider'
+      'pip install -q pytest pyyaml >/dev/null && python3 -m pytest -q -p no:cacheprovider'
     ;;
   build)
     build
