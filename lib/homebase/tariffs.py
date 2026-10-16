@@ -19,7 +19,7 @@ A contract is {supplier, product, start, end?, params}. More suppliers are added
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, timedelta
 from typing import Callable, Optional
 
 from .costs import Component, month_component
@@ -110,10 +110,15 @@ def parse_flex_history(data: bytes, product: str, source: str) -> list:
     for entry in item.get('history') or []:
         try:
             start = date.fromisoformat(entry['fromDate'])
+            until = date.fromisoformat(entry['untilDate'])
             value = round((float(entry['energyPrice']) + float(surcharge)) * 100, 4)
         except (KeyError, TypeError, ValueError):
             continue
-        out.append(month_component('energy', 'Energiepreis', start, value, VAT, source))
+        if until.year >= 2099:
+            # the current price is listed as open-ended; next month gets its own price
+            out.append(month_component('energy', 'Energiepreis', start, value, VAT, source))
+        else:
+            out.append(Component('energy', 'Energiepreis', 'ct/kWh', value, VAT, start, until + timedelta(days=1), source))
     if not out:
         raise ValueError('no price history in the price data')
     return out

@@ -159,7 +159,7 @@ operator only the supplier is counted until its charges are added.
 
 | Supplier | Prices |
 | --- | --- |
-| go green energy (strom flex) | the energy price changes every month; the add-on reads it from the same data go green's [flex price page](https://www.gogreenenergy.at/flexpreisentwicklung.html) shows (the last 13 months), as soon as a new month is published, and keeps it. Basic fee, online bonus and the "plus" fee as in the price sheet (editable). |
+| go green energy (strom flex) | the energy price changes every month; the add-on reads it from the same data go green's [flex price page](https://www.gogreenenergy.at/flexpreisentwicklung.html) shows (the last 13 months), as soon as a new month is published, and keeps it. Basic fee and online bonus as in the price sheet (editable); the "plus" products add their monthly fee. |
 | Fixed price | any supplier with a price guarantee: energy price and basic fee as entered |
 
 A new supplier from a date ends the previous one; the costs before stay as they were. More

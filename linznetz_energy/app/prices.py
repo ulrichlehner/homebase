@@ -136,8 +136,9 @@ def status(statistic_id: str, cost_hours: list, state: dict, comps: list, zone: 
         years[h.astimezone(zone).year] += eur
     year_ago = now - timedelta(days=365)
     last12 = sum(eur for h, eur, _, _ in cost_hours if h >= year_ago)
-    energy_now = [c for c in comps if c.kind == 'energy' and c.unit == 'ct/kWh' and c.valid_on(today)]
-    gross = sum(c.value * (1 + c.vat) for c in comps if c.unit == 'ct/kWh' and c.valid_on(today))
+    counting = costs.effective(comps, today)
+    energy_now = [c for c in counting if c.kind == 'energy' and c.unit == 'ct/kWh']
+    gross = sum(c.value * (1 + c.vat) for c in counting if c.unit == 'ct/kWh')
     contract = next((c for c in reversed(contracts(state)) if c['start'] <= today), None)
     operator = tariffs.grid_operator(metering_point)
     return {
@@ -151,6 +152,7 @@ def status(statistic_id: str, cost_hours: list, state: dict, comps: list, zone: 
         'kwh_ct_gross': round(gross, 2) if energy_now else None,
         'contract': ({'supplier': tariffs.SUPPLIERS[contract['supplier']].name, 'supplier_id': contract['supplier'],
                       'product': contract.get('product', ''), 'start': contract['start'].strftime('%d.%m.%Y'),
+                      'start_iso': contract['start'].isoformat(),
                       'params': contract.get('params', {})}
                      if contract and contract['supplier'] in tariffs.SUPPLIERS else None),
         'grid': tariffs.GRID[operator]['name'] if operator else None,

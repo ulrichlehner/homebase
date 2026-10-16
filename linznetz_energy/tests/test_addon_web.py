@@ -313,13 +313,14 @@ def test_costs_card_shows_contract_price_years_and_gaps():
         'last12': 650.1, 'unpriced': ['2026-11'], 'energy_ct': 20.82, 'kwh_ct_gross': 32.75, 'grid': 'LINZ NETZ',
         'fetch_error': 'not published yet (latest: 10/2026)',
         'contract': {'supplier': 'go green energy (strom flex)', 'supplier_id': 'gogreen_flex',
-                     'product': 'strom flex future', 'start': '01.03.2023', 'params': {}}}}
+                     'product': 'strom flex future', 'start': '01.03.2023', 'start_iso': '2023-03-01', 'params': {}}}}
     page = W.render_page(status)
     assert '<h2>Kosten</h2>' in page and 'strom flex future seit 01.03.2023' in page
     assert '32,75 ct/kWh inkl. Netz, Abgaben und USt. (Energiepreis 20,82 ct/kWh netto)' in page
     assert 'noch nicht veröffentlicht' in page and 'pill warn' not in page.split('<h2>Kosten</h2>')[1].split('</table>')[0]
     assert '2025: 612,40 €' in page and 'letzte 12 Monate: 650,10 €' in page and '2026-11' in page
     assert '<option value="strom flex future" selected>' in page and 'action="contract"' in page
+    assert 'name="start" required value="2023-03-01"' in page                  # the current contract's start
     ok = W.render_page({**status, 'costs': {**status['costs'], 'fetch_error': None}})   # the usual case
     assert 'pill info">i' not in ok and 'failed' not in ok
     empty = W.render_page({'language': 'en', 'statistics': {}, 'costs': {'contract': None, 'grid': 'LINZ NETZ'}})

@@ -8,8 +8,11 @@ imported price list or a fixed price), and subsidies. Each component has a unit:
   EUR/year    fixed, spread evenly over the hours of its calendar year
   EUR/month   fixed, spread evenly over the hours of its calendar month
 
-and a VAT rate. Amounts are net; the cost of an hour is the sum over the components valid at its
-start, each with its VAT (a subsidy such as the Stromkostenzuschuss has none: it is deducted
+and a VAT rate. A charge is identified by kind and name: when several components of the same
+charge are valid on a day (a supplier's fetched monthly price and a fixed price contract starting
+mid-month, an imported grid row and the built-in one), only the last one in the list counts, so
+nothing is counted twice. The add-on lists the built-in grid table first, then the archive, then
+the contracts. Amounts are net; the cost of an hour is the sum over the components that count, each with its VAT (a subsidy such as the Stromkostenzuschuss has none: it is deducted
 after VAT). Fixed components count for every hour of their period, also hours without a
 consumption value, so a year sums up to the bill's fixed fees.
 
@@ -64,16 +67,24 @@ def hourly_share(unit: str, value: float, local: datetime) -> float:
     return value / (days * 24)
 
 
+def effective(components: Iterable[Component], day: date) -> list:
+    """The components that count on `day`: one per charge (kind and name), the last valid one."""
+    by_charge: dict = {}
+    for c in components:
+        if c.valid_on(day):
+            by_charge[(c.kind, c.name)] = c
+    return list(by_charge.values())
+
+
 def cost_of_hour(start: datetime, kwh: Optional[float], components: Iterable[Component],
-                 zone: ZoneInfo = ZONE) -> tuple:
+                 zone: ZoneInfo = ZONE, resolved: bool = False) -> tuple:
     """(EUR gross of the hour starting at `start` (UTC), True if an energy price covers it).
-    `kwh` None: only the fixed components count."""
+    `kwh` None: only the fixed components count. `resolved`: `components` already holds only
+    the ones that count that day (see effective)."""
     local = start.astimezone(zone)
     day = local.date()
     total, priced = 0.0, False
-    for c in components:
-        if not c.valid_on(day):
-            continue
+    for c in (components if resolved else effective(components, day)):
         if c.unit == 'ct/kWh':
             if kwh is None:
                 continue
@@ -98,11 +109,14 @@ def cost_hours(hours: list, components: list, zone: ZoneInfo = ZONE) -> list:
         return []
     out, total = [], 0.0
     h, last = hours[0][0], hours[-1][0]
+    day, today = None, []
     while h <= last:
         local_day = h.astimezone(zone).date()
+        if local_day != day:
+            day, today = local_day, effective(components, local_day)
         if local_day >= first_priced:
             wh = values.get(h)
-            eur, priced = cost_of_hour(h, None if wh is None else wh / 1000, components, zone)
+            eur, priced = cost_of_hour(h, None if wh is None else wh / 1000, today, zone, resolved=True)
             total += eur
             out.append((h, eur, total, priced))
         h += HOUR

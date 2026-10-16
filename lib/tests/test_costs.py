@@ -113,3 +113,23 @@ def test_supplier_fees_come_from_the_contract():
     assert {(c.name, c.value, c.valid_to) for c in fixed} == {('Energiepreis', 15.9, date(2027, 6, 1)),
                                                               ('Grundpauschale', 4.0, date(2027, 6, 1))}
     assert tariffs.SUPPLIERS['fixed'].fetch({}, lambda url: b'') == []
+
+
+def test_a_charge_counts_once_the_later_source_wins():
+    fetched = costs.month_component('energy', 'Energiepreis', date(2026, 11, 1), 20.0, 0.0, 'gogreen_flex:api')
+    fixed = Component('energy', 'Energiepreis', 'ct/kWh', 15.0, 0.0, date(2026, 11, 15), None, 'fixed:contract')
+    assert costs.cost_of_hour(at(2026, 11, 10), 1.0, [fetched, fixed])[0] == pytest.approx(0.20)
+    assert costs.cost_of_hour(at(2026, 11, 20), 1.0, [fetched, fixed])[0] == pytest.approx(0.15)   # not 0.35
+    builtin = Component('grid', 'Messentgelt', 'EUR/month', 2.38, 0.0, date(2023, 4, 1))
+    imported = Component('grid', 'Messentgelt', 'EUR/month', 3.10, 0.0, date(2026, 1, 1))
+    assert [c.value for c in costs.effective([builtin, imported], date(2026, 6, 1))] == [3.10]
+
+
+def test_go_green_history_keeps_mid_month_changes():
+    gogreen = tariffs.SUPPLIERS['gogreen_flex']
+    data = flex_json(history=(('2026-08-01', '2026-08-14', 0.13), ('2026-08-15', '2026-08-31', 0.14),
+                              ('2026-09-01', '2100-12-31', 0.17)))
+    a, b, c = gogreen.fetch({'product': 'strom flex', 'start': date(2023, 3, 1)}, lambda url: data)
+    assert (a.valid_from, a.valid_to) == (date(2026, 8, 1), date(2026, 8, 15))
+    assert (b.valid_from, b.valid_to) == (date(2026, 8, 15), date(2026, 9, 1))
+    assert (c.valid_from, c.valid_to) == (date(2026, 9, 1), date(2026, 10, 1))

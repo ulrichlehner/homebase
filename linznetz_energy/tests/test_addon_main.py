@@ -803,3 +803,22 @@ def test_an_invalid_contract_is_not_saved(tmp_path):
     addon.handle_contract_request(tmp_path)
     assert addon.web.read_status(tmp_path)['contract_result'] == {'state': 'invalid'}
     assert 'contracts' not in addon.read_state(tmp_path)
+
+
+def test_writing_the_costs_keeps_what_the_live_update_stored(tmp_path, monkeypatch):
+    """The run's state copy is older than update_live's change of the live meter; writing the
+    costs must not bring the old entity back (the live archive would be cleared every hour)."""
+    import prices
+    monkeypatch.setattr(prices, 'http_get', lambda url: (_ for _ in ()).throw(prices.requests.RequestException('offline')))
+    addon.write_state(tmp_path, {'live_meter_entity': 'sensor.old'})
+    stale = addon.read_state(tmp_path)
+    addon.write_state(tmp_path, {'live_meter_entity': 'sensor.new'})              # what update_live stored
+    addon.write_costs(FakeHass(), options(), tmp_path, stale, [], ZONE, NOW, 'en')
+    assert addon.read_state(tmp_path)['live_meter_entity'] == 'sensor.new'
+
+
+def test_a_contract_with_a_non_number_is_not_saved(tmp_path):
+    addon.web.write_status(tmp_path, contract_request={'supplier': 'fixed', 'start': '2026-11-01',
+                                                       'energy_ct_kwh': 'nan', 'base_fee_month': '3'})
+    addon.handle_contract_request(tmp_path)
+    assert addon.web.read_status(tmp_path)['contract_result'] == {'state': 'invalid'}

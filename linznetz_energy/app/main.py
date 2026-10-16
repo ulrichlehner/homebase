@@ -34,6 +34,7 @@ import argparse
 import csv
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -594,7 +595,9 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
 def write_costs(hass, options: Options, store: Path, state: dict, hours: list, zone: ZoneInfo, now: datetime,
                 lang: str) -> None:
     """The cost statistic from the consumption hours and the prices (see prices, homebase.costs).
-    Nothing is written before the first energy price (no contract and no price list yet)."""
+    Nothing is written before the first energy price (no contract and no price list yet).
+    The state is read afresh: the run's own copy predates update_live's changes."""
+    state = read_state(store)
     fetch_error = prices.update(store, state, now, zone)
     write_state(store, state)
     comps = prices.components(store, options.metering_point, state)
@@ -618,6 +621,8 @@ def handle_contract_request(store: Path) -> None:
         start = datetime.strptime(request['start'], '%Y-%m-%d').date()
         supplier = prices.tariffs.SUPPLIERS[request['supplier']]
         params = {k: float(str(request.get(k, v)).replace(',', '.')) for k, v in supplier.defaults.items()}
+        if not all(math.isfinite(v) for v in params.values()):
+            raise ValueError('not a number')
         product = request.get('product', '')
         if supplier.products and product not in supplier.products:
             raise ValueError(product)

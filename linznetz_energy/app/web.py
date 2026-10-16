@@ -291,7 +291,8 @@ def _costs_card(lang: str, status: dict) -> str:
             f'<h3>{t(lang, "page.contract")}</h3>'
             f'<label>{t(lang, "page.contract_supplier")}<select name="supplier" id="supplier">{suppliers}</select></label>'
             f'<label data-only="gogreen_flex">{t(lang, "page.contract_product")}<select name="product">{products}</select></label>'
-            f'<label>{t(lang, "page.contract_start")}<input type="date" name="start" required></label>'
+            f'<label>{t(lang, "page.contract_start")}<input type="date" name="start" required '
+            f'value="{html.escape(current.get("start_iso", ""))}"></label>'
             + field('energy_ct_kwh', 'page.contract_energy', params.get('energy_ct_kwh', fixed['energy_ct_kwh']), 'fixed')
             + field('base_fee_month', 'page.contract_base_fee', params.get('base_fee_month', flex['base_fee_month']), 'any')
             + field('online_bonus_month', 'page.contract_online_bonus',
