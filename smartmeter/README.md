@@ -87,19 +87,18 @@ Quirks learned along the way:
 
 LN-666 specifies the energy counters in Wh: DIF/VIF `0E 03` for import, `0E 83 3C` for export.
 The real meter sends other energy records too, several times a day for about half an hour each.
-In a log of four days (2026-10-12 to 16, 68,725 telegrams, one every 5 s, all kept anonymised in
-[`samples/`](samples/README.md)) there were 32 such phases of 22 to 52 minutes:
+In a log of seven days (2026-10-12 to 19, 117,847 telegrams, one every 5 s, all kept anonymised in
+[`samples/`](samples/README.md)) there were 59 such phases of 22 to 52 minutes:
 
 | Record | Import | Export | Unit the VIF says | Phases | Digits |
 |---|---|---|---|---|---|
 | spec | `0E 03` | `0E 83 3C` | Wh | | the counter in Wh |
-| VIF 4 to 7 | `0E 04` … `0E 07` | `0E 84 3C` … `0E 87 3C` | 10 to 10⁴ Wh | 8 | the counter in **Wh**, the VIF is wrong |
-| VIF 7 | `0E 07` | `0E 87 3C` | 10⁴ Wh | 3 | the counter in **tenths of a Wh** (`1183890` at 118,389 Wh) |
-| all zero | `0E 00` | `0E 80 3C` | 10⁻³ Wh | 21 | `000000000000` |
+| VIF 4 to 7 | `0E 04` … `0E 07` | `0E 84 3C` … `0E 87 3C` | 10 to 10⁴ Wh | 15 | the counter in **Wh**, the VIF is wrong |
+| VIF 7 | `0E 07` | `0E 87 3C` | 10⁴ Wh | 6 | the counter in **tenths of a Wh** (`1183890` at 118,389 Wh) |
+| all zero | `0E 00` | `0E 80 3C` | 10⁻³ Wh | 38 | `000000000000` |
 
 - In the wrong-VIF phases the digits continue the counter without a step at every switch (0 or
   1 Wh, 5 to 16 s apart) and keep counting with the consumption, in Wh or in tenths of a Wh.
-- Since 2026-10-15 05:27 every phase was all zero.
 - Earlier phases behaved differently. On 2026-10-09 an earlier version of this driver, which read
   the digits as Wh whatever the VIF said, showed a few Wh where the counter stood near 90 kWh:
   that matches a VIF 7 record whose digits really were in 10⁴ Wh. On 2026-10-11 it showed about
@@ -147,9 +146,9 @@ Tests:
 smartmeter/tests/run.sh     # synthetic telegrams (tests/telegrams.txt), custom vs builtin amiplus
 ```
 
-`tests/telegrams_real.txt` adds 252 real telegrams (anonymised, around every switch between
+`tests/telegrams_real.txt` adds 472 real telegrams (anonymised, around every switch between
 record kinds). Run one at a time, the spec record gives the expected kWh and every other record
-gives no value, while the builtin `amiplus` reports the wrong ones. All 68,725 telegrams of
+gives no value, while the builtin `amiplus` reports the wrong ones. All 117,847 telegrams of
 [`samples/`](samples/README.md) as one wmbusmeters run (as in the add-on): every spec telegram
 gives its counter, never decreasing, every other one repeats the last spec value. The public LN-666 test vector gives 18.565 / 16.604 kWh with both drivers. To try it
 on a telegram with your key:
