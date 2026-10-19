@@ -3,10 +3,9 @@
 # AppArmor profile of the add-on: what the Python main loop and its page may do. Home Assistant
 # loads it instead of the default profile of add-ons.
 #
-# `complain` mode: nothing is blocked yet, access outside these rules is only logged
-# (apparmor="ALLOWED"). Once the logs show none, `complain` is removed and such access is denied.
+# Enforced: access outside these rules is denied and logged by the host (apparmor="DENIED").
 # See DOCS.md, "Security".
-profile linznetz_energy flags=(attach_disconnected,mediate_deleted,complain) {
+profile linznetz_energy flags=(attach_disconnected,mediate_deleted) {
   #include <abstractions/base>
 
   # Stopped by the Supervisor (docker stop)
