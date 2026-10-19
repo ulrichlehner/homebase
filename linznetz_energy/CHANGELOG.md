@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.1](https://github.com/ulrichlehner/homebase/compare/v1.7.0...v1.7.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* Python writes no bytecode files at runtime ([#61](https://github.com/ulrichlehner/homebase/issues/61)) ([8059e5e](https://github.com/ulrichlehner/homebase/commit/8059e5eab52cdd15fb791aa74743d2302990d4e0))
+
 ## [1.7.0](https://github.com/ulrichlehner/homebase/compare/v1.6.2...v1.7.0) (2026-10-16)
 
 
