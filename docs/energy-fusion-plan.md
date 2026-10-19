@@ -231,8 +231,8 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
 
 ### Step 8: Docs and cleanup
 
-- [ ] AppArmor: after some days of 1.2.0 or later, read the host log for `apparmor="ALLOWED"`
-      entries of `linznetz_energy`, add what is missing, remove `complain`
+- [x] AppArmor: after some days of 1.2.0 or later, read the host log for `apparmor="ALLOWED"`
+      entries of `linznetz_energy`, add what is missing, remove `complain` (2026-10-19)
 - [ ] Revoke the long-lived HA token used by `ha-spike` and the read-only checks (profile >
       Security), the user's task, once no more checks against HA are needed
 - [x] After the first release (v0.1.0): remove `release-as` from `release-please-config.json`
@@ -290,6 +290,8 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-19: AppArmor enforced. Besides the `.pyc` writes (fixed in 1.7.1) the audit log had no
+  `ALLOWED` entries of the add-on in 2.5 days.
 - 2026-10-19: AppArmor log after 2.5 days in complain mode: 588 `ALLOWED` entries, all Python
   writing `.pyc` files of standard modules into `/usr/local/lib/python3.12/__pycache__` (the slim
   image ships none). Fixed with `PYTHONDONTWRITEBYTECODE=1` instead of a write rule for `/usr`;

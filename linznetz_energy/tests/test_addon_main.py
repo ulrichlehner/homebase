@@ -596,7 +596,7 @@ def test_apparmor_profile_is_named_after_the_slug():
     folder = Path(addon.__file__).resolve().parent.parent
     slug = next(l.split(':', 1)[1].strip() for l in (folder / 'config.yaml').read_text().splitlines() if l.startswith('slug:'))
     profile = (folder / 'apparmor.txt').read_text()
-    assert f'profile {slug} flags=(attach_disconnected,mediate_deleted,complain)' in profile
+    assert f'profile {slug} flags=(attach_disconnected,mediate_deleted) {{' in profile     # enforced, no complain
 
 
 

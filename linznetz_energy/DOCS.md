@@ -314,9 +314,8 @@ add-on, and are part of every Home Assistant backup that includes the add-on.
 The add-on runs with Ingress (Home Assistant handles the login of its page, and the page only
 answers Home Assistant) and its own AppArmor profile (`apparmor.txt`): it may use the network,
 read Python and the system files it needs, and write only to its own folders; it starts no other
-program. The profile is in **complain** mode for now: nothing is blocked, access outside the
-rules is only logged by the host as `apparmor="ALLOWED"` with `profile="linznetz_energy"`. Once
-these entries stay away, a later version switches to enforcing the rules.
+program. Access outside these rules is denied; the host logs it as `apparmor="DENIED"` with
+`profile="…linznetz_energy"` (Terminal & SSH: `ha host logs --identifier audit | grep linznetz`).
 
 Home Assistant's security rating of the add-on counts the profile once the add-on is installed.
 
