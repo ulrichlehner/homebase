@@ -220,6 +220,19 @@ dependencies, `pytest` wired into the Testing view, tesseract, shellcheck, git/G
 survive rebuilds, and the host's Docker, so `./homebase …` and the tasks in `.vscode/tasks.json` work
 unchanged. Use an absolute `DATA_DIR` in `.env` there (`~` would expand to the container's home).
 
+To try the add-on in a real Home Assistant without touching your own, pick the second container,
+"HA app test" (`.devcontainer/ha-app`, from Home Assistant's
+[app testing guide](https://contributors.home-assistant.io/apps/guides/testing/)). It runs the
+Supervisor and Home Assistant in Docker on your computer:
+
+1. Task **HA app: Start Home Assistant**, then open <http://localhost:7123/> and go through the
+   onboarding.
+2. Task **HA app: Install dev app**: "LINZ NETZ Energy (dev)", built from the working tree.
+3. After a change: task **HA app: Rebuild and start dev app**.
+
+The store also lists "LINZ NETZ Energy", which downloads the published image. There is no meter
+radio and no AppArmor in this container; the portal works with your login.
+
 ## Setup
 
 Requires Docker (Docker Desktop on the Mac).
