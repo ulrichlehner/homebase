@@ -290,6 +290,10 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Log
 
+- 2026-10-19: AppArmor log after 2.5 days in complain mode: 588 `ALLOWED` entries, all Python
+  writing `.pyc` files of standard modules into `/usr/local/lib/python3.12/__pycache__` (the slim
+  image ships none). Fixed with `PYTHONDONTWRITEBYTECODE=1` instead of a write rule for `/usr`;
+  the `/app/__pycache__` rule is gone too. Next: a few days without entries, then enforce.
 - 2026-10-16: grid charges online. The SNE-V in the RIS (OGD API `data.bka.gv.at/ris/api/v2.6`,
   BrKons, Gesetzesnummer 20010107) has the network level 7 charges per area as text since the 2026
   version (§ 5: flat rate, per-kWh price, summer low price; § 6: grid loss); older versions have
