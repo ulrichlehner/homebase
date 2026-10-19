@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/ulrichlehner/homebase/compare/v1.7.1...v1.8.0) (2026-10-19)
+
+
+### Features
+
+* the AppArmor profile is enforced ([#64](https://github.com/ulrichlehner/homebase/issues/64)) ([51aa2a0](https://github.com/ulrichlehner/homebase/commit/51aa2a0d53d1df38b4c3e97b968a06280f5efb38))
+
 ## [1.7.1](https://github.com/ulrichlehner/homebase/compare/v1.7.0...v1.7.1) (2026-10-19)
 
 
