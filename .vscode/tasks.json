@@ -62,6 +62,40 @@
       "command": "./homebase build",
       "presentation": { "panel": "shared", "clear": true },
       "problemMatcher": []
+    },
+    // Only in the "HA app test" dev container (.devcontainer/ha-app), after the tasks of
+    // home-assistant/apps-example, for the dev copy of the add-on (local_linznetz_energy_dev).
+    {
+      "label": "HA app: Start Home Assistant",
+      "detail": "Supervisor and Home Assistant on http://localhost:7123/",
+      "type": "shell",
+      "command": "supervisor_run",
+      "presentation": { "reveal": "always", "panel": "new" },
+      "problemMatcher": []
+    },
+    {
+      "label": "HA app: Prepare dev app",
+      "detail": "copy the working tree to build/ha-app/linznetz_energy_dev and reload the app store",
+      "type": "shell",
+      "command": "sh .devcontainer/ha-app/prepare-app.sh && ha store reload",
+      "presentation": { "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "HA app: Install dev app",
+      "detail": "ha apps install local_linznetz_energy_dev",
+      "type": "shell",
+      "command": "sh .devcontainer/ha-app/prepare-app.sh && ha store reload && ha apps install local_linznetz_energy_dev",
+      "presentation": { "reveal": "always", "panel": "new" },
+      "problemMatcher": []
+    },
+    {
+      "label": "HA app: Rebuild and start dev app",
+      "detail": "prepare, rebuild from the working tree, start, follow the log",
+      "type": "shell",
+      "command": "sh .devcontainer/ha-app/prepare-app.sh && ha store reload && ha apps rebuild --force local_linznetz_energy_dev; ha apps start local_linznetz_energy_dev; ha apps logs -f local_linznetz_energy_dev",
+      "presentation": { "reveal": "always", "panel": "new" },
+      "problemMatcher": []
     }
   ]
 }
