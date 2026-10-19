@@ -119,13 +119,17 @@ consumption of the whole counter, so every phase books tens or hundreds of kWh t
 
 **Fix at the source:** `drivers/amiplus_linznetz.xmq`
 
-- the energy fields only match the records LN-666 specifies (`difvifkey = 0E03` and `0E833C`) and
-  scale them normally (`vif_scaling = Auto`). Telegrams with any other energy record carry no
-  new energy value; power and date still come through. The running wmbusmeters keeps the last
-  value of a field, so the MQTT messages of such a phase repeat the last spec counter: in Home
-  Assistant the energy sensors stay flat and continue when the meter returns to the spec (seen
-  in the history: no `unknown`, no drop). The consumption of the phase lands in the telegram
-  after it,
+- the energy values only come from the records LN-666 specifies (`difvifkey = 0E03` and
+  `0E833C`, scaled normally with `vif_scaling = Auto`). Any other energy record gives `null`;
+  power and date still come through. In Home Assistant the energy sensors show `unknown` during
+  such a phase and continue when the meter returns to the spec; the statistics skip `unknown`,
+  and the consumption of the phase lands in the telegram after it,
+- each energy field is therefore defined twice: first for any energy record, scaled to 0 and
+  turned into `null` (`force_scale = 0`, `null_value = 0`), then for the LN-666 record, which
+  wins when it is there. The `null` keeps the field in every telegram. That matters because the
+  add-on builds the Home Assistant entities from the first telegram after each start and
+  removes the ones it does not contain: without it, a start during a phase removed both energy
+  sensors,
 - keeps the field names of `amiplus` (`total_energy_consumption_kwh`,
   `total_energy_production_kwh`); voltages and tariff counters are left out, the meter does not
   send them,
@@ -147,10 +151,19 @@ smartmeter/tests/run.sh     # synthetic telegrams (tests/telegrams.txt), custom 
 ```
 
 `tests/telegrams_real.txt` adds 472 real telegrams (anonymised, around every switch between
-record kinds). Run one at a time, the spec record gives the expected kWh and every other record
-gives no value, while the builtin `amiplus` reports the wrong ones. All 117,847 telegrams of
+record kinds): the spec record gives the expected kWh and every other record gives no value,
+while the builtin `amiplus` reports the wrong ones. All 117,847 telegrams of
 [`samples/`](samples/README.md) as one wmbusmeters run (as in the add-on): every spec telegram
-gives its counter, never decreasing, every other one repeats the last spec value. The public LN-666 test vector gives 18.565 / 16.604 kWh with both drivers. To try it
+gives its counter, every other one `null`; the first telegram of a phase still yields both
+energy entities in the add-on's discovery. Without a local build, run the tests with the
+wmbusmeters of the add-on image:
+
+```bash
+docker run --rm -v "$PWD:/repo" -e WMBUSMETERS=/wmbusmeters/wmbusmeters --entrypoint bash \
+  wmbusmeters/wmbusmeters-ha-addon-aarch64:3.1.0 /repo/smartmeter/tests/run.sh
+```
+
+The public LN-666 test vector gives 18.565 / 16.604 kWh with both drivers. To try it
 on a telegram with your key:
 
 ```bash
@@ -219,8 +232,8 @@ the log private. `tools/telegram_log.py` turns it into anonymised samples, see
 
 - import, export and powers show values, entity IDs unchanged (no `_2` suffixes),
 - import and export are plausible against the meter display or the portal and only rise slowly,
-- during telegrams with a non-spec energy record the energy sensors stay at the last value
-  instead of showing a wrong one, and continue afterwards (seen in operation, no jumps),
+- during telegrams with a non-spec energy record the energy sensors show `unknown` instead of
+  a wrong value, and continue afterwards (no jumps),
 - entities of the stock driver that this driver does not fill (voltage, tariffs) stay
   unavailable and can be deleted.
 

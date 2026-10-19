@@ -9,8 +9,12 @@
 //   - VIF 0x00 with all digits zero.
 // The builtin amiplus accepts any energy VIF, so Home Assistant sees jumps and resets.
 //
-// Fix: the energy fields only match the records LN-666 specifies (difvifkey 0E03 and 0E833C).
-// Telegrams with any other energy record carry no energy value; power and date stay.
+// Fix: the energy values only come from the records LN-666 specifies (difvifkey 0E03 and
+// 0E833C). Any other energy record gives null (no value); power and date stay. Each energy
+// field is defined twice: first for any energy record, scaled to 0 and turned into null, then
+// for the LN-666 record, which wins when it is there. The null keeps the field in every
+// telegram: the wmbusmeters add-on (3.1.0) builds the Home Assistant entities from the first
+// telegram after a start and removes those it does not contain.
 // Differences from the builtin amiplus: the energy fields match by difvifkey instead of
 // vif_range, a dummy detect triplet, and no voltage, tariff or reactive fields (this meter
 // does not send them). Field names match amiplus, so Home Assistant entities keep working.
@@ -26,6 +30,18 @@ driver {
         mvt = DEV,FE,02
     }
     fields {
+        field {
+            name              = total_energy_consumption
+            quantity          = Energy
+            info              = 'No value (null) for every energy record that is not the LN-666 one.'
+            vif_scaling       = None
+            force_scale       = 0
+            null_value        = 0
+            match {
+                measurement_type = Instantaneous
+                vif_range        = AnyEnergyVIF
+            }
+        }
         field {
             name              = total_energy_consumption
             quantity          = Energy
@@ -45,6 +61,19 @@ driver {
             match {
                 measurement_type = Instantaneous
                 vif_range        = PowerW
+            }
+        }
+        field {
+            name              = total_energy_production
+            quantity          = Energy
+            info              = 'No value (null) for every energy record that is not the LN-666 one.'
+            vif_scaling       = None
+            force_scale       = 0
+            null_value        = 0
+            match {
+                measurement_type = Instantaneous
+                vif_range        = AnyEnergyVIF
+                add_combinable   = BackwardFlow
             }
         }
         field {

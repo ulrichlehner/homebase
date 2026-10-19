@@ -3,17 +3,19 @@
 # through the custom driver and the builtin amiplus driver. The custom driver must give the
 # expected kWh for the spec records and no value for all others; the builtin one is shown for
 # comparison (it is expected to be wrong for 0E04 to 0E07).
-# Needs wmbusmeters from ./wmbus-test.sh setup. Nothing is written outside this repo.
+# Needs wmbusmeters from ./wmbus-test.sh setup, or WMBUSMETERS=<path>. Nothing is written outside this repo.
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
-BIN="$(find "$DIR/wmbus-tools/wmbusmeters" -type f -name wmbusmeters -perm -u+x 2>/dev/null | head -n1)"
+# WMBUSMETERS: another binary, e.g. the one in the add-on image (see README, "Tests")
+BIN="${WMBUSMETERS:-$(find "$DIR/wmbus-tools/wmbusmeters" -type f -name wmbusmeters -perm -u+x 2>/dev/null | head -n1)}"
 [ -n "$BIN" ] || { echo "wmbusmeters not found, run ./wmbus-test.sh setup first" >&2; exit 1; }
 DRIVER="$DIR/drivers/amiplus_linznetz.xmq"
 
 field() { # field <json> <name>
   local v
   v="$(printf '%s' "$1" | sed -n "s/.*\"$2\":\([-0-9.a-z]*\).*/\1/p")"
+  [ "$v" = null ] && v=""      # null: the driver gives no value
   printf '%s' "${v:--}"
 }
 
