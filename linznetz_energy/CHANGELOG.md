@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.1](https://github.com/ulrichlehner/homebase/compare/v1.8.0...v1.8.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **smartmeter:** energy fields are null instead of missing during non-spec phases ([#67](https://github.com/ulrichlehner/homebase/issues/67)) ([8242f72](https://github.com/ulrichlehner/homebase/commit/8242f728fa0379c3b32d55ee38fd2b23e3fa6f47))
+
 ## [1.8.0](https://github.com/ulrichlehner/homebase/compare/v1.7.1...v1.8.0) (2026-10-19)
 
 
