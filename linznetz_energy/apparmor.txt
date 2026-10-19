@@ -27,7 +27,6 @@ profile linznetz_energy flags=(attach_disconnected,mediate_deleted,complain) {
   /lib/** mr,
   /app/ r,
   /app/** r,
-  /app/__pycache__/{,**} rw,
 
   # System files Python and the TLS connections read: certificates, DNS, time zones, users
   /etc/** r,

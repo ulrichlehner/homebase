@@ -7,7 +7,9 @@ ARG BUILD_VERSION=dev
 LABEL io.hass.type="addon" io.hass.arch="${BUILD_ARCH}" io.hass.version="${BUILD_VERSION}" \
       org.opencontainers.image.source="https://github.com/ulrichlehner/homebase"
 
-ENV PYTHONUNBUFFERED=1 ADDON_VERSION=${BUILD_VERSION}
+# PYTHONDONTWRITEBYTECODE: the image has no .pyc files of the standard library, and Python must
+# not write them at runtime (outside /data and /config, which the AppArmor profile denies)
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 ADDON_VERSION=${BUILD_VERSION}
 WORKDIR /app
 
 # The shared library (portal client, readings archive, fusion, HA client) ...
