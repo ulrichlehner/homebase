@@ -67,10 +67,8 @@ committing.
   was not"), a reception error; one MQTT publish failed (19.10. 10:59, "Bad file descriptor"),
   the next telegram 5 s later went through.
 
-The driver gives the expected kWh for every spec telegram and no value for every other one
-(`tests/run.sh`, one telegram per run). Run over all 117,847 telegrams at once, as the add-on
-does, wmbusmeters repeats the last spec value during a phase; nothing else differs. Home
-Assistant's history shows the same: the energy sensors stay flat during a phase, no `unknown`.
+The driver gives the expected kWh for every spec telegram and `null` for every other one, one
+telegram per run (`tests/run.sh`) and over all 117,847 telegrams in one run, as in the add-on.
 
 Non-spec phases:
 
