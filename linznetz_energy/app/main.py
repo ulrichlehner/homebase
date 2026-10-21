@@ -75,6 +75,7 @@ SETUP_NOTIFICATION = 'linznetz_energy_setup'
 SECRET_NOTIFICATION = 'linznetz_energy_secret'
 GRID_NOTIFICATION = 'linznetz_energy_grid_prices'
 DEVIATION_NOTIFICATION = 'linznetz_energy_deviation'
+PRICES_NOTIFICATION = 'linznetz_energy_price_sensors'
 LIVE_HISTORY_DAYS = 10            # how far back the first read of the live counter goes (HA's default purge_keep_days)
 CHECK_DAYS = 7                  # days of live/portal comparison for the status and the notification
 METERING_POINT = re.compile(r'^AT[0-9A-Z]{31}$')
@@ -606,7 +607,14 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
     web.write_status(store, phase='idle', detail='', statistics=written, last_run=now.isoformat())
     web.write_status(store, energy=energy_status(hass, options))
     if publish_status(options, inputs, lang, state, check, costs.price_of_hour(hour_start(now), comps, zone)):
-        write_price_history(hass, options, store, comps, zone, now)
+        try:
+            entities = addon_entities(hass, options.site_id)
+        except HomeAssistantError as err:
+            logger.warning('Could not read the entity registry: %s', err)
+        else:
+            web.write_status(store, entities=entities)   # for the page's sensors card
+            write_price_history(hass, options, store, comps, zone, now, lang,
+                                {k: v for k, v in entities.items() if k in mqtt_status.PRICES})
 
 
 def write_costs(hass, options: Options, store: Path, state: dict, hours: list, zone: ZoneInfo, now: datetime,
@@ -646,20 +654,23 @@ def hour_start(t: datetime) -> datetime:
     return t.replace(minute=0, second=0, microsecond=0)
 
 
-def write_price_history(hass, options: Options, store: Path, comps: list, zone: ZoneInfo, now: datetime) -> None:
+def write_price_history(hass, options: Options, store: Path, comps: list, zone: ZoneInfo, now: datetime,
+                        lang: str = 'en', entities: Optional[dict] = None) -> None:
     """Writes the price of every past hour into the long-term statistics of the price sensors,
     back to the first energy price: their history starts there, not when the sensors were created.
     Everything is written again when a price or a sensor changed, else only the hours since the
     last run; the current hour is left to the recorder. A sensor HA has not registered yet (just
-    announced over MQTT) gets its history next run."""
+    announced over MQTT) gets its history next run. `entities`: the price sensors' entity IDs
+    (price_entities), read from the registry if not given. A notification tells about them once."""
     hours = costs.price_hours(comps, hour_start(now), zone)
     if not hours:
         return
-    try:
-        entities = price_entities(hass, options.site_id)
-    except HomeAssistantError as err:
-        logger.warning('Could not read the entity registry, no price history this time: %s', err)
-        return
+    if entities is None:
+        try:
+            entities = price_entities(hass, options.site_id)
+        except HomeAssistantError as err:
+            logger.warning('Could not read the entity registry, no price history this time: %s', err)
+            return
     if not entities:
         return
     key = hashlib.sha256(repr((sorted(map(repr, comps)), sorted(entities.items()))).encode()).hexdigest()[:16]
@@ -676,15 +687,24 @@ def write_price_history(hass, options: Options, store: Path, comps: list, zone: 
         logger.info('Price history: %d hours from %s into %s', len(hours), hours[0][0].isoformat(),
                     ', '.join(entities.values()))
         state['price_history'] = {'key': key, 'until': (hours[-1][0] + costs.HOUR).isoformat()}
-        write_state(store, state)
+    if not state.get('price_sensors_announced'):
+        notify(hass, PRICES_NOTIFICATION, t(lang, 'price_sensors.title'),
+               t(lang, 'price_sensors.text', entities=', '.join(f'`{e}`' for e in entities.values())))
+        state['price_sensors_announced'] = now.isoformat()
+    write_state(store, state)
+
+
+def addon_entities(hass, site_id: str, keys=None) -> dict:
+    """{key: entity ID} of the add-on's MQTT entities HA has registered (all of
+    mqtt_status.ENTITIES, or `keys`), found by unique ID: they can be renamed."""
+    wanted = {mqtt_status.unique_id(site_id, key): key for key in (keys or mqtt_status.ENTITIES)}
+    return {wanted[e['unique_id']]: e['entity_id'] for e in hass.call('config/entity_registry/list') or []
+            if e.get('platform') == 'mqtt' and e.get('unique_id') in wanted}
 
 
 def price_entities(hass, site_id: str) -> dict:
-    """{price key: entity ID} of the price sensors HA has registered, found by unique ID (they
-    can be renamed)."""
-    wanted = {mqtt_status.unique_id(site_id, key): key for key in mqtt_status.PRICES}
-    return {wanted[e['unique_id']]: e['entity_id'] for e in hass.call('config/entity_registry/list') or []
-            if e.get('platform') == 'mqtt' and e.get('unique_id') in wanted}
+    """{price key: entity ID} of the price sensors (see addon_entities)."""
+    return addon_entities(hass, site_id, mqtt_status.PRICES)
 
 
 def handle_contract_request(store: Path) -> None:
@@ -820,7 +840,7 @@ def handle_live_meter_request(hass, store: Path) -> None:
     web.write_status(store, live_meter_request=None, live_meter_result={'state': 'saved', 'entity': entity_id})
 
 
-ALL_NOTIFICATIONS = (LOGIN_NOTIFICATION, IMPORT_NOTIFICATION, DOWNLOAD_NOTIFICATION, SETUP_NOTIFICATION, SECRET_NOTIFICATION,
+ALL_NOTIFICATIONS = (PRICES_NOTIFICATION, LOGIN_NOTIFICATION, IMPORT_NOTIFICATION, DOWNLOAD_NOTIFICATION, SETUP_NOTIFICATION, SECRET_NOTIFICATION,
                      GRID_NOTIFICATION,
                      DEVIATION_NOTIFICATION)
 

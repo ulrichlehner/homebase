@@ -236,11 +236,38 @@ ul.attention { display: grid; gap: 8px; }
 .key.actual { border-color: var(--primary); }
 .key.fixed { border-color: var(--warn); border-top-style: dashed; }
 .scroll { overflow-x: auto; margin-top: 12px; }
+h3.sub { font-size: 17px; font-weight: 500; margin: 22px 0 0; }
+.snippet { position: relative; margin-top: 12px; }
+.snippet pre { margin: 0; padding: 12px 14px; border-radius: 8px; background: var(--code-bg); overflow-x: auto; }
+.snippet pre code { background: none; padding: 0; }
+.snippet button { position: absolute; top: 8px; right: 8px; margin: 0; background: var(--card); }
+.chart.bars .bar { cursor: pointer; }
+.chart.bars .bar.better { fill: var(--ok); }
+.chart.bars .bar.worse { fill: var(--err); }
+.chart.bars .bar:hover, .chart.bars .bar.sel { opacity: .7; }
+.chart.bars .grid .zero { stroke: var(--muted); }
+.chart.bars .xlabels span.last { transform: translateX(-100%); }
+.key.better { border-color: var(--ok); border-top-width: 8px; }
+.key.worse { border-color: var(--err); border-top-width: 8px; }
+.readout { margin: 8px 0 0; font-size: 14px; color: var(--text); min-height: 2.6em; }
+table.grid { table-layout: fixed; margin-top: 12px; }
+table.grid .c-month { width: 22%; } table.grid .c-ct { width: 14%; } table.grid .c-diff { width: 40%; } table.grid .c-until { width: 24%; }
+details.more-rows { margin-top: 4px; }
+details.more-rows summary { cursor: pointer; color: var(--primary); font-size: 14px; padding: 10px 0; }
+details.more-rows table.grid { margin-top: 0; }
+.tip { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
+       margin: 0 0 0 4px; padding: 0; border: 1px solid var(--muted); border-radius: 50%; background: transparent;
+       color: var(--muted); font: 600 11px/1 inherit; cursor: help; vertical-align: 1px; }
+.tip:hover::after, .tip:focus::after { content: attr(data-tip); position: absolute; right: -6px; bottom: calc(100% + 8px);
+       z-index: 3; width: 240px; padding: 8px 10px; border-radius: 8px; background: var(--text); color: var(--card);
+       font: 400 13px/1.4 Roboto, "Noto Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+       text-align: left; white-space: normal; box-shadow: 0 2px 8px rgba(0, 0, 0, .2); }
 table.grid th { width: auto; font-size: 14px; }
-table.grid td { padding-right: 16px; white-space: nowrap; }
+table.grid td { padding-right: 16px; white-space: nowrap; overflow: visible; }
 table.grid th { padding-right: 16px; vertical-align: bottom; overflow-wrap: normal; }
-td.more { color: var(--err); }
-td.less { color: var(--ok); }
+/* from the user's view: green where the current contract was the better choice */
+td.better { color: var(--ok); }
+td.worse { color: var(--err); }
 .note { font-size: 14px; margin: 10px 0 0; }
 /* phones: less padding, label above value instead of two table columns */
 @media (max-width: 600px) {
@@ -471,9 +498,76 @@ def _price_chart(lang: str, months: list) -> str:
             f'<span>ct/kWh</span></figcaption></figure>')
 
 
+def _tip(text: str) -> str:
+    """A small (i) that shows `text` on hover and on tap (focus), for notes that would otherwise
+    need a footnote."""
+    return (f'<button type="button" class="tip" aria-label="{html.escape(text)}" data-tip="{html.escape(text)}">'
+            f'i</button>')
+
+
+def _guarantee_note(lang: str, row: dict) -> str:
+    """Why a row is partly assumed: the guarantee was not stated, or it ended before today."""
+    if not row['assumed']:
+        return ''
+    if row['until']:
+        return t(lang, 'page.compare_tip_ended', until=_date(row['until']))
+    return t(lang, 'page.compare_tip_unstated')
+
+
+def _switch_chart(lang: str, rows: list, through: str) -> str:
+    """Bars per switch month (oldest left): the difference per kWh of a fixed contract from that
+    month until `through` (below 0: the fixed price would have been cheaper). Pointing at or
+    tapping a bar shows its details under the chart."""
+    values = [r['ct_kwh'] for r in rows if r['ct_kwh'] is not None]
+    if len(values) < 2:
+        return ''
+    step = 5 if max(values) - min(values) > 12 else 2 if max(values) - min(values) > 4 else 1
+    lo = min(0, (min(values) // step) * step)
+    hi = max(0, (max(values) // step + 1) * step)
+    y = lambda v: 100 * (1 - (v - lo) / (hi - lo))     # noqa: E731
+    width = 100 / len(rows)
+    bars, details = [], []
+    for i, r in enumerate(rows):
+        details.append(t(lang, 'page.compare_bar', month=_month(r['month']), ct=_eur(r['ct']), eur=_signed(r['eur']),
+                         per=_signed(r['ct_kwh'] or 0), through=_month(through))
+                       + (f' {_guarantee_note(lang, r)}' if r['assumed'] else ''))
+        if r['ct_kwh'] is None:
+            continue
+        top, bottom = sorted((y(r['ct_kwh']), y(0)))
+        bars.append(f'<rect class="bar {"better" if r["eur"] > 0 else "worse"}" data-i="{i}" x="{i * width + width * .15:.3f}" '
+                    f'y="{top:.3f}" width="{width * .7:.3f}" height="{max(bottom - top, .4):.3f}"/>')
+    ticks = range(int(lo), int(hi) + 1, int(step))
+    grid = ''.join(f'<line class="{"zero" if v == 0 else ""}" x1="0" x2="100" y1="{y(v):.2f}" y2="{y(v):.2f}" '
+                   f'vector-effect="non-scaling-stroke"/>' for v in ticks)
+    ylabels = ''.join(f'<span style="top:{y(v):.2f}%">{"+" if v > 0 else "−" if v < 0 else ""}{abs(v)}</span>' for v in ticks)
+    every = -(-len(rows) // 4)
+    last = len(rows) - 1
+    xlabels = ''.join(f'<span class="{"first" if i == 0 else "last" if i == last else ""}" '
+                      f'style="left:{(i + .5) * width if 0 < i < last else 0 if i == 0 else 100:.2f}%">{_month(r["month"])}</span>'
+                      for i, r in enumerate(rows) if i == last or (i % every == 0 and last - i >= every))
+    hint = t(lang, 'page.compare_bars_hint')
+    return (f'<figure class="chart bars" data-details="{html.escape(json.dumps(details, ensure_ascii=False))}">'
+            f'<div class="plot"><div class="ylabels">{ylabels}</div>'
+            f'<svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" '
+            f'aria-label="{html.escape(t(lang, "page.compare_bars"))}"><g class="grid">{grid}</g>{"".join(bars)}</svg></div>'
+            f'<div class="xlabels">{xlabels}</div>'
+            f'<figcaption><span><span class="key better"></span> {html.escape(t(lang, "page.compare_bars_better"))}</span>'
+            f'<span><span class="key worse"></span> {html.escape(t(lang, "page.compare_bars_worse"))}</span>'
+            f'<span>ct/kWh</span></figcaption>'
+            f'<p class="readout" aria-live="polite" data-hint="{html.escape(hint)}">{html.escape(hint)}</p></figure>'
+            '<script>(function(){var f=document.currentScript.previousElementSibling,d=JSON.parse(f.dataset.details),'
+            'o=f.querySelector(".readout"),sel=null;function show(e){var b=e.target.closest("rect[data-i]");if(!b)return;'
+            'if(sel)sel.classList.remove("sel");sel=b;b.classList.add("sel");o.textContent=d[+b.dataset.i];}'
+            'var svg=f.querySelector("svg");svg.addEventListener("pointerover",show);svg.addEventListener("click",show);})();</script>')
+
+
+RECENT_ROWS = 12   # switch months shown in the table before "show all"
+
+
 def _comparison_card(lang: str, status: dict) -> str:
     """The fixed price comparison (homebase.compare): today's offer against the last 12 months,
-    the prices per month, and per start month what a switch then would have meant until now."""
+    the prices per month, and per switch month what a switch then would have meant until now
+    (as bars, and as a table of the recent months with the rest folded away)."""
     c = status.get('comparison')
     if not c or not c.get('rows'):
         return ''
@@ -485,32 +579,87 @@ def _comparison_card(lang: str, status: dict) -> str:
         verdict = 'page.compare_today_more' if today['eur'] > 0 else 'page.compare_today_less'
         rows.append((t(lang, 'page.compare_offer'),
                      html.escape(t(lang, 'page.compare_offer_line', product=fixed_product, ct=_eur(today['ct']),
-                                   fee=_eur(today['fee']), until=_date(today['until']) or '?'))))
+                                   fee=_eur(today['fee']), until=_date(today['until']) or '–'))))
         rows.append((t(lang, 'page.compare_last12', months=today['months']),
                      html.escape(t(lang, 'page.compare_last12_line', actual=_eur(today['actual_ct']),
                                    fixed=_eur(today['fixed_ct']), kwh=f'{today["kwh"]:,.0f}'.replace(',', '\u00a0')))
                      + f'<br><strong>{html.escape(t(lang, verdict, eur=_eur(abs(today["eur"]))))}</strong>'
                      + f'<br><span class="muted">{html.escape(t(lang, "page.compare_per_ct", eur=_eur(today["eur_per_ct_year"])))}</span>'))
+    cols = '<colgroup><col class="c-month"><col class="c-ct"><col class="c-diff"><col class="c-until"></colgroup>'
     head = (f'<tr><th>{t(lang, "page.compare_start")}</th><th>{t(lang, "page.compare_price")}</th>'
             f'<th>{html.escape(t(lang, "page.compare_diff", through=_month(c["through"])))}</th>'
             f'<th>{t(lang, "page.compare_until")}</th></tr>')
-    body = ''
-    for r in reversed(c['rows']):
+
+    def row_html(r):
         per_kwh = f' <span class="muted per">({_signed(r["ct_kwh"])} ct/kWh)</span>' if r['ct_kwh'] is not None else ''
-        body += (f'<tr><td>{_month(r["month"])}</td><td>{_eur(r["ct"])}</td>'
-                 f'<td class="{"more" if r["eur"] > 0 else "less"}">{_signed(r["eur"])} €{per_kwh}</td>'
-                 f'<td>{_date(r["until"]) or "?"}{"*" if r["assumed"] else ""}</td></tr>')
+        until = _date(r['until']) or '<span class="muted">–</span>'
+        note = _guarantee_note(lang, r)
+        return (f'<tr><td>{_month(r["month"])}</td><td>{_eur(r["ct"])}</td>'
+                f'<td class="{"better" if r["eur"] > 0 else "worse"}">{_signed(r["eur"])} €{per_kwh}</td>'
+                f'<td>{until}{" " + _tip(note) if note else ""}</td></tr>')
+    newest = list(reversed(c['rows']))
+    table = f'<table class="grid">{cols}{head}{"".join(row_html(r) for r in newest[:RECENT_ROWS])}</table>'
+    if len(newest) > RECENT_ROWS:
+        table += (f'<details class="more-rows"><summary>{html.escape(t(lang, "page.compare_all", count=len(newest)))}</summary>'
+                  f'<table class="grid">{cols}{"".join(row_html(r) for r in newest[RECENT_ROWS:])}</table></details>')
     notes = [t(lang, 'page.compare_how')]
-    if any(r['assumed'] for r in c['rows']):
-        notes.append(t(lang, 'page.compare_assumed'))
     if c.get('offer_error'):
         notes.append(t(lang, 'page.compare_offer_error', error=c['offer_error']))
     return (f'<div class="card" id="comparison"><h2>{t(lang, "page.compare")}</h2>'
             f'<p class="lead">{html.escape(t(lang, "page.compare_lead", product=fixed_product))}</p>'
             f'{f"<table>{_rows(rows)}</table>" if rows else ""}'
             f'{_price_chart(lang, c.get("months") or [])}'
-            f'<div class="scroll"><table class="grid">{head}{body}</table></div>'
+            f'<h3 class="sub">{html.escape(t(lang, "page.compare_switch"))}</h3>'
+            f'{_switch_chart(lang, c["rows"], c["through"])}'
+            f'{table}'
             + ''.join(f'<p class="muted note">{html.escape(n)}</p>' for n in notes) + '</div>')
+
+
+ENTITY_ORDER = ('price_total', 'price_energy', 'price_grid', 'live_data_until', 'portal_data_until',
+                'last_portal_fetch', 'live_deviation', 'deviating_hours', 'portal_login_problem')
+PRICE_KEYS = ('price_total', 'price_energy', 'price_grid')
+
+
+def _exposed_card(lang: str, status: dict) -> str:
+    """What the add-on gives Home Assistant: its statistics (for the Energy dashboard), the
+    entities of its MQTT device with their entity IDs as HA has them (renames included), and a
+    price chart to paste into a dashboard."""
+    stat = ((status.get('statistics') or {}).get('consumption') or {}).get('id')
+    cost = (status.get('costs') or {}).get('id') if (status.get('costs') or {}).get('from') else None
+    entities = status.get('entities') or {}
+    if not (stat or entities):
+        return ''
+    stats = [(t(lang, f'page.exposed_{key}'), f'<code>{html.escape(sid)}</code><br>'
+              f'<span class="muted">{html.escape(t(lang, f"page.exposed_{key}_use"))}</span>')
+             for key, sid in (('consumption', stat), ('cost', cost)) if sid]
+    sensors = [(t(lang, f'entity.{k}'), f'<code>{html.escape(entities[k])}</code><br>'
+                f'<span class="muted">{html.escape(t(lang, f"page.ent_{k}"))}</span>') for k in ENTITY_ORDER if k in entities]
+    body = f'<h3 class="sub">{t(lang, "page.exposed_statistics")}</h3><table>{_rows(stats)}</table>' if stats else ''
+    device = t(lang, 'page.exposed_device', site=status.get('site', ''))
+    body += (f'<h3 class="sub">{html.escape(t(lang, "page.exposed_sensors"))}</h3>'
+             f'<p class="muted">{_rich(device)}</p><table>{_rows(sensors)}</table>' if sensors else
+             f'<h3 class="sub">{html.escape(t(lang, "page.exposed_sensors"))}</h3>'
+             f'<p class="muted">{html.escape(t(lang, "page.exposed_no_mqtt"))}</p>')
+    prices = [k for k in PRICE_KEYS if k in entities]
+    if prices:
+        yaml = '\n'.join(['type: statistics-graph', f'title: {t(lang, "page.prices_chart_title")}', 'entities:']
+                         + [f'  - {entities[k]}' for k in prices]
+                         + ['stat_types:', '  - mean', 'period: day', 'days_to_show: 365', 'chart_type: line'])
+        steps = ''.join(f'<li>{_rich(t(lang, f"page.prices_step{i}"))}</li>' for i in range(1, 5))
+        body += (f'<h3 class="sub" id="prices">{t(lang, "page.prices_add")}</h3>'
+                 f'<p class="muted">{html.escape(t(lang, "page.prices_lead"))}</p><ol class="steps">{steps}</ol>'
+                 f'<div class="snippet"><pre><code id="price-yaml">{html.escape(yaml)}</code></pre>'
+                 f'<button type="button" class="secondary small" id="price-copy" data-done="{html.escape(t(lang, "page.prices_copied"))}">'
+                 f'{t(lang, "page.prices_copy")}</button></div>'
+                 '<script>(function(){var b=document.getElementById("price-copy"),c=document.getElementById("price-yaml");'
+                 'b.addEventListener("click",function(){function ok(){b.textContent=b.dataset.done;}'
+                 'function select(){var r=document.createRange();r.selectNodeContents(c);var s=getSelection();'
+                 's.removeAllRanges();s.addRange(r);try{if(document.execCommand("copy"))ok();}catch(e){}}'
+                 'if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(c.textContent).then(ok,select);}'
+                 'else{select();}});})();</script>')
+    return (f'<div class="card" id="exposed"><h2>{t(lang, "page.exposed")}</h2>'
+            f'<p class="lead">{html.escape(t(lang, "page.exposed_lead"))}</p>{body}'
+            f'<p class="muted note">{html.escape(t(lang, "page.exposed_note"))}</p></div>')
 
 
 # -- Setup checklist and what needs attention --------------------------------------------------
@@ -880,7 +1029,7 @@ def render_page(status: dict, message=None) -> str:
 </script>""" % (json.dumps(list(TABS)), json.dumps(start_tab))
     top = f'{note}{setup_html}{remove_html if removed else ""}'
     overview = f'{setup_line}{_attention_card(lang, attention(status))}{costs_html}{comparison_html}{summary_html}'
-    setup = f'{_checklist_card(lang, steps, guiding)}{live_meter_html}{supplier_html}{energy_html}'
+    setup = f'{_checklist_card(lang, steps, guiding)}{live_meter_html}{supplier_html}{energy_html}{_exposed_card(lang, status)}'
     history = f"""<div class="card" id="history"><h2>{t(lang, 'page.import_title')}</h2>
 <p>{t(lang, 'page.import_lead')}</p>
 <ul class="files">

@@ -212,11 +212,14 @@ The fixed product matches your strom flex product ("strom future" for "strom fle
   your consumption.
 - **Chart:** the energy price you paid per month (per kWh, weighted by your consumption) and the
   fixed price go green offered that month.
-- **Per start month:** a fixed contract from the 1st of that month, with the price go green
-  showed then, compared until the end of the last complete month, in € and per kWh (the per-kWh
-  value makes rows with different spans comparable). + means the fixed price would have cost
-  more. When the guarantee ended before today, the fixed price go green offered at that time is
-  assumed from then on (marked with *); a guarantee that was not stated counts as 12 months.
+- **If you had switched in …:** a bar per switch month (a fixed contract from the 1st of that
+  month, with the price go green showed then, compared until the end of the last complete month),
+  as the difference per kWh, which makes months with different spans comparable. Green: your
+  contract was cheaper; red: the fixed price would have been cheaper. Pointing at or tapping a bar
+  shows its details. Below, a table of the 12 most recent switch months in € and per kWh, the rest
+  behind **Show all**. When the guarantee ended before today, the fixed price go green offered at
+  that time is assumed from then on, and a guarantee that was not stated counts as 12 months; an
+  (i) next to the guarantee explains which applies.
 
 go green publishes no history of its fixed prices. The add-on knows them from snapshots of go
 green's [price page](https://www.gogreenenergy.at/strom.html) in the Internet Archive (monthly
@@ -298,6 +301,9 @@ broker from Home Assistant):
 
 Without a broker the add-on works the same, only without these entities.
 
+The add-on page lists all of them with their current entity IDs under **Setup**, **Sensors and
+statistics**. When the price sensors are first created, a Home Assistant notification points there.
+
 ### Electricity prices
 
 The three price sensors show the price per kWh of the current hour, with VAT, as it is on the bills:
@@ -337,7 +343,9 @@ the add-on's page inside Home Assistant. It has three tabs:
   dashboard), each with a link to where it is fixed; the costs (supplier, price now, totals per
   year); the fixed price comparison; and the status in short.
 - **Setup**: the setup checklist, then the cards for the live meter (see above), supplier and
-  prices, and the Energy dashboard.
+  prices, the Energy dashboard, and **Sensors and statistics**: everything the add-on gives Home
+  Assistant (the statistics with their use, every sensor with its current entity ID), plus a price
+  chart card to copy into a dashboard.
 - **Data & maintenance**: the status in full (runs, portal login and schedule, **Fetch now**), the
   data and their ranges, the statistic with its sources and gaps (hours no source covers, for
   example months the portal no longer has; older readings fill them, see below), the history

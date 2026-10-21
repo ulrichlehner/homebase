@@ -773,14 +773,20 @@ def test_price_sensors_get_the_current_price_and_their_history(tmp_path, monkeyp
     assert published[-1]['price_grid'] == pytest.approx(grid) and published[-1]['price_total'] == pytest.approx(24 + grid)
     history = {m['statistic_id']: (m, s) for m, s in hass.imports if not m['statistic_id'].startswith('linznetz_energy:')}
     assert set(history) == {'sensor.place_linznetz_price_grid', 'sensor.renamed_total'}   # found by unique ID, energy not registered yet
+    assert addon.web.read_status(tmp_path)['entities'] == {'price_grid': 'sensor.place_linznetz_price_grid',
+                                                                  'price_total': 'sensor.renamed_total'}
+    notes = [d for _, _, d in hass.services if d.get('notification_id') == addon.PRICES_NOTIFICATION]
+    assert len(notes) == 1 and '`sensor.renamed_total`' in notes[0]['message']        # told once
     meta, stats = history['sensor.renamed_total']
     assert meta['source'] == 'recorder' and meta['mean_type'] == 1 and not meta['has_sum'] and meta['unit_class'] is None
     assert stats[0]['start'] == start and stats[-1]['start'] == datetime(2026, 10, 14, 11, tzinfo=UTC)   # up to the current hour
     assert stats[0]['mean'] == stats[0]['max'] == pytest.approx(24 + grid)
     # the next run only adds the new hour; a new price writes everything again
     hass.imports.clear()
+    hass.services.clear()
     addon.run_once(hass, o, tmp_path, 'Europe/Vienna', NOW + timedelta(hours=1))
     assert [len(s) for m, s in hass.imports if m['source'] == 'recorder'] == [1, 1]
+    assert not [d for _, _, d in hass.services if d.get('notification_id') == addon.PRICES_NOTIFICATION]
     addon.web.write_status(tmp_path, contract_request={'supplier': 'fixed', 'start': '2026-10-01',
                                                        'energy_ct_kwh': '18', 'base_fee_month': '0'})
     addon.handle_contract_request(tmp_path)
