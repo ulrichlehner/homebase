@@ -800,6 +800,26 @@ def test_statistics_say_mean_type_and_unit_class(tmp_path, monkeypatch):
     assert meta['mean_type'] == 0 and meta['unit_class'] == 'energy' and meta['has_sum'] and 'has_mean' not in meta
 
 
+def test_the_fixed_price_comparison_reads_the_offer_once_a_day(tmp_path, monkeypatch):
+    import prices
+    from datetime import date
+    page = ('(Preise inklusive 20 % USt.) strom 21,00 Cent/kWh + 3,00 Euro pro Monat Grundpauschale mit Online-Bonus '
+            'Fixer Arbeitspreis mit Preisgarantie bis 31.12.2028').encode()
+    calls = []
+    monkeypatch.setattr(prices, 'http_get', lambda url: calls.append(url) or page)
+    state = {}
+    hours = [(datetime(2026, 9, 1, tzinfo=ZONE).astimezone(UTC) + timedelta(hours=i), 400) for i in range(24 * 40)]
+    assert prices.comparison(tmp_path, state, hours, [], NOW, ZONE) is None and not calls     # no contract: nothing fetched
+    prices.set_contract(state, 'fixed', '', date(2026, 9, 1), {'energy_ct_kwh': 15.0, 'base_fee_month': 0.0})
+    comps = prices.components(tmp_path, METER, state)
+    result = prices.comparison(tmp_path, state, hours, comps, NOW, ZONE)
+    assert calls == [prices.tariffs.GOGREEN_FIX_PAGE] and result['product'] == ''
+    assert result['today']['ct'] == 21.0 and result['rows'][0]['month'] == '2026-09'
+    assert (tmp_path / prices.OFFERS).read_text().splitlines()[1] == '2026-10-14;21;3;2028-12-31;page'
+    prices.comparison(tmp_path, state, hours, comps, NOW + timedelta(hours=1), ZONE)
+    assert len(calls) == 1                                                               # once a day
+
+
 def test_go_green_prices_are_fetched_while_the_month_has_none(tmp_path):
     import prices
     from datetime import date

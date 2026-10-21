@@ -87,6 +87,29 @@ TEXTS = {
         'page.costs_price_pending': 'the supplier has not published this month\'s price yet; the add-on checks every 6 hours',
         'page.costs_years': 'Per year',
         'page.costs_last12': 'last 12 months: {eur} €',
+        'page.compare': 'Fixed price comparison',
+        'page.compare_lead': 'What go green energy\'s fixed price ({product}) would have cost compared to what you paid the '
+                             'supplier, on your actual consumption. Grid charges and levies are the same either way and left out.',
+        'page.compare_offer': 'Fixed price today',
+        'page.compare_offer_line': '{product}: {ct} ct/kWh + {fee} € per month, price guaranteed until {until}',
+        'page.compare_last12': 'Last {months} months',
+        'page.compare_last12_line': 'you paid {actual} ct/kWh (energy and fees, {kwh} kWh); today\'s fixed price would have been {fixed} ct/kWh',
+        'page.compare_today_more': 'The fixed price would have cost {eur} € more.',
+        'page.compare_today_less': 'The fixed price would have cost {eur} € less.',
+        'page.compare_per_ct': 'Each ct/kWh of difference is about {eur} € per year at your consumption.',
+        'page.compare_chart': 'Energy price per month: paid and fixed offer',
+        'page.compare_actual': 'paid (energy price per kWh)',
+        'page.compare_fixed': 'fixed price offered that month',
+        'page.compare_start': 'Switch',
+        'page.compare_price': 'ct/kWh',
+        'page.compare_until': 'guaranteed until',
+        'page.compare_diff': 'fixed vs paid until {through}',
+        'page.compare_how': '+ means the fixed price would have cost more, − less. Each row starts a fixed contract on the 1st of '
+                            'that month with the price go green showed then (from its price page; before 11/2024 only the lowest '
+                            'fixed price is known). The fee is the one with online bonus.',
+        'page.compare_assumed': '* The guarantee ended (or was not stated and is taken as 12 months): from then on the fixed '
+                                'price go green offered at that time is assumed.',
+        'page.compare_offer_error': 'The current fixed price could not be read from go green\'s page: {error}',
         'page.costs_unpriced': 'Months without energy price',
         'page.costs_unpriced_hint': 'These months count only grid charges, levies and fees so far. A price list with '
                                     'the monthly energy prices (for example from your bills) fills them: upload it below.',
@@ -348,6 +371,30 @@ TEXTS = {
         'page.costs_price_pending': 'der Lieferant hat den Preis für diesen Monat noch nicht veröffentlicht; die App sieht alle 6 Stunden nach',
         'page.costs_years': 'Pro Jahr',
         'page.costs_last12': 'letzte 12 Monate: {eur} €',
+        'page.compare': 'Vergleich mit Fixpreis',
+        'page.compare_lead': 'Was der Fixpreis von go green energy ({product}) gekostet hätte, verglichen mit dem, was Sie dem '
+                             'Lieferanten bezahlt haben, bei Ihrem tatsächlichen Verbrauch. Netzentgelte und Abgaben sind in '
+                             'beiden Fällen gleich und bleiben außen vor.',
+        'page.compare_offer': 'Fixpreis heute',
+        'page.compare_offer_line': '{product}: {ct} ct/kWh + {fee} € pro Monat, Preisgarantie bis {until}',
+        'page.compare_last12': 'Letzte {months} Monate',
+        'page.compare_last12_line': 'bezahlt: {actual} ct/kWh (Energie und Pauschalen, {kwh} kWh); mit dem heutigen Fixpreis wären es {fixed} ct/kWh gewesen',
+        'page.compare_today_more': 'Der Fixpreis hätte {eur} € mehr gekostet.',
+        'page.compare_today_less': 'Der Fixpreis hätte {eur} € weniger gekostet.',
+        'page.compare_per_ct': 'Jeder ct/kWh Unterschied macht bei Ihrem Verbrauch etwa {eur} € pro Jahr aus.',
+        'page.compare_chart': 'Energiepreis pro Monat: bezahlt und Fixpreis-Angebot',
+        'page.compare_actual': 'bezahlt (Energiepreis pro kWh)',
+        'page.compare_fixed': 'Fixpreis-Angebot im Monat',
+        'page.compare_start': 'Wechsel',
+        'page.compare_price': 'ct/kWh',
+        'page.compare_until': 'Garantie bis',
+        'page.compare_diff': 'Fixpreis vs bezahlt bis {through}',
+        'page.compare_how': '+ heißt, der Fixpreis wäre teurer gewesen, − billiger. Jede Zeile beginnt einen Fixpreis-Vertrag am '
+                            '1. des Monats mit dem Preis, den go green damals zeigte (von der Preisseite; vor 11/2024 ist nur '
+                            'der niedrigste Fixpreis bekannt). Die Grundpauschale ist die mit Online-Bonus.',
+        'page.compare_assumed': '* Die Preisgarantie endete (oder war nicht angegeben und zählt als 12 Monate): ab dann gilt '
+                                'der Fixpreis, den go green zu dieser Zeit anbot.',
+        'page.compare_offer_error': 'Der aktuelle Fixpreis war auf der Seite von go green nicht lesbar: {error}',
         'page.costs_unpriced': 'Monate ohne Energiepreis',
         'page.costs_unpriced_hint': 'In diesen Monaten zählen bisher nur Netzentgelte, Abgaben und Gebühren. Eine Preisliste '
                                     'mit den monatlichen Energiepreisen (etwa aus den Rechnungen) füllt sie: unten hochladen.',

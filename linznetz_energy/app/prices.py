@@ -19,11 +19,12 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from homebase import costs, tariffs
+from homebase import compare, costs, tariffs
 
 logger = logging.getLogger('addon.prices')
 
 ARCHIVE = 'prices.csv'
+OFFERS = 'fixed_offers.csv'      # go green's fixed price offers read from its price page (see homebase.compare)
 FETCH_EVERY = timedelta(hours=6)
 USER_AGENT = 'Mozilla/5.0 (Home Assistant add-on LINZ NETZ Energy)'
 
@@ -169,6 +170,48 @@ def update_grid(store: Path, state: dict, now: datetime, zone: ZoneInfo, meterin
     ris = [c for c in costs.read_archive(store / ARCHIVE) if c.source.startswith('ris:') and c.name == 'Netznutzung Arbeitspreis']
     covered = today.year in table_years or any(c.valid_from.year == today.year for c in ris)
     return {'state': 'table' if covered else 'outdated', 'error': state.get('grid_error'), 'year': today.year}
+
+
+OFFER_CHECK_EVERY = timedelta(hours=24)
+
+
+def update_offers(store: Path, state: dict, now: datetime, zone: ZoneInfo,
+                  get: Optional[Callable[[str], bytes]] = None) -> list:
+    """Reads go green's fixed price offer from its price page once a day and keeps it in the
+    offer archive when it changed. Returns all offers (built-in and archived)."""
+    path = store / OFFERS
+    archive = compare.read_offers(path)
+    last = state.get('offer_check')
+    if not last or now - datetime.fromisoformat(last) >= OFFER_CHECK_EVERY:
+        state['offer_check'] = now.isoformat()
+        try:
+            offer = tariffs.parse_gogreen_fix((get or http_get)(tariffs.GOGREEN_FIX_PAGE), now.astimezone(zone).date())
+            if compare.add_offer(compare.all_offers(archive), offer):
+                archive.append(offer)
+                compare.write_offers(path, archive)
+                logger.info('Fixed price offer of go green: %g ct/kWh, %g EUR/month, guaranteed until %s',
+                            offer.ct, offer.fee, offer.until or '?')
+            state.pop('offer_error', None)
+        except (requests.RequestException, ValueError) as err:
+            state['offer_error'] = str(err)[:200]
+            logger.warning('Could not read the fixed price offer of go green: %s', err)
+    return compare.all_offers(archive)
+
+
+def comparison(store: Path, state: dict, hours: list, comps: list, now: datetime, zone: ZoneInfo,
+               get: Optional[Callable[[str], bytes]] = None) -> Optional[dict]:
+    """The fixed price comparison for the page (homebase.compare), for the fixed product that
+    matches the current strom flex product ("strom" for any other contract)."""
+    today = now.astimezone(zone).date()
+    current = next((c for c in reversed(contracts(state)) if c['start'] <= today), None)
+    if current is None:
+        return None
+    offers = update_offers(store, state, now, zone, get)
+    product = current.get('product', '') if current['supplier'] == 'gogreen_flex' else ''
+    result = compare.compare(hours, comps, offers, product, now, zone)
+    if result is not None:
+        result['offer_error'] = state.get('offer_error')
+    return result
 
 
 def import_price_list(path: Path, store: Path) -> tuple:

@@ -328,6 +328,30 @@ def test_costs_card_shows_contract_price_years_and_gaps():
 
 
 
+COMPARISON = {'product': 'strom flex future', 'through': '2026-09', 'offer_error': None,
+              'rows': [{'month': '2026-08', 'ct': 13.44, 'fee': 3.0, 'until': '2027-12-31', 'eur': -14.78, 'ct_kwh': -5.12,
+                        'kwh': 288.0, 'assumed': False},
+                       {'month': '2026-09', 'ct': 13.44, 'fee': 3.0, 'until': None, 'eur': 3.2, 'ct_kwh': 1.1,
+                        'kwh': 290.0, 'assumed': True}],
+              'months': [{'month': '2026-08', 'actual_ct': 16.0, 'fixed_ct': 13.44},
+                         {'month': '2026-09', 'actual_ct': 20.7, 'fixed_ct': 13.44}],
+              'today': {'seen': '2026-10-05', 'ct': 20.28, 'fee': 3.0, 'until': '2028-12-31', 'months': 2, 'kwh': 578.0,
+                        'actual_ct': 19.9, 'fixed_ct': 21.3, 'eur': 8.1, 'eur_per_ct_year': 34.68}}
+
+
+def test_comparison_card_shows_today_the_chart_and_the_start_months():
+    page = W.render_page({'language': 'de', 'comparison': COMPARISON})
+    card = page.split('id="comparison"')[1]
+    assert 'Vergleich mit Fixpreis' in card and 'strom future: 20,28 ct/kWh + 3,00 € pro Monat, Preisgarantie bis 31.12.2028' in card
+    assert 'Der Fixpreis hätte 8,10 € mehr gekostet.' in card and '34,68 €' in card
+    assert '<svg viewBox' in card and card.count('<polyline') == 2
+    rows = card.split('<table class="grid">')[1].split('</table>')[0]
+    assert rows.index('09/2026') < rows.index('08/2026')                       # newest first
+    assert 'class="less">−14,78 €' in rows and 'class="more">+3,20 €' in rows and '?*' in rows
+    assert 'Die Preisgarantie endete' in card
+    assert 'id="comparison"' not in W.render_page({'language': 'de', 'comparison': None})
+
+
 def test_costs_card_says_where_the_grid_charges_come_from():
     base = {'language': 'en', 'statistics': {}, 'costs': {'contract': None, 'grid': 'LINZ NETZ'}}
     def grid_row(g):

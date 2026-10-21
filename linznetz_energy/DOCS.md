@@ -199,6 +199,32 @@ the same charge for their period, for example a basic fee that differed for some
 `window` (optional, last column) limits a per-kWh row to months and hours, such as `04-09 10-16`. The prices are kept in `prices.csv` in the add-on folder; importing the same list
 again changes nothing.
 
+### Fixed price comparison
+
+Once a supplier is set, the card **Fixed price comparison** shows what go green's fixed price
+would have cost instead, on your actual consumption. Only the supplier's part is compared (energy
+price and basic fee, both with VAT): grid charges, levies and subsidies are the same either way.
+The fixed product matches your strom flex product ("strom future" for "strom flex future", the
+"plus" fee for the plus products); with another supplier it is "strom".
+
+- **Today:** go green's current fixed price and its guarantee, and what it would have cost over
+  your last 12 complete months compared to what you paid, plus what 1 ct/kWh makes per year at
+  your consumption.
+- **Chart:** the energy price you paid per month (per kWh, weighted by your consumption) and the
+  fixed price go green offered that month.
+- **Per start month:** a fixed contract from the 1st of that month, with the price go green
+  showed then, compared until the end of the last complete month, in € and per kWh (the per-kWh
+  value makes rows with different spans comparable). + means the fixed price would have cost
+  more. When the guarantee ended before today, the fixed price go green offered at that time is
+  assumed from then on (marked with *); a guarantee that was not stated counts as 12 months.
+
+go green publishes no history of its fixed prices. The add-on knows them from snapshots of go
+green's [price page](https://www.gogreenenergy.at/strom.html) in the Internet Archive (monthly
+since 11/2024; before that only the lowest fixed price, without fee and guarantee), reads the page
+once a day and keeps each new offer in `fixed_offers.csv` in the add-on folder. An offer counts
+from the day it was seen; a month gets the offer shown on its 15th. Bonuses for new customers
+and other one-off conditions are not included.
+
 ## Live meter readings (optional)
 
 Any entity in Home Assistant that has the meter's energy counter live (a total in kWh) can serve as
@@ -314,6 +340,7 @@ the add-on's page inside Home Assistant. It shows
 - the live meter choice (see above),
 - the costs: grid operator, supplier, the price now, totals per year, months without energy price, and the
   form to set the supplier,
+- the fixed price comparison (see "Fixed price comparison"),
 - the Energy dashboard card, the history import and the result of the last import,
 - at the bottom, removing everything from Home Assistant (see "Uninstalling").
 

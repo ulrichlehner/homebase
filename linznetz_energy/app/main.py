@@ -636,6 +636,9 @@ def write_costs(hass, options: Options, store: Path, state: dict, hours: list, z
         changes['contract_result'] = {'state': 'saved'}
     web.write_status(store, costs=prices.status(options.cost_statistic, cost_hours, state, comps, zone, now,
                                                 options.metering_point, fetch_error, grid), **changes)
+    comparison = prices.comparison(store, state, [(h.start, h.wh) for h in hours], comps, now, zone)
+    write_state(store, state)
+    web.write_status(store, comparison=comparison)
     return comps
 
 
