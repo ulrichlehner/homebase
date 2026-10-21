@@ -12,7 +12,7 @@ from homebase import portal as linznetz
 UTC = ZoneInfo('UTC')
 ZONE = ZoneInfo('Europe/Vienna')
 METER = 'AT0000000000000000000000000000000'
-NOW = datetime(2026, 10, 14, 12, 7, tzinfo=UTC)
+NOW = datetime(2026, 10, 14, 12, 15, tzinfo=UTC)   # an hourly run (RUN_MINUTE)
 
 
 def options(**kw):
@@ -155,34 +155,71 @@ def test_portal_due_looks_for_yesterday_during_the_day():
     complete = day(13, 23, 45)                      # yesterday's last quarter hour, seen on the 14th
     missing = day(13, 0, 45)
     assert addon.portal_due({}, day(14, 3), ZONE, None)                    # first download: right away
-    assert addon.portal_due({}, day(14, 9), ZONE, missing)                  # yesterday missing, daytime
-    assert not addon.portal_due({}, day(14, 23), ZONE, missing)             # ... but not at night
-    assert not addon.portal_due({}, day(14, 9), ZONE, complete)             # yesterday complete: wait
-    assert addon.portal_due({}, day(15, 6), ZONE, complete)                 # the next morning it is missing again
-    tried = {'portal_tried': day(14, 9).isoformat()}
-    assert not addon.portal_due(tried, day(14, 9, 30), ZONE, missing)      # a woken run does not fetch again
-    assert addon.portal_due(tried, day(14, 10), ZONE, missing)
+    assert addon.portal_due({}, day(14, 9, 15), ZONE, missing)              # yesterday missing: the hourly run
+    assert not addon.portal_due({}, day(14, 9, 30), ZONE, missing)          # ... not between (no usual time yet)
+    assert not addon.portal_due({}, day(14, 23, 15), ZONE, missing)         # ... and not at night
+    assert not addon.portal_due({}, day(14, 9, 15), ZONE, complete)         # yesterday complete: wait
+    assert addon.portal_due({}, day(15, 6, 15), ZONE, complete)             # the next morning it is missing again
+    tried = {'portal_tried': day(14, 9, 15).isoformat()}
+    assert not addon.portal_due(tried, day(14, 9, 20), ZONE, missing)      # a woken run does not fetch again
+    assert addon.portal_due(tried, day(14, 10, 15), ZONE, missing)
     failed = {'portal_login_failed': day(14, 9).isoformat()}
-    assert not addon.portal_due(failed, day(14, 14), ZONE, missing)         # rejected login: 6 hours
-    assert addon.portal_due(failed, day(14, 15), ZONE, missing)
+    assert not addon.portal_due(failed, day(14, 14, 15), ZONE, missing)     # rejected login: 6 hours
+    assert addon.portal_due(failed, day(14, 15, 15), ZONE, missing)
+
+
+def test_around_the_usual_arrival_the_portal_is_checked_every_quarter_hour():
+    day = lambda d, h, m=0: datetime(2026, 10, d, h, m, tzinfo=ZONE)
+    missing = day(13, 0, 45)
+    state = {'portal_arrivals': ['2026-10-10T10:07+02:00', '2026-10-11T10:07+02:00', '2026-10-12T09:52+02:00']}
+    assert addon.usual_arrival(state['portal_arrivals']) == '10:00'          # rounded to the quarter hour
+    assert not addon.portal_due(state, day(14, 8, 45), ZONE, missing)       # before the window: hourly only
+    assert [addon.portal_due(state, day(14, 9, m), ZONE, missing) for m in (0, 15, 30, 45)] == [True] * 4
+    assert addon.portal_due(state, day(14, 12, 0), ZONE, missing)           # two hours after
+    assert not addon.portal_due(state, day(14, 12, 30), ZONE, missing)      # then hourly again
+    assert addon.portal_due(state, day(14, 13, 15), ZONE, missing)
+    # the loop wakes for these checks between the hourly runs
+    assert addon.next_wake(state, day(14, 9, 2), ZONE, missing) == (day(14, 9, 15), True)
+    assert addon.next_wake(state, day(14, 9, 16), ZONE, missing) == (day(14, 9, 30), False)
+    assert addon.next_wake({}, day(14, 9, 16), ZONE, missing) == (day(14, 10, 15), True)
+    complete = day(13, 23, 45)
+    assert addon.next_wake(state, day(14, 9, 16), ZONE, complete) == (day(14, 10, 15), True)   # nothing missing
 
 
 def test_portal_next_and_arrivals():
     day = lambda d, h, m=0: datetime(2026, 10, d, h, m, tzinfo=ZONE)
     complete = day(13, 23, 45)
-    assert addon.portal_next({}, day(14, 9, 30), ZONE, complete) == day(15, 6, 7)
-    assert addon.portal_next({}, day(14, 9, 30), ZONE, day(13, 0)) == day(14, 10, 7)
+    assert addon.portal_next({}, day(14, 9, 30), ZONE, complete) == day(15, 6, 15)
+    assert addon.portal_next({}, day(14, 9, 30), ZONE, day(13, 0)) == day(14, 10, 15)
     state = {}
-    addon.note_arrival(state, day(12, 23, 45), complete, day(14, 11, 7), ZONE)   # yesterday arrived
-    addon.note_arrival(state, complete, complete, day(14, 12, 7), ZONE)           # nothing new
-    assert state['portal_arrivals'] == ['2026-10-14T11:07+02:00']
-    assert addon.usual_arrival(['2026-10-12T10:07+02:00', '2026-10-13T11:07+02:00', '2026-10-14T13:07+02:00']) == '11:07'
+    addon.note_arrival(state, day(12, 23, 45), complete, day(14, 11, 15), ZONE)   # yesterday arrived
+    addon.note_arrival(state, complete, complete, day(14, 12, 15), ZONE)           # nothing new
+    assert state['portal_arrivals'] == ['2026-10-14T11:15+02:00']
+    assert addon.usual_arrival(['2026-10-12T10:07+02:00', '2026-10-13T11:07+02:00', '2026-10-14T13:07+02:00']) == '11:00'
     assert addon.usual_arrival([]) is None
 
 
-def test_next_run():
-    assert addon.next_run(datetime(2026, 10, 14, 12, 3, tzinfo=UTC)) == datetime(2026, 10, 14, 12, 7, tzinfo=UTC)
-    assert addon.next_run(datetime(2026, 10, 14, 12, 7, tzinfo=UTC)) == datetime(2026, 10, 14, 13, 7, tzinfo=UTC)
+def test_next_run_and_quarter():
+    assert addon.next_run(datetime(2026, 10, 14, 12, 3, tzinfo=UTC)) == datetime(2026, 10, 14, 12, 15, tzinfo=UTC)
+    assert addon.next_run(datetime(2026, 10, 14, 12, 15, tzinfo=UTC)) == datetime(2026, 10, 14, 13, 15, tzinfo=UTC)
+    assert addon.next_quarter(datetime(2026, 10, 14, 12, 3, tzinfo=UTC)) == datetime(2026, 10, 14, 12, 15, tzinfo=UTC)
+    assert addon.next_quarter(datetime(2026, 10, 14, 12, 45, tzinfo=UTC)) == datetime(2026, 10, 14, 13, 0, tzinfo=UTC)
+
+
+def test_a_quarter_hour_check_does_the_full_run_only_with_new_readings(tmp_path, monkeypatch):
+    start = datetime(2026, 10, 1, tzinfo=ZONE).astimezone(UTC)
+    write_readings(tmp_path, hours=24, start=start)
+    calls = []
+    monkeypatch.setattr(addon, 'fetch_portal', lambda *a: calls.append(a))       # the portal has nothing new
+    hass = FakeHass()
+    check = datetime(2026, 10, 3, 9, 30, tzinfo=ZONE).astimezone(UTC)
+    addon.write_state(tmp_path, {'portal_arrivals': ['2026-10-02T09:30+02:00']})
+    addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', check, portal_only=True)
+    assert len(calls) == 1 and hass.imports == []                               # looked, nothing new: no statistics
+    more = lambda *a: write_readings(tmp_path, hours=48, start=start)            # noqa: E731  yesterday arrives
+    monkeypatch.setattr(addon, 'fetch_portal', more)
+    addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', check + timedelta(minutes=15), portal_only=True)
+    assert hass.imports                                                          # new readings: the full run follows
 
 
 def test_run_once_imports_the_consumption_statistic_in_chunks(tmp_path, monkeypatch):
@@ -233,7 +270,7 @@ def test_rejected_login_notifies_the_second_time_and_keeps_going(tmp_path, monke
     assert 'secret-pw' not in caplog.text and 'secret-pw' not in json.dumps(hass.services)
     # a good login later resets both
     results[:] = ['ok']
-    addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW + timedelta(hours=7))   # 6 hours later, 21:07 local
+    addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW + timedelta(hours=7))   # 6 hours later, 21:15 local
     state = addon.read_state(tmp_path)
     assert 'portal_login_failed' not in state and 'portal_login_rejected' not in state
 

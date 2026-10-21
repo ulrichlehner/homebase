@@ -72,14 +72,17 @@ There is no fetch interval to set: the add-on knows when the portal can have som
 
 ## What it does
 
-Every hour, a few minutes past the full hour, the add-on
+Every hour at a quarter past (Home Assistant has compiled the previous hour by then), the add-on
 
 1. takes over history files you dropped into its `import/` folder (see below),
 2. fetches new readings from the portal when it can have something new: LINZ NETZ publishes a
    day one to two days later, at a time of its own. So while yesterday is not complete on the
-   portal yet, the add-on looks every hour between 06:00 and 22:00; once it has arrived, it waits
-   for the next day. That is one or a few logins a day. The add-on page shows the next fetch and
-   when new days usually arrive. The first run downloads everything the portal still has (about
+   portal yet, the add-on looks at every hourly run between 06:00 and 22:00, and every quarter
+   hour (:00, :15, :30, :45) from one hour before to two hours after the time new days usually
+   arrive, so a new day is in Home Assistant within 15 minutes; once it has arrived, it waits for
+   the next day. That is a few logins a day. The add-on page shows the next fetch and when new
+   days usually arrive, to the quarter hour. A quarter hour check only looks at the portal; when it
+   brings a new day, the rest of the run follows right away. The first run downloads everything the portal still has (about
    three years) right away, **Fetch now** on the add-on page fetches at any time, and after a
    rejected login it waits 6 hours,
 3. imports one external statistic, `linznetz_energy:<site>_grid_consumption`, shown as

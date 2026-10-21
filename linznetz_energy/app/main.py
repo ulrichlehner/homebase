@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Main loop of the Home Assistant add-on "LINZ NETZ Energy".
 
-Every hour, a few minutes past the full hour:
+Every hour at a quarter past (`RUN_MINUTE`; the recorder has compiled the hour by then):
 
   1. take over history files dropped into `import/` of the add-on config folder (an older
      `<meterId>_readings.csv`, which keeps months the portal no longer has, and
@@ -64,8 +64,10 @@ UTC = ZoneInfo('UTC')
 SUPERVISOR_WS = 'http://supervisor/core/websocket'
 SUPERVISOR_SELF = 'http://supervisor/addons/self'
 ENERGY_UNITS = ('Wh', 'kWh', 'MWh')
-RUN_MINUTE = 7                   # minutes past the hour: the recorder has compiled the hour
+RUN_MINUTE = 15                  # the hourly run, minutes past the hour: the recorder has compiled the hour
+QUARTER = timedelta(minutes=15)  # the add-on wakes on quarter hours only (:00, :15, :30, :45)
 PORTAL_HOURS = (6, 22)           # local hours in which a missing day is looked for on the portal
+ARRIVAL_WINDOW = (timedelta(hours=1), timedelta(hours=2))   # before / after the usual arrival: look every quarter hour
 LOGIN_RETRY = timedelta(hours=6) # after a rejected login
 IMPORT_CHUNK = 5000              # rows per import call, keeps websocket messages small
 LOGIN_NOTIFICATION = 'linznetz_energy_login'
@@ -193,7 +195,8 @@ def portal_complete_until(newest: Optional[datetime], zone: ZoneInfo, now: datet
 
 def portal_due(state: dict, now: datetime, zone: ZoneInfo, newest: Optional[datetime]) -> bool:
     """Is a portal fetch due? The portal publishes a day one to two days later, at a time of its
-    own. So: while yesterday is missing, look every hour between `PORTAL_HOURS` (local time);
+    own. So: while yesterday is missing, look at the hourly run between `PORTAL_HOURS` (local
+    time), and every quarter hour around the time new days usually arrive (`ARRIVAL_WINDOW`);
     once it has arrived, nothing until the next day. The first download goes right away. After a
     rejected login only again after `LOGIN_RETRY`, so wrong credentials do not hammer the portal."""
     failed = state.get('portal_login_failed')
@@ -204,19 +207,32 @@ def portal_due(state: dict, now: datetime, zone: ZoneInfo, newest: Optional[date
     if portal_complete_until(newest, zone, now):
         return False
     tried = state.get('portal_tried')
-    if tried and now - datetime.fromisoformat(tried) < timedelta(minutes=50):
+    if tried and now - datetime.fromisoformat(tried) < QUARTER - timedelta(minutes=5):
         return False   # a run woken by the page in between does not fetch again
-    return PORTAL_HOURS[0] <= now.astimezone(zone).hour < PORTAL_HOURS[1]
+    local = now.astimezone(zone)
+    if not PORTAL_HOURS[0] <= local.hour < PORTAL_HOURS[1]:
+        return False
+    return local.minute // 15 * 15 == RUN_MINUTE or in_arrival_window(state, local)
+
+
+def in_arrival_window(state: dict, local: datetime) -> bool:
+    """Is `local` (local time) within `ARRIVAL_WINDOW` of the time new days usually arrive?"""
+    usual = usual_minutes(state.get('portal_arrivals', []))
+    if usual is None:
+        return False
+    minute = local.hour * 60 + local.minute
+    before, after = (int(w.total_seconds() // 60) for w in ARRIVAL_WINDOW)
+    return usual - before <= minute <= usual + after
 
 
 def portal_next(state: dict, now: datetime, zone: ZoneInfo, newest: Optional[datetime]) -> datetime:
-    """When the next portal fetch will happen (for the page): the first hourly run for which
+    """When the next portal fetch will happen (for the page): the first quarter hour for which
     `portal_due` holds, within the next two days."""
-    t = next_run(now)
-    for _ in range(48):
+    t = next_quarter(now)
+    for _ in range(4 * 48):
         if portal_due(state, t, zone, newest):
             return t
-        t += timedelta(hours=1)
+        t += QUARTER
     return t
 
 
@@ -232,13 +248,19 @@ def note_arrival(state: dict, before: Optional[datetime], after: Optional[dateti
     state['portal_arrivals'] = arrivals[-14:]
 
 
-def usual_arrival(arrivals: list) -> Optional[str]:
-    """The median local time of day of the arrivals, 'HH:MM', or None without any."""
+def usual_minutes(arrivals: list) -> Optional[int]:
+    """The median local time of day of the arrivals in minutes, rounded to the quarter hour
+    (arrivals before the quarter hour checks were seen at :07), or None without any."""
     if not arrivals:
         return None
     minutes = sorted(datetime.fromisoformat(a).hour * 60 + datetime.fromisoformat(a).minute for a in arrivals)
-    m = minutes[len(minutes) // 2]
-    return f'{m // 60:02d}:{m % 60:02d}'
+    return round(minutes[len(minutes) // 2] / 15) * 15
+
+
+def usual_arrival(arrivals: list) -> Optional[str]:
+    """The usual arrival (usual_minutes) as 'HH:MM', or None without any."""
+    m = usual_minutes(arrivals)
+    return None if m is None else f'{m // 60:02d}:{m % 60:02d}'
 
 
 def portal_newest(store: Path, metering_point: str) -> Optional[datetime]:
@@ -248,8 +270,27 @@ def portal_newest(store: Path, metering_point: str) -> Optional[datetime]:
 
 
 def next_run(now: datetime) -> datetime:
+    """The next hourly run (at `RUN_MINUTE`)."""
     t = now.replace(minute=RUN_MINUTE, second=0, microsecond=0)
     return t if t > now else t + timedelta(hours=1)
+
+
+def next_quarter(now: datetime) -> datetime:
+    """The next quarter hour after `now`."""
+    t = now.replace(minute=now.minute // 15 * 15, second=0, microsecond=0)
+    return t + QUARTER
+
+
+def next_wake(state: dict, now: datetime, zone: ZoneInfo, newest: Optional[datetime]) -> tuple:
+    """(when, full): the next quarter hour with a portal check due, if it comes before the
+    hourly run, as a portal check only (full False); else the hourly run."""
+    run = next_run(now)
+    t = next_quarter(now)
+    while t < run:
+        if portal_due(state, t, zone, newest):
+            return t, False
+        t += QUARTER
+    return run, True
 
 
 # -- Steps --------------------------------------------------------------------------
@@ -503,8 +544,10 @@ def notify(hass, notification_id: str, title: str, message: Optional[str]) -> No
 
 
 def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: str = 'en',
-             fetch_now: bool = False) -> None:
-    """One cycle; `fetch_now` fetches the portal even if it is not due (button on the page)."""
+             fetch_now: bool = False, portal_only: bool = False) -> None:
+    """One cycle; `fetch_now` fetches the portal even if it is not due (button on the page).
+    `portal_only`: a quarter hour check between the hourly runs; it goes on to the full cycle
+    only when the portal brought new readings."""
     zone = ZoneInfo(tz)
     web.write_status(store, language=lang)
     if any((store / IMPORT_DIR).glob('*.csv')):
@@ -521,6 +564,7 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
     state = read_state(store)
     newest = (datetime.fromisoformat(state['portal_newest']) if state.get('portal_newest')
               else portal_newest(store, options.metering_point))
+    before = newest
     if fetch_now or portal_due(state, now, zone, newest):
         state['portal_tried'] = now.isoformat()
         readings_file = readings.readings_path(store, options.metering_point)
@@ -562,7 +606,7 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
                 notify(hass, LOGIN_NOTIFICATION, t(lang, 'login_failed.title'),
                        t(lang, 'login_failed.text', hours=hours))
         except LinzNetzError as err:
-            logger.warning('Portal fetch failed, retrying next hour: %s', err)
+            logger.warning('Portal fetch failed, trying again at the next check: %s', err)
             if first_download:
                 notify(hass, DOWNLOAD_NOTIFICATION, t(lang, 'download_failed.title'),
                        t(lang, 'download_failed.text', error=err))
@@ -572,6 +616,9 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
                                     'next_waits': bool(newest) and not portal_complete_until(newest, zone, now),
                                     'usual': usual_arrival(state.get('portal_arrivals', [])),
                                     'arrivals': len(state.get('portal_arrivals', []))})
+    if portal_only and newest == before:
+        web.write_status(store, phase='idle', detail='')
+        return
 
     if options.live_meter_entity:
         web.write_status(store, phase='live', detail='')
@@ -1018,6 +1065,7 @@ def main(argv=None) -> int:
     # the page shows the full metering point (it is the user's own HA); the log only the last digits
     web.write_status(store, site=options.site, metering_point=options.metering_point, phase='starting',
                      detail='', setup=[])
+    full, woken, tz = True, False, 'Europe/Vienna'   # the first cycle is a full one
     while True:
         wake.clear()
         try:
@@ -1043,7 +1091,8 @@ def main(argv=None) -> int:
                     if fetch_now:
                         logger.info('Portal fetch requested on the add-on page')
                         web.write_status(store, fetch_request=None)
-                    run_once(hass, options, store, tz, datetime.now(UTC), config.get('language') or 'en', fetch_now)
+                    run_once(hass, options, store, tz, datetime.now(UTC), config.get('language') or 'en', fetch_now,
+                             portal_only=not full and not woken)
             finally:
                 hass.close()
         except HomeAssistantError as err:
@@ -1059,10 +1108,13 @@ def main(argv=None) -> int:
                 pass
         if args.once:
             return 0
-        at = next_run(datetime.now(UTC))
-        web.write_status(store, next_run=at.isoformat())
-        logger.debug('Next run at %s', at.isoformat())
-        if wake.wait(max(1.0, (at - datetime.now(UTC)).total_seconds())):
+        state = read_state(store)
+        newest = datetime.fromisoformat(state['portal_newest']) if state.get('portal_newest') else None
+        at, full = next_wake(state, datetime.now(UTC), ZoneInfo(tz), newest)
+        web.write_status(store, next_run=next_run(datetime.now(UTC)).isoformat())
+        logger.debug('Next %s at %s', 'run' if full else 'portal check', at.isoformat())
+        woken = wake.wait(max(1.0, (at - datetime.now(UTC)).total_seconds()))
+        if woken:
             logger.info('Woken up by the add-on page')
 
 
