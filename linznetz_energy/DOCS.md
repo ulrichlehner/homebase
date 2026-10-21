@@ -266,8 +266,40 @@ broker from Home Assistant):
 | Live deviation last day | the deviation on the last day both have complete, in % |
 | Deviating hours last 7 days | live hours of the last 7 days that differ from the portal |
 | Portal login problem | on while the portal rejects the login |
+| Electricity price grid | what one more kWh costs now at the grid operator: its charges and the levies, in ct/kWh |
+| Electricity price energy | the same at the supplier: the energy price of the current contract |
+| Electricity price total | both together |
 
 Without a broker the add-on works the same, only without these entities.
+
+### Electricity prices
+
+The three price sensors show the price per kWh of the current hour, with VAT, as it is on the bills:
+the grid operator's per-kWh charges and levies on one, the supplier's energy price on the other.
+Fixed fees (per month or year) do not depend on the consumption and are left out; they are in the
+cost statistic. The grid price follows the summer low rate (April to September, 10:00 to 16:00), the
+energy price follows a monthly price (goGreen Strom FLEX) or a contract change. The sensors change a
+few minutes after the full hour, when the add-on runs. Before a supplier is set on the add-on page
+they are unknown.
+
+Their history goes back to the start of the first contract, not only to when the sensors were
+created: the add-on writes the price of every past hour into the sensors' long-term statistics
+(again completely when a price changes, for example after a price list import). Show them with a
+**Statistics graph** card (statistic type "mean", period "hour" to "month") or a **History graph**
+card, for example:
+
+```yaml
+type: statistics-graph
+title: Electricity price
+entities:
+  - sensor.<site>_linznetz_price_grid
+  - sensor.<site>_linznetz_price_energy
+  - sensor.<site>_linznetz_price_total
+stat_types: [mean]
+period: day
+days_to_show: 365
+chart_type: line
+```
 
 ## The add-on page
 
@@ -327,7 +359,7 @@ So, before uninstalling:
 
 1. If the Energy dashboard uses "<Site> grid consumption", switch it back to another source first.
 2. On the add-on page, at the bottom: **Remove everything from Home Assistant**. It deletes the
-   statistics (consumption and costs), the device with its status entities and the add-on's notifications, and pauses the
+   statistics (consumption, costs and the price history), the device with its status entities and the add-on's notifications, and pauses the
    add-on so nothing is created again. (It refuses while the Energy dashboard still uses the
    statistic. Changed your mind? **Reactivate** brings everything back within an hour.)
 3. Uninstall the add-on and tick the option to also delete its data: that removes its own files

@@ -136,6 +136,48 @@ def cost_hours(hours: list, components: list, zone: ZoneInfo = ZONE) -> list:
     return out
 
 
+# The bill a per-kWh charge is on: the grid operator's (its charges and the levies) or the supplier's
+PRICE_PARTS = {'grid': 'grid', 'levy': 'grid', 'energy': 'energy', 'subsidy': 'energy'}
+
+
+def price_of_hour(start: datetime, components: Iterable[Component], zone: ZoneInfo = ZONE,
+                  resolved: bool = False) -> Optional[dict]:
+    """{'grid', 'energy', 'total'}: what one more kWh costs in the hour starting at `start` (UTC),
+    in ct gross (with VAT). Only the per-kWh components count, the fixed ones do not depend on the
+    consumption. None if no energy price covers the hour. `resolved`: as in cost_of_hour."""
+    local = start.astimezone(zone)
+    parts, priced = {'grid': 0.0, 'energy': 0.0}, False
+    for c in (components if resolved else effective(components, local.date())):
+        if c.unit != 'ct/kWh' or not c.in_window(local):
+            continue
+        parts[PRICE_PARTS[c.kind]] += c.value * (1 + c.vat)
+        priced = priced or c.kind == 'energy'
+    if not priced:
+        return None
+    return {'grid': round(parts['grid'], 4), 'energy': round(parts['energy'], 4),
+            'total': round(parts['grid'] + parts['energy'], 4)}
+
+
+def price_hours(components: list, until: datetime, zone: ZoneInfo = ZONE) -> list:
+    """[(UTC hour start, price_of_hour)] from the first hour any energy price covers to the last
+    hour that started before `until`; hours without an energy price are left out."""
+    first_priced = min((c.valid_from for c in components if c.kind == 'energy'), default=None)
+    if first_priced is None:
+        return []
+    out = []
+    h = datetime.combine(first_priced, datetime.min.time(), zone).astimezone(until.tzinfo)
+    day, today = None, []
+    while h < until:
+        local_day = h.astimezone(zone).date()
+        if local_day != day:
+            day, today = local_day, effective(components, local_day)
+        price = price_of_hour(h, today, zone, resolved=True)
+        if price:
+            out.append((h, price))
+        h += HOUR
+    return out
+
+
 def unpriced_months(costs: list, zone: ZoneInfo = ZONE) -> list:
     """The local months ('YYYY-MM') in `costs` with hours no energy price covers."""
     return sorted({h.astimezone(zone).strftime('%Y-%m') for h, _, _, priced in costs if not priced})

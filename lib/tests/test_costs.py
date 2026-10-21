@@ -71,6 +71,26 @@ def test_rows_of_a_price_list_are_checked():
     assert costs.parse_row({**good, 'valid_from': '1.1.2025'}) is None
 
 
+def test_the_price_of_an_hour_splits_grid_and_energy_without_fixed_fees():
+    comps = [Component('energy', 'Energiepreis', 'ct/kWh', 10.0, 0.2, date(2026, 1, 1)),
+             Component('energy', 'Grundpauschale', 'EUR/month', 3.0, 0.2, date(2026, 1, 1)),
+             Component('grid', 'Netznutzung', 'ct/kWh', 5.0, 0.2, date(2026, 1, 1)),
+             Component('grid', 'Sommer', 'ct/kWh', -1.0, 0.2, date(2026, 4, 1), None, '', '04-09 10-16'),
+             Component('levy', 'Elektrizitätsabgabe', 'ct/kWh', 0.1, 0.2, date(2026, 1, 1))]
+    assert costs.price_of_hour(at(2026, 6, 1, 9), comps) == {'grid': 6.12, 'energy': 12.0, 'total': 18.12}
+    assert costs.price_of_hour(at(2026, 6, 1, 10), comps)['grid'] == pytest.approx(4.92)   # summer low rate
+    assert costs.price_of_hour(at(2025, 12, 31, 23), comps) is None                        # no energy price yet
+
+
+def test_price_hours_run_from_the_first_energy_price_to_before_now():
+    comps = [Component('grid', 'Netznutzung', 'ct/kWh', 5.0, 0.0, date(2025, 1, 1)),
+             costs.month_component('energy', 'Energiepreis', date(2026, 2, 1), 10.0, 0.0, 'x')]
+    hours = costs.price_hours(comps, at(2026, 3, 1, 2))
+    assert hours[0][0] == at(2026, 2, 1) and hours[-1][0] == at(2026, 2, 28, 23)   # March has no energy price
+    assert len(hours) == 28 * 24 and hours[0][1] == {'grid': 5.0, 'energy': 10.0, 'total': 15.0}
+    assert costs.price_hours(comps[:1], at(2026, 3, 1)) == []
+
+
 # -- Tariffs -------------------------------------------------------------------------------
 
 def test_the_grid_operator_follows_from_the_metering_point():

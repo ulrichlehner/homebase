@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import logging
 import math
@@ -466,14 +467,24 @@ def statistic_status(statistic_id: str, hours: list, zone: ZoneInfo) -> dict:
                      for a, b, n in statistic_gaps(hours)]}
 
 
-def import_statistic(hass, statistic_id: str, name: str, stats: list, unit: str = 'kWh') -> None:
+# Home Assistant's unit classes (unit conversion) of the units the add-on writes; others have none
+UNIT_CLASSES = {'kWh': 'energy'}
+MEAN_NONE, MEAN_ARITHMETIC = 0, 1   # recorder StatisticMeanType
+
+
+def import_statistic(hass, statistic_id: str, name: Optional[str], stats: list, unit: str = 'kWh',
+                     mean: bool = False) -> None:
+    """Imports hours of a statistic: a sum (counter) or, with `mean`, a mean, min and max per hour.
+    An external ID (`linznetz_energy:...`) creates or updates the add-on's own statistic, an entity
+    ID (`sensor....`) writes into the long-term statistics of that entity (source recorder)."""
     metadata = {
-        'source': statistic_id.split(':')[0],
+        'source': statistic_id.split(':')[0] if ':' in statistic_id else 'recorder',
         'statistic_id': statistic_id,
         'name': name,
         'unit_of_measurement': unit,
-        'has_mean': False,
-        'has_sum': True,
+        'unit_class': UNIT_CLASSES.get(unit),
+        'mean_type': MEAN_ARITHMETIC if mean else MEAN_NONE,
+        'has_sum': not mean,
     }
     for i in range(0, len(stats), IMPORT_CHUNK):
         hass.import_statistics(metadata, stats[i:i + IMPORT_CHUNK])
@@ -581,7 +592,7 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
     web.write_status(store, phase='statistics', detail='', data=data_status(inputs, zone),
                      live_check=check)
     remove_portal_statistic(hass, options, store, state)
-    written = {}
+    written, comps = {}, []
     for key, statistic_id, name, hours in (
             ('consumption', options.consumption_statistic, t(lang, 'stat.consumption', site=options.site),
              inputs.fused()),):
@@ -591,17 +602,19 @@ def run_once(hass, options: Options, store: Path, tz: str, now: datetime, lang: 
             logger.info('Imported %s: %d hours %s to %s, %.3f kWh', statistic_id, len(stats),
                         stats[0]['start'].isoformat(), stats[-1]['start'].isoformat(), stats[-1]['sum'])
             written[key] = statistic_status(statistic_id, hours, zone)
-            write_costs(hass, options, store, state, hours, zone, now, lang)
+            comps = write_costs(hass, options, store, state, hours, zone, now, lang)
     web.write_status(store, phase='idle', detail='', statistics=written, last_run=now.isoformat())
     web.write_status(store, energy=energy_status(hass, options))
-    publish_status(options, inputs, lang, state, check)
+    if publish_status(options, inputs, lang, state, check, costs.price_of_hour(hour_start(now), comps, zone)):
+        write_price_history(hass, options, store, comps, zone, now)
 
 
 def write_costs(hass, options: Options, store: Path, state: dict, hours: list, zone: ZoneInfo, now: datetime,
-                lang: str) -> None:
+                lang: str) -> list:
     """The cost statistic from the consumption hours and the prices (see prices, homebase.costs).
     Nothing is written before the first energy price (no contract and no price list yet).
-    The state is read afresh: the run's own copy predates update_live's changes."""
+    The state is read afresh: the run's own copy predates update_live's changes. Returns the
+    price components (for the price sensors)."""
     state = read_state(store)
     fetch_error = prices.update(store, state, now, zone)
     grid = prices.update_grid(store, state, now, zone, options.metering_point)
@@ -623,6 +636,52 @@ def write_costs(hass, options: Options, store: Path, state: dict, hours: list, z
         changes['contract_result'] = {'state': 'saved'}
     web.write_status(store, costs=prices.status(options.cost_statistic, cost_hours, state, comps, zone, now,
                                                 options.metering_point, fetch_error, grid), **changes)
+    return comps
+
+
+def hour_start(t: datetime) -> datetime:
+    return t.replace(minute=0, second=0, microsecond=0)
+
+
+def write_price_history(hass, options: Options, store: Path, comps: list, zone: ZoneInfo, now: datetime) -> None:
+    """Writes the price of every past hour into the long-term statistics of the price sensors,
+    back to the first energy price: their history starts there, not when the sensors were created.
+    Everything is written again when a price or a sensor changed, else only the hours since the
+    last run; the current hour is left to the recorder. A sensor HA has not registered yet (just
+    announced over MQTT) gets its history next run."""
+    hours = costs.price_hours(comps, hour_start(now), zone)
+    if not hours:
+        return
+    try:
+        entities = price_entities(hass, options.site_id)
+    except HomeAssistantError as err:
+        logger.warning('Could not read the entity registry, no price history this time: %s', err)
+        return
+    if not entities:
+        return
+    key = hashlib.sha256(repr((sorted(map(repr, comps)), sorted(entities.items()))).encode()).hexdigest()[:16]
+    state = read_state(store)
+    done = state.get('price_history') or {}
+    if done.get('key') == key:
+        hours = [(h, p) for h, p in hours if h >= datetime.fromisoformat(done['until'])]
+    for name, entity_id in entities.items():
+        part = name.removeprefix('price_')
+        stats = [{'start': h, 'mean': p[part], 'min': p[part], 'max': p[part]} for h, p in hours]
+        if stats:
+            import_statistic(hass, entity_id, None, stats, unit=mqtt_status.PRICE_UNIT, mean=True)
+    if hours:
+        logger.info('Price history: %d hours from %s into %s', len(hours), hours[0][0].isoformat(),
+                    ', '.join(entities.values()))
+        state['price_history'] = {'key': key, 'until': (hours[-1][0] + costs.HOUR).isoformat()}
+        write_state(store, state)
+
+
+def price_entities(hass, site_id: str) -> dict:
+    """{price key: entity ID} of the price sensors HA has registered, found by unique ID (they
+    can be renamed)."""
+    wanted = {mqtt_status.unique_id(site_id, key): key for key in mqtt_status.PRICES}
+    return {wanted[e['unique_id']]: e['entity_id'] for e in hass.call('config/entity_registry/list') or []
+            if e.get('platform') == 'mqtt' and e.get('unique_id') in wanted}
 
 
 def handle_contract_request(store: Path) -> None:
@@ -802,7 +861,8 @@ def handle_removal_request(hass, options: Options, store: Path) -> None:
 def remove_all(hass, options: Options) -> None:
     """Deletes what the add-on created in Home Assistant: its statistics, the MQTT device and its
     notifications. Its own files stay (they go when it is uninstalled with "delete data")."""
-    ids = [options.consumption_statistic, options.cost_statistic, options.portal_statistic]
+    ids = [options.consumption_statistic, options.cost_statistic, options.portal_statistic,
+           *price_entities(hass, options.site_id).values()]
     existing = [m['statistic_id'] for m in hass.statistics_metadata(ids)]
     if existing:
         hass.clear_statistics(existing)
@@ -844,11 +904,13 @@ def energy_status(hass, options: Options) -> Optional[dict]:
             'uses_cost': options.cost_statistic in cost_from}
 
 
-def publish_status(options: Options, inputs: Inputs, lang: str, state: dict, check: Optional[dict]) -> None:
-    """The status entities over MQTT (see mqtt_status), if there is a broker."""
+def publish_status(options: Options, inputs: Inputs, lang: str, state: dict, check: Optional[dict],
+                   price: Optional[dict] = None) -> bool:
+    """The status entities over MQTT (see mqtt_status), if there is a broker; `price` is the
+    price of the current hour (homebase.costs.price_of_hour). True if they were published."""
     connection = mqtt_status.broker()
     if not connection:
-        return
+        return False
     values = {
         'last_portal_fetch': state.get('portal_ok'),
         'portal_data_until': (max(inputs.portal) + fusion.QUARTER).isoformat() if inputs.portal else None,
@@ -856,8 +918,9 @@ def publish_status(options: Options, inputs: Inputs, lang: str, state: dict, che
         'live_deviation': check['last_day_percent'] if check else None,
         'deviating_hours': check['deviating_hours'] if check else None,
         'portal_login_problem': bool(state.get('portal_login_failed')),
+        **{key: price[key.removeprefix('price_')] if price else None for key in mqtt_status.PRICES},
     }
-    mqtt_status.publish(connection, options.site, options.site_id, lang, os.environ.get('ADDON_VERSION', ''), values)
+    return mqtt_status.publish(connection, options.site, options.site_id, lang, os.environ.get('ADDON_VERSION', ''), values)
 
 
 def announce_setup(store: Path, problems: list) -> None:
