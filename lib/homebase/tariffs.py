@@ -21,6 +21,7 @@ from __future__ import annotations
 import html as html_lib
 import json
 import re
+from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Callable, Optional
 
@@ -254,3 +255,61 @@ class FixedPrice:
 
 
 SUPPLIERS = {s.id: s for s in (GoGreenFlex(), FixedPrice())}
+
+
+# -- go green's fixed price offers, for the comparison (see compare) ---------------------------
+
+@dataclass(frozen=True)
+class FixOffer:
+    """go green's fixed price offer ("strom") as its price page showed it on `seen`: energy
+    price in ct/kWh and basic fee in EUR/month with the online bonus, both gross; the price
+    guarantee until `until` (inclusive, None: not stated). "strom future" costs
+    FIX_FUTURE_CT more per kWh, the "plus" products FIX_PLUS_FEE more per month."""
+    seen: date
+    ct: float
+    fee: float
+    until: Optional[date] = None
+    source: str = ''
+
+
+GOGREEN_FIX_PAGE = 'https://www.gogreenenergy.at/strom.html'
+FIX_FUTURE_CT = 0.60     # gross, as on the price page since 2024 (strom future - strom)
+FIX_PLUS_FEE = 2.00      # gross EUR/month (strom plus - strom)
+FIX_FEE = 3.00           # gross EUR/month with online bonus, where a snapshot does not state it
+
+_W = 'wayback'           # web.archive.org snapshots of GOGREEN_FIX_PAGE; before 11/2024 the page
+                         # only named the lowest fixed price ("strom fix ab"), without fee and guarantee
+GOGREEN_FIX_OFFERS = (
+    FixOffer(date(2022, 1, 16), 36.00, FIX_FEE, None, _W),
+    FixOffer(date(2022, 5, 20), 31.20, FIX_FEE, None, _W),
+    FixOffer(date(2022, 8, 15), 46.80, FIX_FEE, None, _W),
+    FixOffer(date(2023, 4, 17), 25.80, FIX_FEE, None, _W),
+    FixOffer(date(2024, 5, 26), 14.40, FIX_FEE, None, _W),
+    FixOffer(date(2024, 6, 24), 15.60, FIX_FEE, None, _W),
+    FixOffer(date(2024, 9, 14), 14.40, FIX_FEE, None, _W),
+    FixOffer(date(2024, 11, 21), 16.98, 3.00, None, _W),
+    FixOffer(date(2025, 1, 16), 15.72, 3.00, None, _W),
+    FixOffer(date(2025, 3, 16), 15.00, 3.00, None, _W),
+    FixOffer(date(2025, 4, 26), 13.20, 3.00, None, _W),
+    FixOffer(date(2025, 5, 24), 13.20, 3.00, date(2025, 12, 31), _W),
+    FixOffer(date(2025, 8, 11), 12.90, 3.00, date(2026, 12, 31), _W),
+    FixOffer(date(2025, 10, 9), 12.24, 3.00, date(2026, 12, 31), _W),
+    FixOffer(date(2025, 11, 16), 15.96, 3.00, date(2027, 12, 31), _W),
+    FixOffer(date(2026, 1, 21), 13.92, 3.00, date(2026, 12, 31), _W),
+    FixOffer(date(2026, 3, 13), 14.52, 3.00, date(2027, 12, 31), _W),
+    FixOffer(date(2026, 4, 8), 17.28, 3.00, date(2027, 12, 31), _W),
+    FixOffer(date(2026, 5, 21), 14.76, 3.00, date(2027, 12, 31), _W),
+    FixOffer(date(2026, 7, 11), 12.84, 3.00, date(2027, 12, 31), _W),
+    FixOffer(date(2026, 10, 5), 19.68, 3.00, date(2028, 12, 31), _W),
+)
+
+
+def parse_gogreen_fix(data: bytes, seen: date) -> FixOffer:
+    """The "strom" offer from go green's price page; raises ValueError if the page changed."""
+    text = html_lib.unescape(re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', ' ', data.decode('utf-8', 'ignore'))))
+    m = re.search(r'\bstrom (\d+,\d+) Cent/kWh \+ (\d+,\d+) Euro pro Monat.{0,120}?Preisgarantie(?: bis (\d{1,2})\.(\d{1,2})\. ?(\d{4}))?',
+                  text)
+    if not m:
+        raise ValueError('no fixed price on the go green price page')
+    until = date(int(m.group(5)), int(m.group(4)), int(m.group(3))) if m.group(5) else None
+    return FixOffer(seen, float(m.group(1).replace(',', '.')), float(m.group(2).replace(',', '.')), until, 'page')
