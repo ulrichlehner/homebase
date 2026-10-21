@@ -191,6 +191,33 @@ button:disabled { opacity: .45; cursor: default; }
 ul { margin: 0; padding-left: 20px; }
 code { font: 13.5px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; background: var(--code-bg);
        border-radius: 4px; padding: 1px 5px; }
+/* fixed price comparison: chart (lines in SVG, labels in the page's type) and the table of start months */
+.chart { margin: 18px 0 6px; font-size: 14px; color: var(--muted); }
+.chart .plot { position: relative; height: 180px; margin: 8px 0 0 32px; }
+.chart svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.chart .grid line { stroke: var(--divider); stroke-width: 1; }
+.chart polyline { fill: none; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.chart .actual { stroke: var(--primary); }
+.chart .fixed { stroke: var(--warn); stroke-dasharray: 6 4; }
+.chart .ylabels span { position: absolute; left: -32px; width: 24px; text-align: right; transform: translateY(-50%);
+                       font-size: 12px; line-height: 1; }
+.chart .xlabels { position: relative; height: 18px; margin: 6px 0 0 32px; font-size: 12px; }
+.chart .xlabels span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.chart .xlabels .first { transform: none; }
+.chart .xlabels .last { transform: translateX(-100%); }
+.chart figcaption { display: flex; gap: 4px 16px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+.chart figcaption > span { white-space: nowrap; }
+.chart figcaption > span:last-child { margin-left: auto; }
+.key { display: inline-block; width: 20px; height: 0; margin-right: 4px; vertical-align: middle; border-top: 2.5px solid; }
+.key.actual { border-color: var(--primary); }
+.key.fixed { border-color: var(--warn); border-top-style: dashed; }
+.scroll { overflow-x: auto; margin-top: 12px; }
+table.grid th { width: auto; font-size: 14px; }
+table.grid td { padding-right: 16px; white-space: nowrap; }
+table.grid th { padding-right: 16px; vertical-align: bottom; overflow-wrap: normal; }
+td.more { color: var(--err); }
+td.less { color: var(--ok); }
+.note { font-size: 14px; margin: 10px 0 0; }
 /* phones: less padding, label above value instead of two table columns */
 @media (max-width: 600px) {
   body { padding: 16px 12px; font-size: 15px; }
@@ -198,16 +225,19 @@ code { font: 13.5px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; bac
   .card { padding: 16px; border-radius: 10px; }
   h1 { font-size: 24px; }
   h2 { font-size: 18px; margin-bottom: 10px; }
-  table, tbody, tr, th, td { display: block; width: 100%; }
-  tr { padding: 10px 0; border-bottom: 1px solid var(--divider); }
-  tr:last-child { border-bottom: 0; padding-bottom: 0; }
-  th, td { border: 0; padding: 0; }
-  th { font-size: 14px; margin-bottom: 2px; }
+  table:not(.grid), table:not(.grid) tbody, table:not(.grid) tr, table:not(.grid) th, table:not(.grid) td { display: block; width: 100%; }
+  table:not(.grid) tr { padding: 10px 0; border-bottom: 1px solid var(--divider); }
+  table:not(.grid) tr:last-child { border-bottom: 0; padding-bottom: 0; }
+  table:not(.grid) th, table:not(.grid) td { border: 0; padding: 0; }
+  table:not(.grid) th { font-size: 14px; margin-bottom: 2px; }
   .drop { padding: 22px 12px; }
   .drop strong { font-size: 17px; }
   button { padding: 14px 16px; }
   .pick .row { flex-direction: column; }
   .pick select, .pick button { flex: 0 0 48px; width: 100%; }
+  table.grid td, table.grid th { padding-right: 8px; }
+  table.grid td:last-child, table.grid th:last-child { padding-right: 0; }
+  table.grid .per { display: block; }
 }
 """
 
@@ -381,6 +411,97 @@ def _costs_card(lang: str, status: dict) -> str:
             f'{upload}{form}</div>')
 
 
+def _month(value: str) -> str:
+    """'2026-03' -> '03/2026'."""
+    y, m = value.split('-')
+    return f'{m}/{y}'
+
+
+def _date(value: Optional[str]) -> str:
+    """'2027-12-31' -> '31.12.2027'."""
+    return '.'.join(reversed(value.split('-'))) if value else ''
+
+
+def _signed(value: float) -> str:
+    return ('+' if value > 0 else '−' if value < 0 else '') + _eur(abs(value))
+
+
+def _price_chart(lang: str, months: list) -> str:
+    """Line chart: the energy price actually paid per month against go green's fixed offer of
+    that month, ct/kWh gross. The SVG only draws the lines (stretched to the plot, strokes keep
+    their width); axis labels and legend are HTML in the page's own type, so they read the
+    same on a phone as on a desktop."""
+    values = [v for m in months for v in (m['actual_ct'], m['fixed_ct']) if v is not None]
+    if len(months) < 2 or not values:
+        return ''
+    step = 5 if max(values) - min(values) > 15 else 2
+    lo, hi = (min(values) // step) * step, (max(values) // step + 1) * step   # a line chart needs no zero
+    x = lambda i: 100 * i / (len(months) - 1)          # noqa: E731   percent of the plot width
+    y = lambda v: 100 * (1 - (v - lo) / (hi - lo))     # noqa: E731   percent of the plot height
+
+    def line(key, cls):
+        points = ' '.join(f'{x(i):.2f},{y(m[key]):.2f}' for i, m in enumerate(months) if m[key] is not None)
+        return f'<polyline class="{cls}" points="{points}" vector-effect="non-scaling-stroke"/>'
+    ticks = range(int(lo), int(hi) + 1, int(step))
+    grid = ''.join(f'<line x1="0" x2="100" y1="{y(v):.2f}" y2="{y(v):.2f}" vector-effect="non-scaling-stroke"/>' for v in ticks)
+    ylabels = ''.join(f'<span style="top:{y(v):.2f}%">{v}</span>' for v in ticks)
+    every = -(-len(months) // 4)                       # about four month labels (fit a phone), the last one always
+    last = len(months) - 1
+    xlabels = ''.join(f'<span class="{"first" if i == 0 else "last" if i == last else ""}" style="left:{x(i):.2f}%">'
+                      f'{_month(m["month"])}</span>'
+                      for i, m in enumerate(months) if i == last or (i % every == 0 and last - i >= every))
+    return (f'<figure class="chart" role="img" aria-label="{html.escape(t(lang, "page.compare_chart"))}">'
+            f'<div class="plot"><div class="ylabels">{ylabels}</div>'
+            f'<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><g class="grid">{grid}</g>'
+            f'{line("fixed_ct", "fixed")}{line("actual_ct", "actual")}</svg></div>'
+            f'<div class="xlabels">{xlabels}</div>'
+            f'<figcaption><span><span class="key actual"></span> {html.escape(t(lang, "page.compare_actual"))}</span>'
+            f'<span><span class="key fixed"></span> {html.escape(t(lang, "page.compare_fixed"))}</span>'
+            f'<span>ct/kWh</span></figcaption></figure>')
+
+
+def _comparison_card(lang: str, status: dict) -> str:
+    """The fixed price comparison (homebase.compare): today's offer against the last 12 months,
+    the prices per month, and per start month what a switch then would have meant until now."""
+    c = status.get('comparison')
+    if not c or not c.get('rows'):
+        return ''
+    product = c.get('product') or 'strom flex'
+    fixed_product = product.replace('flex', '').replace('  ', ' ').strip()
+    rows = []
+    today = c.get('today')
+    if today:
+        verdict = 'page.compare_today_more' if today['eur'] > 0 else 'page.compare_today_less'
+        rows.append((t(lang, 'page.compare_offer'),
+                     html.escape(t(lang, 'page.compare_offer_line', product=fixed_product, ct=_eur(today['ct']),
+                                   fee=_eur(today['fee']), until=_date(today['until']) or '?'))))
+        rows.append((t(lang, 'page.compare_last12', months=today['months']),
+                     html.escape(t(lang, 'page.compare_last12_line', actual=_eur(today['actual_ct']),
+                                   fixed=_eur(today['fixed_ct']), kwh=f'{today["kwh"]:,.0f}'.replace(',', '\u00a0')))
+                     + f'<br><strong>{html.escape(t(lang, verdict, eur=_eur(abs(today["eur"]))))}</strong>'
+                     + f'<br><span class="muted">{html.escape(t(lang, "page.compare_per_ct", eur=_eur(today["eur_per_ct_year"])))}</span>'))
+    head = (f'<tr><th>{t(lang, "page.compare_start")}</th><th>{t(lang, "page.compare_price")}</th>'
+            f'<th>{html.escape(t(lang, "page.compare_diff", through=_month(c["through"])))}</th>'
+            f'<th>{t(lang, "page.compare_until")}</th></tr>')
+    body = ''
+    for r in reversed(c['rows']):
+        per_kwh = f' <span class="muted per">({_signed(r["ct_kwh"])} ct/kWh)</span>' if r['ct_kwh'] is not None else ''
+        body += (f'<tr><td>{_month(r["month"])}</td><td>{_eur(r["ct"])}</td>'
+                 f'<td class="{"more" if r["eur"] > 0 else "less"}">{_signed(r["eur"])} €{per_kwh}</td>'
+                 f'<td>{_date(r["until"]) or "?"}{"*" if r["assumed"] else ""}</td></tr>')
+    notes = [t(lang, 'page.compare_how')]
+    if any(r['assumed'] for r in c['rows']):
+        notes.append(t(lang, 'page.compare_assumed'))
+    if c.get('offer_error'):
+        notes.append(t(lang, 'page.compare_offer_error', error=c['offer_error']))
+    return (f'<div class="card" id="comparison"><h2>{t(lang, "page.compare")}</h2>'
+            f'<p class="lead">{html.escape(t(lang, "page.compare_lead", product=fixed_product))}</p>'
+            f'{f"<table>{_rows(rows)}</table>" if rows else ""}'
+            f'{_price_chart(lang, c.get("months") or [])}'
+            f'<div class="scroll"><table class="grid">{head}{body}</table></div>'
+            + ''.join(f'<p class="muted note">{html.escape(n)}</p>' for n in notes) + '</div>')
+
+
 def render_page(status: dict, message=None) -> str:
     """The page in the language of HA (`status['language']`). `message` is a (text key,
     values) pair shown on top, e.g. the result of an upload."""
@@ -488,6 +609,7 @@ def render_page(status: dict, message=None) -> str:
                        f'{html.escape(t(lang, "page.remove_check"))}</label>'
                        f'<button type="submit" class="danger">{t(lang, "page.remove_button")}</button></form></div>')
     costs_html = _costs_card(lang, status) if 'costs' in status or 'statistics' in status else ''
+    costs_html += _comparison_card(lang, status)
 
     live_meter_html = ''
     if 'live_candidates' in status:
