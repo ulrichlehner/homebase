@@ -1,6 +1,6 @@
 name: LINZ NETZ Energy
 # set by release-please from the conventional commits (only this line), see README "Releases"
-version: "1.11.0" # x-release-please-version
+version: "1.12.0" # x-release-please-version
 slug: linznetz_energy
 description: Your LINZ NETZ smart meter in the Energy dashboard, live and with years of history.
 url: https://github.com/ulrichlehner/homebase/tree/main/linznetz_energy
