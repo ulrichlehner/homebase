@@ -182,6 +182,10 @@ calculated" and updates itself until the costs are there.
 A new supplier from a date ends the previous one; the costs before stay as they were. More
 suppliers can be added to the add-on as modules.
 
+**How fresh the prices are.** Under **Price now** the Costs card says which month go green's
+monthly price is for and when the add-on fetched it; the fixed price tile of the comparison says
+since when the offer is unchanged and when go green's price page was last checked.
+
 **Earlier months.** go green shows the last 13 months; the add-on keeps every month it has
 fetched, so from then on nothing is missing. Older months have no energy price; the page lists
 them under **Months without energy price** (they count grid charges, levies and fees only). A
@@ -219,7 +223,8 @@ The fixed product matches your strom flex product ("strom future" for "strom fle
   month, with the price go green showed then, compared until the end of the last complete month),
   as the difference per kWh, which makes months with different spans comparable. Green: your
   contract was cheaper; red: the fixed price would have been cheaper. Pointing at or tapping a bar
-  shows its details. Below, a table of the 12 most recent switch months in € and per kWh, the rest
+  shows its details in a panel below (switch month, fixed price, result, guarantee); the newest
+  month is shown first. Below, a table of the 12 most recent switch months in € and per kWh, the rest
   behind **Show all**. When the guarantee ended before today, the fixed price go green offered at
   that time is assumed from then on, and a guarantee that was not stated counts as 12 months; an
   (i) next to the guarantee explains which applies.
