@@ -343,8 +343,14 @@ COMPARISON = {'product': 'strom flex future', 'through': '2026-09', 'offer_error
 def test_comparison_card_shows_today_the_chart_and_the_start_months():
     page = W.render_page({'language': 'de', 'comparison': COMPARISON})
     card = page.split('id="comparison"')[1]
-    assert 'Vergleich mit Fixpreis' in card and 'strom future: 20,28 ct/kWh + 3,00 € pro Monat, Preisgarantie bis 31.12.2028' in card
-    assert 'Der Fixpreis hätte 8,10 € mehr gekostet.' in card and '34,68 €' in card
+    assert 'Vergleich mit Fixpreis' in card
+    tiles = card.split('<div class="tiles">')[1].split('<p class="muted note">')[0]
+    # the whole time (from the first switch month), the last 12 months, today's offer: from the user's view
+    assert 'Seit 08/2026' in tiles and '<div class="tile worse">' in tiles and '14,78 € teurer' in tiles
+    assert 'günstiger in 1 von 2 Wechselmonaten' in tiles
+    assert '<div class="tile better"><span class="label">Letzte 2 Monate</span><span class="value">8,10 € günstiger' in tiles
+    assert '20,28 ct/kWh' in tiles and 'strom future + 3,00 € pro Monat, Garantie bis 31.12.2028' in tiles
+    assert '34,68 €' in card
     assert card.count('<polyline') == 2                                         # paid and offered per month
     bars = card.split('class="chart bars"')[1].split('</figure>')[0]
     assert bars.count('<rect class="bar') == 2
@@ -353,7 +359,8 @@ def test_comparison_card_shows_today_the_chart_and_the_start_months():
     rows = card.split('<table class="grid">')[1].split('</table>')[0]
     assert rows.index('09/2026') < rows.index('08/2026')                       # newest first
     assert 'class="worse">−14,78 €' in rows and 'class="better">+3,20 €' in rows
-    assert '*' not in rows and '?' not in rows and 'class="tip"' in rows      # no footnote marks: a tooltip
+    assert '*' not in rows and '?' not in rows and '–' not in rows             # no footnote marks, no dash
+    assert '<button type="button" class="tip muted" data-tip=' in rows and '>nicht angegeben</button>' in rows
     assert '12 Monate angenommen' in rows                                       # the unstated guarantee explained
     assert 'id="comparison"' not in W.render_page({'language': 'de', 'comparison': None})
 

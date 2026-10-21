@@ -237,6 +237,15 @@ ul.attention { display: grid; gap: 8px; }
 .key.fixed { border-color: var(--warn); border-top-style: dashed; }
 .scroll { overflow-x: auto; margin-top: 12px; }
 h3.sub { font-size: 17px; font-weight: 500; margin: 22px 0 0; }
+/* the result at a glance: tiles with a big value, green where the user's contract was cheaper */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 4px; }
+.tile { display: grid; gap: 2px; align-content: start; padding: 14px 16px; border: 1px solid var(--divider); border-radius: 10px; }
+.tile .label { font-size: 14px; color: var(--muted); font-weight: 500; }
+.tile .value { font-size: 24px; line-height: 1.25; font-weight: 500; }
+.tile .sub { font-size: 14px; color: var(--muted); }
+.tile.better { border-left: 4px solid var(--ok); } .tile.better .value { color: var(--ok); }
+.tile.worse { border-left: 4px solid var(--err); } .tile.worse .value { color: var(--err); }
+.tiles + p.note { margin-top: 10px; }
 .snippet { position: relative; margin-top: 12px; }
 .snippet pre { margin: 0; padding: 12px 14px; border-radius: 8px; background: var(--code-bg); overflow-x: auto; }
 .snippet pre code { background: none; padding: 0; }
@@ -255,9 +264,10 @@ table.grid .c-month { width: 22%; } table.grid .c-ct { width: 14%; } table.grid 
 details.more-rows { margin-top: 4px; }
 details.more-rows summary { cursor: pointer; color: var(--primary); font-size: 14px; padding: 10px 0; }
 details.more-rows table.grid { margin-top: 0; }
-.tip { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
-       margin: 0 0 0 4px; padding: 0; border: 1px solid var(--muted); border-radius: 50%; background: transparent;
-       color: var(--muted); font: 600 11px/1 inherit; cursor: help; vertical-align: 1px; }
+.tip { position: relative; display: inline; width: auto; margin: 0; padding: 0; border: 0; border-radius: 0;
+       background: none; color: inherit; font: inherit; cursor: help;
+       text-decoration: underline dotted; text-decoration-color: var(--muted); text-underline-offset: 3px; }
+.tip.muted { color: var(--muted); }
 .tip:hover::after, .tip:focus::after { content: attr(data-tip); position: absolute; right: -6px; bottom: calc(100% + 8px);
        z-index: 3; width: 240px; padding: 8px 10px; border-radius: 8px; background: var(--text); color: var(--card);
        font: 400 13px/1.4 Roboto, "Noto Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -498,11 +508,11 @@ def _price_chart(lang: str, months: list) -> str:
             f'<span>ct/kWh</span></figcaption></figure>')
 
 
-def _tip(text: str) -> str:
-    """A small (i) that shows `text` on hover and on tap (focus), for notes that would otherwise
-    need a footnote."""
-    return (f'<button type="button" class="tip" aria-label="{html.escape(text)}" data-tip="{html.escape(text)}">'
-            f'i</button>')
+def _tip(label: str, text: str, muted: bool = False) -> str:
+    """`label` (HTML) with a dotted underline that shows `text` on hover and on tap (focus),
+    for notes that would otherwise need a footnote or an extra icon."""
+    return (f'<button type="button" class="tip{" muted" if muted else ""}" data-tip="{html.escape(text)}" '
+            f'aria-description="{html.escape(text)}">{label}</button>')
 
 
 def _guarantee_note(lang: str, row: dict) -> str:
@@ -561,6 +571,42 @@ def _switch_chart(lang: str, rows: list, through: str) -> str:
             'var svg=f.querySelector("svg");svg.addEventListener("pointerover",show);svg.addEventListener("click",show);})();</script>')
 
 
+def _tile(label: str, value: str, sub: str, cls: str = '') -> str:
+    return (f'<div class="tile {cls}"><span class="label">{html.escape(label)}</span>'
+            f'<span class="value">{html.escape(value)}</span><span class="sub">{html.escape(sub)}</span></div>')
+
+
+def _verdict(lang: str, eur: float) -> tuple:
+    """(text, class) of a difference fixed minus paid, from the user's view: your contract
+    was cheaper (green) or the fixed price would have been."""
+    key = 'page.compare_cheaper' if eur > 0 else 'page.compare_dearer'
+    return t(lang, key, eur=_eur(abs(eur))), 'better' if eur > 0 else 'worse'
+
+
+def _result_tiles(lang: str, c: dict, fixed_product: str) -> str:
+    """The result at a glance: since the first switch month (the whole time), the last 12 months
+    against today's fixed price, and today's offer."""
+    rows, today = c['rows'], c.get('today')
+    tiles = []
+    first = rows[0]
+    text, cls = _verdict(lang, first['eur'])
+    better = sum(1 for r in rows if r['eur'] > 0)
+    tiles.append(_tile(t(lang, 'page.compare_since', month=_month(first['month'])), text,
+                       t(lang, 'page.compare_since_sub', month=_month(first['month']), ct=_eur(first['ct']),
+                         better=better, count=len(rows)), cls))
+    if today:
+        text, cls = _verdict(lang, today['eur'])
+        tiles.append(_tile(t(lang, 'page.compare_last12', months=today['months']), text,
+                           t(lang, 'page.compare_last12_sub', actual=_eur(today['actual_ct']), fixed=_eur(today['fixed_ct']),
+                             kwh=f'{today["kwh"]:,.0f}'.replace(',', '\u00a0')), cls))
+        tiles.append(_tile(t(lang, 'page.compare_offer'), f'{_eur(today["ct"])} ct/kWh',
+                           t(lang, 'page.compare_offer_sub', product=fixed_product, fee=_eur(today['fee']),
+                             until=_date(today['until']) or t(lang, 'page.compare_unstated'))))
+    per_ct = (f'<p class="muted note">{html.escape(t(lang, "page.compare_per_ct", eur=_eur(today["eur_per_ct_year"])))}</p>'
+              if today else '')
+    return f'<div class="tiles">{"".join(tiles)}</div>{per_ct}'
+
+
 RECENT_ROWS = 12   # switch months shown in the table before "show all"
 
 
@@ -573,18 +619,7 @@ def _comparison_card(lang: str, status: dict) -> str:
         return ''
     product = c.get('product') or 'strom flex'
     fixed_product = product.replace('flex', '').replace('  ', ' ').strip()
-    rows = []
-    today = c.get('today')
-    if today:
-        verdict = 'page.compare_today_more' if today['eur'] > 0 else 'page.compare_today_less'
-        rows.append((t(lang, 'page.compare_offer'),
-                     html.escape(t(lang, 'page.compare_offer_line', product=fixed_product, ct=_eur(today['ct']),
-                                   fee=_eur(today['fee']), until=_date(today['until']) or '–'))))
-        rows.append((t(lang, 'page.compare_last12', months=today['months']),
-                     html.escape(t(lang, 'page.compare_last12_line', actual=_eur(today['actual_ct']),
-                                   fixed=_eur(today['fixed_ct']), kwh=f'{today["kwh"]:,.0f}'.replace(',', '\u00a0')))
-                     + f'<br><strong>{html.escape(t(lang, verdict, eur=_eur(abs(today["eur"]))))}</strong>'
-                     + f'<br><span class="muted">{html.escape(t(lang, "page.compare_per_ct", eur=_eur(today["eur_per_ct_year"])))}</span>'))
+    tiles = _result_tiles(lang, c, fixed_product)
     cols = '<colgroup><col class="c-month"><col class="c-ct"><col class="c-diff"><col class="c-until"></colgroup>'
     head = (f'<tr><th>{t(lang, "page.compare_start")}</th><th>{t(lang, "page.compare_price")}</th>'
             f'<th>{html.escape(t(lang, "page.compare_diff", through=_month(c["through"])))}</th>'
@@ -592,11 +627,12 @@ def _comparison_card(lang: str, status: dict) -> str:
 
     def row_html(r):
         per_kwh = f' <span class="muted per">({_signed(r["ct_kwh"])} ct/kWh)</span>' if r['ct_kwh'] is not None else ''
-        until = _date(r['until']) or '<span class="muted">–</span>'
         note = _guarantee_note(lang, r)
+        label = _date(r['until']) or t(lang, 'page.compare_unstated')
+        until = _tip(label, note, muted=not r['until']) if note else label
         return (f'<tr><td>{_month(r["month"])}</td><td>{_eur(r["ct"])}</td>'
                 f'<td class="{"better" if r["eur"] > 0 else "worse"}">{_signed(r["eur"])} €{per_kwh}</td>'
-                f'<td>{until}{" " + _tip(note) if note else ""}</td></tr>')
+                f'<td>{until}</td></tr>')
     newest = list(reversed(c['rows']))
     table = f'<table class="grid">{cols}{head}{"".join(row_html(r) for r in newest[:RECENT_ROWS])}</table>'
     if len(newest) > RECENT_ROWS:
@@ -607,7 +643,7 @@ def _comparison_card(lang: str, status: dict) -> str:
         notes.append(t(lang, 'page.compare_offer_error', error=c['offer_error']))
     return (f'<div class="card" id="comparison"><h2>{t(lang, "page.compare")}</h2>'
             f'<p class="lead">{html.escape(t(lang, "page.compare_lead", product=fixed_product))}</p>'
-            f'{f"<table>{_rows(rows)}</table>" if rows else ""}'
+            f'{tiles}'
             f'{_price_chart(lang, c.get("months") or [])}'
             f'<h3 class="sub">{html.escape(t(lang, "page.compare_switch"))}</h3>'
             f'{_switch_chart(lang, c["rows"], c["through"])}'
