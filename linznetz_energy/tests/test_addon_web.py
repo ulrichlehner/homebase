@@ -345,12 +345,44 @@ def test_comparison_card_shows_today_the_chart_and_the_start_months():
     card = page.split('id="comparison"')[1]
     assert 'Vergleich mit Fixpreis' in card and 'strom future: 20,28 ct/kWh + 3,00 € pro Monat, Preisgarantie bis 31.12.2028' in card
     assert 'Der Fixpreis hätte 8,10 € mehr gekostet.' in card and '34,68 €' in card
-    assert '<svg viewBox' in card and card.count('<polyline') == 2
+    assert card.count('<polyline') == 2                                         # paid and offered per month
+    bars = card.split('class="chart bars"')[1].split('</figure>')[0]
+    assert bars.count('<rect class="bar') == 2
+    assert 'class="bar worse"' in bars and 'class="bar better"' in bars          # green where the contract was cheaper
+    assert '08/2026: Fixpreis 13,44 ct/kWh, −14,78 € (−5,12 ct/kWh) gegenüber dem Bezahlten bis 09/2026.' in bars
     rows = card.split('<table class="grid">')[1].split('</table>')[0]
     assert rows.index('09/2026') < rows.index('08/2026')                       # newest first
-    assert 'class="less">−14,78 €' in rows and 'class="more">+3,20 €' in rows and '?*' in rows
-    assert 'Die Preisgarantie endete' in card
+    assert 'class="worse">−14,78 €' in rows and 'class="better">+3,20 €' in rows
+    assert '*' not in rows and '?' not in rows and 'class="tip"' in rows      # no footnote marks: a tooltip
+    assert '12 Monate angenommen' in rows                                       # the unstated guarantee explained
     assert 'id="comparison"' not in W.render_page({'language': 'de', 'comparison': None})
+
+
+def test_the_table_shows_the_recent_switch_months_and_folds_the_rest():
+    row = COMPARISON['rows'][0]
+    many = [{**row, 'month': f'{2024 + i // 12}-{i % 12 + 1:02d}'} for i in range(30)]
+    card = W.render_page({'language': 'en', 'comparison': {**COMPARISON, 'rows': many}}).split('id="comparison"')[1]
+    first, folded = card.split('<details class="more-rows">')
+    assert first.split('<table class="grid">')[1].count('<tr><td>') == W.RECENT_ROWS
+    assert 'Show all 30 switch months' in folded and folded.count('<tr><td>') == 30 - W.RECENT_ROWS
+    assert first.split('<table class="grid">')[1].index('06/2026') >= 0           # the newest in the visible part
+
+
+def test_the_sensors_card_lists_statistics_entities_and_a_price_chart():
+    entities = {'price_grid': 'sensor.lakeside_linznetz_price_grid', 'price_energy': 'sensor.lakeside_linznetz_price_energy',
+                'price_total': 'sensor.my_price', 'portal_login_problem': 'binary_sensor.lakeside_linznetz_portal_login_problem'}
+    page = W.render_page({**DONE, 'entities': entities})
+    card = section(page, 'setup').split('id="exposed"')[1]
+    assert 'Sensoren und Statistiken' in card and '<code>linznetz_energy:x_grid_consumption</code>' not in card
+    assert '<code>x</code>' in card and 'Kostenerfassung' in card                   # both statistics, with their use
+    assert '<code>sensor.my_price</code>' in card and 'Portal-Login-Problem' in card    # renamed: as HA has it
+    assert '<strong>LINZ NETZ Energy Lakeside</strong>' in card
+    yaml = card.split('<code id="price-yaml">')[1].split('</code>')[0]
+    assert yaml.startswith('type: statistics-graph') and '  - sensor.my_price\n  - sensor.lakeside_linznetz_price_energy' in yaml
+    assert '<strong>Karte hinzufügen</strong>' in card and 'id="price-copy"' in card
+    no_mqtt = section(W.render_page(DONE), 'setup').split('id="exposed"')[1]
+    assert 'MQTT-Broker' in no_mqtt and 'price-yaml' not in no_mqtt                # statistics only, no sensors yet
+    assert 'id="exposed"' not in W.render_page({'language': 'de'})                  # nothing yet: no card
 
 
 def test_costs_card_says_where_the_grid_charges_come_from():
