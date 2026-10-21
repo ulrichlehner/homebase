@@ -421,6 +421,10 @@ def test_mqtt_messages():
     assert problem['device_class'] == 'problem' and problem['entity_category'] == 'diagnostic'
     state = json.loads(msgs['linznetz_energy/lakeside/state'])
     assert state['live_deviation'] == 0.4 and state['last_portal_fetch'] is None
+    price = json.loads(msgs['homeassistant/sensor/linznetz_energy_lakeside/price_total/config'])
+    assert price['name'] == 'Strompreis gesamt' and price['unit_of_measurement'] == 'ct/kWh'
+    assert price['state_class'] == 'measurement' and price['suggested_display_precision'] == 2
+    assert 'entity_category' not in price and state['price_total'] is None
 
 
 
@@ -744,6 +748,56 @@ def test_costs_need_a_supplier_and_then_follow_the_prices(tmp_path, monkeypatch)
     assert first_day[-1]['sum'] == pytest.approx((24 * 0.4 * per_kwh + fixed_day) * 1.2, abs=0.001)
     status = addon.web.read_status(tmp_path)['costs']
     assert status['grid'] == 'LINZ NETZ' and status['contract']['supplier'] == 'Fixed price' and status['energy_ct'] == 20.0
+
+
+def test_price_sensors_get_the_current_price_and_their_history(tmp_path, monkeypatch):
+    import prices
+    published = []
+    monkeypatch.setattr(addon, 'fetch_portal', lambda *a: None)
+    monkeypatch.setattr(addon.mqtt_status, 'broker', lambda: {'host': 'core-mosquitto'})
+    monkeypatch.setattr(addon.mqtt_status, 'publish', lambda *a: published.append(a[-1]) or True)
+    monkeypatch.setattr(prices, 'http_get', lambda url: (_ for _ in ()).throw(prices.requests.RequestException('offline')))
+    o = options(metering_point=LINZ_METER)
+    start = datetime(2026, 10, 1, tzinfo=ZONE).astimezone(UTC)
+    write_readings(tmp_path, hours=24, start=start, name=f'{LINZ_METER}_readings.csv')
+    addon.web.write_status(tmp_path, contract_request={'supplier': 'fixed', 'start': '2026-10-01',
+                                                       'energy_ct_kwh': '20', 'base_fee_month': '0'})
+    addon.handle_contract_request(tmp_path)
+    hass = FakeHass()
+    hass.registry = {'sensor.place_linznetz_price_grid': {'platform': 'mqtt', 'unique_id': 'linznetz_energy_place_price_grid'},
+                     'sensor.renamed_total': {'platform': 'mqtt', 'unique_id': 'linznetz_energy_place_price_total'},
+                     'sensor.other': {'platform': 'mqtt', 'unique_id': 'something_else'}}
+    addon.run_once(hass, o, tmp_path, 'Europe/Vienna', NOW)
+    grid = (5.57 + 0.487 + 0.1 + 0.583 + 0.037) * 1.2                       # LINZ NETZ 2026, October: no summer rate
+    assert published[-1]['price_energy'] == pytest.approx(24.0)
+    assert published[-1]['price_grid'] == pytest.approx(grid) and published[-1]['price_total'] == pytest.approx(24 + grid)
+    history = {m['statistic_id']: (m, s) for m, s in hass.imports if not m['statistic_id'].startswith('linznetz_energy:')}
+    assert set(history) == {'sensor.place_linznetz_price_grid', 'sensor.renamed_total'}   # found by unique ID, energy not registered yet
+    meta, stats = history['sensor.renamed_total']
+    assert meta['source'] == 'recorder' and meta['mean_type'] == 1 and not meta['has_sum'] and meta['unit_class'] is None
+    assert stats[0]['start'] == start and stats[-1]['start'] == datetime(2026, 10, 14, 11, tzinfo=UTC)   # up to the current hour
+    assert stats[0]['mean'] == stats[0]['max'] == pytest.approx(24 + grid)
+    # the next run only adds the new hour; a new price writes everything again
+    hass.imports.clear()
+    addon.run_once(hass, o, tmp_path, 'Europe/Vienna', NOW + timedelta(hours=1))
+    assert [len(s) for m, s in hass.imports if m['source'] == 'recorder'] == [1, 1]
+    addon.web.write_status(tmp_path, contract_request={'supplier': 'fixed', 'start': '2026-10-01',
+                                                       'energy_ct_kwh': '18', 'base_fee_month': '0'})
+    addon.handle_contract_request(tmp_path)
+    hass.imports.clear()
+    addon.run_once(hass, o, tmp_path, 'Europe/Vienna', NOW + timedelta(hours=2))
+    totals = [s for m, s in hass.imports if m['statistic_id'] == 'sensor.renamed_total'][0]
+    assert len(totals) > 300 and totals[0]['mean'] == pytest.approx(18 * 1.2 + grid)
+
+
+def test_statistics_say_mean_type_and_unit_class(tmp_path, monkeypatch):
+    monkeypatch.setattr(addon, 'fetch_portal', lambda *a: None)
+    monkeypatch.setattr(addon.mqtt_status, 'broker', lambda: None)
+    write_readings(tmp_path, hours=2)
+    hass = FakeHass()
+    addon.run_once(hass, options(), tmp_path, 'Europe/Vienna', NOW)
+    meta = hass.imports[0][0]
+    assert meta['mean_type'] == 0 and meta['unit_class'] == 'energy' and meta['has_sum'] and 'has_mean' not in meta
 
 
 def test_the_fixed_price_comparison_reads_the_offer_once_a_day(tmp_path, monkeypatch):

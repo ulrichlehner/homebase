@@ -8,6 +8,13 @@ One device "LINZ NETZ Energy <site>" with a few entities for dashboards and auto
   sensor        live_deviation           the live counter against the portal on the last complete day, in %
   sensor        deviating_hours        live hours of the last 7 days that differ from the portal
   binary_sensor portal_login_problem   on while the portal rejects the login
+  sensor        price_grid             what one more kWh costs now at the grid operator (charges and levies)
+  sensor        price_energy           the same at the supplier (the energy price)
+  sensor        price_total            both together; all three in ct/kWh with VAT, without fixed fees
+
+The price sensors keep their history in Home Assistant's long-term statistics; the add-on writes
+the past hours into them from the price archive (main.write_price_history), back to the first
+energy price.
 
 The broker comes from the Supervisor (`services: mqtt:want`): no credentials to enter. Without an
 MQTT broker the add-on runs as before, only without these entities. Discovery configs and the state
@@ -30,6 +37,8 @@ logger = logging.getLogger('addon.mqtt')
 DISCOVERY_PREFIX = 'homeassistant'
 SUPERVISOR_MQTT = 'http://supervisor/services/mqtt'
 
+PRICE_UNIT = 'ct/kWh'
+
 # key: (component, device class, unit, state class, diagnostic, icon)
 ENTITIES = {
     'last_portal_fetch': ('sensor', 'timestamp', None, None, True, None),
@@ -38,7 +47,11 @@ ENTITIES = {
     'live_deviation': ('sensor', None, '%', 'measurement', False, 'mdi:compare-horizontal'),
     'deviating_hours': ('sensor', None, None, 'measurement', False, 'mdi:alert-circle-outline'),
     'portal_login_problem': ('binary_sensor', 'problem', None, None, True, None),
+    'price_grid': ('sensor', None, PRICE_UNIT, 'measurement', False, 'mdi:transmission-tower'),
+    'price_energy': ('sensor', None, PRICE_UNIT, 'measurement', False, 'mdi:lightning-bolt'),
+    'price_total': ('sensor', None, PRICE_UNIT, 'measurement', False, 'mdi:cash'),
 }
+PRICES = ('price_grid', 'price_energy', 'price_total')
 
 
 def broker() -> Optional[dict]:
@@ -71,7 +84,7 @@ def messages(site: str, site_id: str, lang: str, version: str, values: dict) -> 
     for key, (component, device_class, unit, state_class, diagnostic, icon) in ENTITIES.items():
         config = {
             'name': t(lang, f'entity.{key}'),
-            'unique_id': f'{node}_{key}',
+            'unique_id': unique_id(site_id, key),
             'default_entity_id': f'{component}.{site_id}_linznetz_{key}',
             'state_topic': state_topic,
             'device': device,
@@ -87,9 +100,16 @@ def messages(site: str, site_id: str, lang: str, version: str, values: dict) -> 
                 config[field] = value
         if diagnostic:
             config['entity_category'] = 'diagnostic'
+        if key in PRICES:
+            config['suggested_display_precision'] = 2
         out.append((f'{DISCOVERY_PREFIX}/{component}/{node}/{key}/config', json.dumps(config)))
     out.append((state_topic, json.dumps({k: values.get(k) for k in ENTITIES})))
     return out
+
+
+def unique_id(site_id: str, key: str) -> str:
+    """The unique ID of an entity, the way to find it in the entity registry after a rename."""
+    return f'linznetz_energy_{site_id}_{key}'
 
 
 def _send(connection: dict, site_id: str, messages: list) -> None:
