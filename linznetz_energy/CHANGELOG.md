@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/ulrichlehner/homebase/compare/v1.11.0...v1.12.0) (2026-10-21)
+
+
+### Features
+
+* bar details in a fixed panel, and how fresh the go green prices are ([#80](https://github.com/ulrichlehner/homebase/issues/80)) ([26732ba](https://github.com/ulrichlehner/homebase/commit/26732ba3d150137a2bf1bf5930a7c3d4454e90ed))
+
 ## [1.11.0](https://github.com/ulrichlehner/homebase/compare/v1.10.0...v1.11.0) (2026-10-21)
 
 
