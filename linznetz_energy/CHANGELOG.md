@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.0](https://github.com/ulrichlehner/homebase/compare/v1.10.0...v1.11.0) (2026-10-21)
+
+
+### Features
+
+* the comparison's result at a glance, notes in the cell text ([#78](https://github.com/ulrichlehner/homebase/issues/78)) ([9a43293](https://github.com/ulrichlehner/homebase/commit/9a432931af5cd5e220838844394bec524c4ba9d0))
+
 ## [1.10.0](https://github.com/ulrichlehner/homebase/compare/v1.9.0...v1.10.0) (2026-10-21)
 
 
