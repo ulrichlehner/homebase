@@ -2,6 +2,12 @@
 # last release (fix: patch, feat: minor, feat!/BREAKING CHANGE: major), written into
 # linznetz_energy/config.yaml and linznetz_energy/CHANGELOG.md. Merging that PR creates
 # the tag and the GitHub release; addon-image.yml then builds the images of the new version.
+#
+# Pushes with this workflow's token start no pull_request workflows (GitHub's rule against
+# loops), so the release PR would never get the pytest check that main requires; a dispatched
+# run is the exception, so the tests are started on the release PR's branch explicitly. The
+# workflow does not arm auto-merge itself: a merge by this token would start no push workflows
+# on main, so no release and no image build.
 
 name: Release
 
@@ -12,6 +18,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write   # start tests.yml on the release PR
 
 jobs:
   release-please:
@@ -21,3 +28,16 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      - name: Run the tests on the release PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --label 'autorelease: pending' \
+                    --json headRefName -q '.[0].headRefName')"
+          if [ -n "$branch" ]; then
+            gh workflow run tests.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"
+            echo "Started the tests on $branch"
+          else
+            echo "No open release PR"
+          fi
