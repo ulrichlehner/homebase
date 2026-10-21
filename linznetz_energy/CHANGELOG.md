@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.0](https://github.com/ulrichlehner/homebase/compare/v1.9.0...v1.10.0) (2026-10-21)
+
+
+### Features
+
+* runs on quarter hours, portal checks every quarter hour around the usual arrival ([#75](https://github.com/ulrichlehner/homebase/issues/75)) ([be9df82](https://github.com/ulrichlehner/homebase/commit/be9df82294c8e65c212102a1c7cbb66235629b9d))
+* switch months as a bar chart, and what the add-on exposes ([#74](https://github.com/ulrichlehner/homebase/issues/74)) ([9893563](https://github.com/ulrichlehner/homebase/commit/98935639bad5294e0f5f7d90f0270736f1b3b8e1))
+
 ## [1.9.0](https://github.com/ulrichlehner/homebase/compare/v1.8.1...v1.9.0) (2026-10-21)
 
 
