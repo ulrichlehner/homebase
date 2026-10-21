@@ -114,7 +114,7 @@ STYLE = """
 * { box-sizing: border-box; }
 /* The HA app shows the page in an iframe; on iOS such an iframe only scrolls when the page
    scrolls itself, not the window: html stays fixed, body is the scroll container. */
-html { height: 100%; overflow: hidden; }
+html { height: 100%; overflow: hidden; overflow: clip; }   /* clip: not even an anchor jump scrolls it */
 body { height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--text);
        font: 16px/1.55 Roboto, "Noto Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -191,6 +191,30 @@ button:disabled { opacity: .45; cursor: default; }
 ul { margin: 0; padding-left: 20px; }
 code { font: 13.5px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; background: var(--code-bg);
        border-radius: 4px; padding: 1px 5px; }
+/* tabs: what is looked at often, the setup, data and maintenance (without JS all sections show) */
+.tabs { position: sticky; top: -24px;   /* the body (the scroll container) has 24px padding */
+        z-index: 2; display: flex; gap: 4px; margin: 0 -16px; padding: 8px 16px;
+        background: var(--bg); border-bottom: 1px solid var(--divider); overflow-x: auto; }
+.tabs a { flex: 0 0 auto; padding: 8px 14px; border-radius: 8px; color: var(--muted); text-decoration: none;
+          font-weight: 500; white-space: nowrap; }
+.tabs a[aria-selected="true"] { color: var(--primary); background: var(--primary-soft); }
+.tabs .count { font-size: 12px; padding: 0 7px; margin-left: 2px; vertical-align: 1px; }
+.tab { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; scroll-margin-top: 64px; }
+.tab[hidden] { display: none; }
+.card { scroll-margin-top: 64px; }
+a { color: var(--primary); }
+.card-head { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; }
+.card-head h2 { margin-bottom: 8px; }
+.inline-end button { margin: 0; }
+.card.slim { padding: 12px 20px; }
+.card.guide { border-left: 4px solid var(--primary); }
+p.more { margin: 12px 0 0; font-size: 14px; }
+ol.checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+ol.checklist li { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 4px; padding: 10px 0;
+                  border-bottom: 1px solid var(--divider); }
+ol.checklist li:last-child { border-bottom: 0; padding-bottom: 0; }
+ol.checklist .pill { justify-self: start; align-self: start; margin-top: 2px; }
+ul.attention { display: grid; gap: 8px; }
 /* fixed price comparison: chart (lines in SVG, labels in the page's type) and the table of start months */
 .chart { margin: 18px 0 6px; font-size: 14px; color: var(--muted); }
 .chart .plot { position: relative; height: 180px; margin: 8px 0 0 32px; }
@@ -221,7 +245,9 @@ td.less { color: var(--ok); }
 /* phones: less padding, label above value instead of two table columns */
 @media (max-width: 600px) {
   body { padding: 16px 12px; font-size: 15px; }
-  main { gap: 14px; }
+  main, .tab { gap: 14px; }
+  .tabs { top: -16px; margin: 0 -12px; padding: 6px 12px; }
+  .tabs a { padding: 8px 10px; }
   .card { padding: 16px; border-radius: 10px; }
   h1 { font-size: 24px; }
   h2 { font-size: 18px; margin-bottom: 10px; }
@@ -296,9 +322,9 @@ def _month_ranges(months: list) -> str:
     return ', '.join(fmt(r[0]) if len(r) == 1 else f'{fmt(r[0])} – {fmt(r[-1])}' for r in out)
 
 
-def _costs_card(lang: str, status: dict) -> str:
-    """The Costs card: grid operator, supplier contract, price now, per year, gaps, and the form
-    to set the supplier."""
+def _costs_cards(lang: str, status: dict) -> tuple:
+    """(Costs card for the overview: grid operator, supplier contract, price now, per year, months
+    without price; Supplier card for the setup: the contract form and the price list upload)."""
     c = status.get('costs') or {}
     contract = c.get('contract')
     grid = html.escape(c['grid']) if c.get('grid') else f'<span class="muted">{html.escape(t(lang, "page.costs_grid_unknown"))}</span>'
@@ -313,7 +339,7 @@ def _costs_card(lang: str, status: dict) -> str:
     rows.append((t(lang, 'page.costs_supplier'),
                  f'<strong>{html.escape(contract["supplier"])}</strong><br>'
                  f'{html.escape(t(lang, "page.costs_since", product=contract["product"] or "", start=contract["start"]))}'
-                 if contract else f'<span class="muted">{html.escape(t(lang, "page.costs_no_contract"))}</span>'))
+                 if contract else f'<span class="muted">{_rich(t(lang, "page.costs_no_contract"))}</span>'))
     if contract:
         price = (html.escape(t(lang, 'page.costs_price_line', gross=_eur(c['kwh_ct_gross']), energy=_eur(c['energy_ct'])))
                  if c.get('energy_ct') is not None else f'<span class="muted">{html.escape(t(lang, "page.costs_price_none"))}</span>')
@@ -389,26 +415,11 @@ def _costs_card(lang: str, status: dict) -> str:
             'document.querySelectorAll(".contract [data-only]").forEach(function(l){var o=l.getAttribute("data-only");'
             'var on=o==="any"||o===s.value;l.hidden=!on;l.querySelectorAll("input,select").forEach(function(i){i.disabled=!on;});});}'
             's.addEventListener("change",show);show();})();</script>')
-    # the setup as steps, each with its state and the next action
-    energy = status.get('energy') or {}
-    done = lambda text: f'<span class="pill ok">✓</span> {text}'           # noqa: E731
-    todo = lambda text: f'<span class="pill run">→</span> {text}'          # noqa: E731
-    optional = lambda text: f'<span class="pill info">○</span> {text}'     # noqa: E731
-    step1 = (done(html.escape(t(lang, 'page.step_supplier_done', supplier=contract['supplier'], product=contract['product'],
-                                 start=contract['start']))) if contract else todo(html.escape(t(lang, 'page.step_supplier_todo'))))
-    step2 = (optional(html.escape(t(lang, 'page.step_prices_todo', count=len(c['unpriced'])))) if c.get('unpriced')
-             else done(html.escape(t(lang, 'page.step_prices_done'))) if contract and c.get('from')
-             else optional(html.escape(t(lang, 'page.step_prices_later'))))
-    step3 = (done(html.escape(t(lang, 'page.step_dashboard_done'))) if energy.get('uses_cost')
-             else todo(_rich(t(lang, 'page.step_dashboard_todo', cost=t(lang, 'stat.cost', site=status.get('site', '')))))
-             if contract and c.get('from') else optional(html.escape(t(lang, 'page.step_dashboard_later'))))
-    steps = (f'<ol class="steps setup-steps">'
-             f'<li><strong>{t(lang, "page.step_supplier")}</strong><br>{step1}</li>'
-             f'<li><strong>{t(lang, "page.step_prices")}</strong><br>{step2}</li>'
-             f'<li><strong>{t(lang, "page.step_dashboard")}</strong><br>{step3}</li></ol>')
-    return (f'<div class="card" id="costs"><h2>{t(lang, "page.costs")}</h2><p class="lead">{html.escape(t(lang, "page.costs_lead"))}</p>'
-            f'{steps}<table>{_rows(rows)}</table>'
-            f'{upload}{form}</div>')
+    summary = (f'<div class="card" id="costs"><h2>{t(lang, "page.costs")}</h2>'
+               f'<p class="lead">{html.escape(t(lang, "page.costs_lead"))}</p><table>{_rows(rows)}</table></div>')
+    setup = (f'<div class="card" id="supplier"><h2>{t(lang, "page.supplier_card")}</h2>'
+             f'<p class="lead">{html.escape(t(lang, "page.supplier_lead"))}</p>{form}{upload}</div>')
+    return summary, setup
 
 
 def _month(value: str) -> str:
@@ -502,6 +513,115 @@ def _comparison_card(lang: str, status: dict) -> str:
             + ''.join(f'<p class="muted note">{html.escape(n)}</p>' for n in notes) + '</div>')
 
 
+# -- Setup checklist and what needs attention --------------------------------------------------
+
+REQUIRED_STEPS = ('portal', 'download', 'supplier', 'dashboard')
+
+
+def setup_steps(status: dict) -> list:
+    """[(step, state, values)] of the setup in order; state: 'done', 'run' (in progress),
+    'todo' (required, open), 'optional' (open, can be left), 'later' (waits for an earlier step),
+    'problem'. The page and its tests use these; the texts are page.check_<step>_<state>."""
+    portal, data, costs = status.get('portal') or {}, status.get('data') or {}, status.get('costs') or {}
+    energy, phase = status.get('energy') or {}, status.get('phase')
+    readings = data.get('readings')
+    out = []
+    if status.get('setup'):
+        out.append(('portal', 'todo', {}))
+    elif portal.get('login_failed') and not portal.get('ok'):
+        out.append(('portal', 'problem', {}))
+    elif portal.get('ok'):
+        out.append(('portal', 'done', {}))
+    else:
+        out.append(('portal', 'run', {}))
+    if readings:
+        out.append(('download', 'done', {'count': f'{readings["count"]:,}'.replace(',', '\u00a0'), 'first': readings['from']}))
+    else:
+        out.append(('download', 'run' if phase in ('downloading', 'starting', 'importing') else 'later', {}))
+    gaps = len(((status.get('statistics') or {}).get('consumption') or {}).get('gaps') or [])
+    out.append(('history', 'done' if data.get('reconstructed') or (readings and not gaps) else
+                'optional' if readings else 'later', {'count': gaps}))
+    out.append(('live', 'done' if status.get('live_meter') else 'optional', {'entity': status.get('live_meter') or ''}))
+    contract = costs.get('contract')
+    out.append(('supplier', 'done' if contract else 'todo',
+                {'supplier': contract['supplier'], 'start': contract['start']} if contract else {}))
+    unpriced = costs.get('unpriced') or []
+    out.append(('prices', 'optional' if unpriced else 'done' if contract and costs.get('from') else 'later',
+                {'count': len(unpriced)}))
+    if energy.get('uses_consumption') and (energy.get('uses_cost') or not costs.get('from')):
+        out.append(('dashboard', 'done', {}))
+    else:
+        out.append(('dashboard', 'todo' if readings else 'later', {}))
+    return out
+
+
+# where each step is done: the card it links to
+STEP_TARGETS = {'portal': 'config', 'download': 'status', 'history': 'history', 'live': 'live',
+                'supplier': 'supplier', 'prices': 'price-upload', 'dashboard': 'energy'}
+
+
+def open_required(steps: list) -> int:
+    return sum(1 for step, state, _ in steps if step in REQUIRED_STEPS and state not in ('done',))
+
+
+def _checklist_card(lang: str, steps: list, guiding: bool) -> str:
+    marks = {'done': ('ok', '✓'), 'run': ('run', '…'), 'todo': ('run', '→'), 'optional': ('info', '○'),
+             'later': ('info', '○'), 'problem': ('err', '!')}
+    items = ''
+    for step, state, values in steps:
+        cls, mark = marks[state]
+        optional = '' if step in REQUIRED_STEPS else f' <span class="muted">{t(lang, "page.check_optional")}</span>'
+        detail = _rich(t(lang, f'page.check_{step}_{state}', **values))
+        link = (f' <a href="#{STEP_TARGETS[step]}">{t(lang, "page.check_go")}</a>'
+                if state in ('todo', 'optional', 'problem') else '')
+        items += (f'<li class="{state}"><span class="pill {cls}">{mark}</span><div><strong>{t(lang, f"page.check_{step}")}</strong>'
+                  f'{optional}<br><span class="muted">{detail}</span>{link}</div></li>')
+    left = open_required(steps)
+    lead = (t(lang, 'page.checklist_lead_open', count=left) if left else t(lang, 'page.checklist_lead_done'))
+    skip = (f'<form method="post" action="onboarding" class="inline-end"><input type="hidden" name="guide" value="skip">'
+            f'<button type="submit" class="secondary small">{t(lang, "page.checklist_skip")}</button></form>'
+            if guiding else '')
+    title = t(lang, 'page.checklist_guide' if guiding else 'page.checklist')
+    return (f'<div class="card{" guide" if guiding else ""}" id="checklist"><div class="card-head"><h2>{title}</h2>{skip}</div>'
+            f'<p class="lead">{html.escape(lead)}</p><ol class="checklist">{items}</ol></div>')
+
+
+def attention(status: dict) -> list:
+    """[(level, text key, values, card id)]: what needs a look, for the overview."""
+    out = []
+    portal, costs = status.get('portal') or {}, status.get('costs') or {}
+    if portal.get('login_failed'):
+        out.append(('err', 'page.attn_login', {}, 'status'))
+    stat = (status.get('statistics') or {}).get('consumption') or {}
+    if stat.get('gaps'):
+        out.append(('warn', 'page.attn_gaps', {'count': len(stat['gaps'])}, 'statistics'))
+    check = status.get('live_check') or {}
+    if check.get('bad_days'):
+        out.append(('warn', 'page.attn_deviation', {'count': len(check['bad_days'])}, 'ranges'))
+    if (costs.get('grid_status') or {}).get('state') == 'outdated':
+        out.append(('warn', 'page.attn_grid', {'year': costs['grid_status'].get('year', '')}, 'costs'))
+    if costs.get('fetch_error') and not costs['fetch_error'].startswith('not published yet'):
+        out.append(('warn', 'page.attn_price', {}, 'costs'))
+    energy = status.get('energy') or {}
+    if energy.get('uses_consumption') and len(energy.get('grid_from') or []) > 1:
+        out.append(('warn', 'page.attn_double', {}, 'energy'))
+    if costs.get('unpriced'):
+        out.append(('info', 'page.attn_unpriced', {'count': len(costs['unpriced'])}, 'price-upload'))
+    return out
+
+
+def _attention_card(lang: str, items: list) -> str:
+    if not items:
+        return ''
+    marks = {'err': '!', 'warn': '!', 'info': 'i'}
+    rows = ''.join(f'<li><span class="pill {level}">{marks[level]}</span> {html.escape(t(lang, key, **values))} '
+                   f'<a href="#{target}">{t(lang, "page.check_go")}</a></li>' for level, key, values, target in items)
+    return f'<div class="card" id="attention"><h2>{t(lang, "page.attention")}</h2><ul class="plain attention">{rows}</ul></div>'
+
+
+TABS = ('overview', 'setup', 'data')
+
+
 def render_page(status: dict, message=None) -> str:
     """The page in the language of HA (`status['language']`). `message` is a (text key,
     values) pair shown on top, e.g. the result of an upload."""
@@ -524,7 +644,7 @@ def render_page(status: dict, message=None) -> str:
     setup_html = ''
     if setup:
         items = ''.join(f'<li>{html.escape(_text(lang, line))}</li>' for line in setup)
-        setup_html = (f'<div class="card setup"><h2>{t(lang, "page.setup_title")}</h2><ul>{items}</ul>'
+        setup_html = (f'<div class="card setup" id="config"><h2>{t(lang, "page.setup_title")}</h2><ul>{items}</ul>'
                       f'<p>{html.escape(t(lang, "setup.howto"))}</p></div>')
 
     if status.get('password_secret') is False:
@@ -594,7 +714,7 @@ def render_page(status: dict, message=None) -> str:
 
     removal = status.get('removal') or {}
     if removal.get('state') == 'done':
-        remove_html = (f'<div class="card danger"><h2>{t(lang, "page.removed_title")}</h2>'
+        remove_html = (f'<div class="card danger" id="remove"><h2>{t(lang, "page.removed_title")}</h2>'
                        f'<p>{html.escape(t(lang, "page.removed_text"))}</p>'
                        f'<form method="post" action="resume"><button type="submit" class="secondary">'
                        f'{t(lang, "page.resume")}</button></form></div>')
@@ -602,14 +722,15 @@ def render_page(status: dict, message=None) -> str:
         problem = {'refused': t(lang, 'page.remove_refused'),
                    'failed': t(lang, 'page.remove_failed', error=removal.get('error', ''))}.get(removal.get('state'))
         refused = f'<p><span class="pill warn">!</span> {html.escape(problem)}</p>' if problem else ''
-        remove_html = (f'<div class="card danger"><h2>{t(lang, "page.remove_title")}</h2>'
+        remove_html = (f'<div class="card danger" id="remove"><h2>{t(lang, "page.remove_title")}</h2>'
                        f'<p>{html.escape(t(lang, "page.remove_text"))}</p>{refused}'
                        f'<form method="post" action="remove" onsubmit="return confirm({html.escape(json.dumps(t(lang, "page.remove_confirm")))})">'
                        f'<label class="check"><input type="checkbox" name="confirm" value="yes" required> '
                        f'{html.escape(t(lang, "page.remove_check"))}</label>'
                        f'<button type="submit" class="danger">{t(lang, "page.remove_button")}</button></form></div>')
-    costs_html = _costs_card(lang, status) if 'costs' in status or 'statistics' in status else ''
-    costs_html += _comparison_card(lang, status)
+    costs_html, supplier_html = (_costs_cards(lang, status) if 'costs' in status or 'statistics' in status
+                                 else ('', ''))
+    comparison_html = _comparison_card(lang, status)
 
     live_meter_html = ''
     if 'live_candidates' in status:
@@ -642,7 +763,7 @@ def render_page(status: dict, message=None) -> str:
                        f'{"ok" if result.get("state") == "saved" else "!"}</span> {html.escape(result_text())}</p>'
                        if result_text else '')
         empty = f'<p class="muted">{html.escape(t(lang, "page.live_meter_no_candidates"))}</p>' if not candidates else ''
-        live_meter_html = (f'<div class="card"><h2>{t(lang, "page.live_meter")}</h2>'
+        live_meter_html = (f'<div class="card" id="live"><h2>{t(lang, "page.live_meter")}</h2>'
                            f'<p class="lead">{html.escape(t(lang, "page.live_meter_lead"))}</p>'
                            f'<table>{_rows([(t(lang, "page.live_meter_in_use"), in_use)] + power_row)}</table>{empty}{result_html}'
                            f'<form method="post" action="live_meter" class="pick">'
@@ -674,7 +795,7 @@ def render_page(status: dict, message=None) -> str:
                     f'<p class="lead">{_rich(t(lang, "page.energy_switch", name=name))}</p>'
                     f'<ol class="steps">{steps}</ol>'
                     f'<p class="muted">{html.escape(t(lang, "page.energy_undo"))}</p>')
-        energy_html = f'<div class="card"><h2>{t(lang, "page.energy")}</h2>{body}</div>'
+        energy_html = f'<div class="card" id="energy"><h2>{t(lang, "page.energy")}</h2>{body}</div>'
 
     status_rows = [
         (t(lang, 'page.state'), f'<span class="pill {pill_class}">{html.escape(pill_text)}</span> {html.escape(detail)}'),
@@ -703,27 +824,64 @@ def render_page(status: dict, message=None) -> str:
         site_line = html.escape(t(lang, 'page.site', site=status['site'], metering_point=point))
     else:
         site_line = html.escape(t(lang, 'page.not_configured'))
-    return f"""<!doctype html>
-<html lang="{lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-{refresh}<title>LINZ NETZ Energy</title><style>{STYLE}</style></head>
-<body><main>
-<div><h1>LINZ NETZ Energy</h1><p class="muted">{site_line}</p></div>
-{note}
-{setup_html}
-<div class="card"><h2>{t(lang, 'page.status')}</h2><table>{_rows(status_rows)}</table></div>
-<div class="card"><h2>{t(lang, 'page.data')}</h2><table>{_rows([
-        (t(lang, 'page.readings'), range_row(data.get('readings'))),
-        (t(lang, 'page.reconstructed'), range_row(data.get('reconstructed'))),
-    ] + ([(t(lang, 'page.live'), live_row(data.get('live'))), (t(lang, 'page.live_check'), check_row())]
-         if 'live' in data and (data.get('live') or status.get('live_check')) else []))}</table></div>
-<div class="card"><h2>{t(lang, 'page.statistics')}</h2><table>{_rows([
-        (t(lang, 'page.stat_consumption'), stat_row('consumption')),
-    ] + ([(t(lang, 'page.gaps'), gaps_row('consumption'))] if stats.get('consumption') else []) + [
-    ])}</table></div>
-{costs_html}
-{live_meter_html}
-{energy_html}
-<div class="card"><h2>{t(lang, 'page.import_title')}</h2>
+
+    # three tabs: what is looked at often, the setup, data and maintenance; the guide opens the
+    # setup while a required step is open (until it is skipped)
+    steps = setup_steps(status)
+    left = open_required(steps)
+    removed = removal.get('state') == 'done' or phase == 'removed'
+    guiding = bool(left) and not status.get('guide_skipped') and not removed
+    start_tab = 'setup' if guiding else 'overview'
+    setup_line = (f'<div class="card slim"><span class="pill run">→</span> {html.escape(t(lang, "page.setup_open", count=left))} '
+                  f'<a href="#checklist">{t(lang, "page.check_go")}</a></div>' if left and not guiding and not removed else '')
+    live_line = check_row() if status.get('live_check') else ''
+    summary_rows = [(t(lang, 'page.state'), f'<span class="pill {pill_class}">{html.escape(pill_text)}</span> {html.escape(detail)}'),
+                    (t(lang, 'page.last_run'), _fmt_time(status.get('last_run'), lang)),
+                    (t(lang, 'page.portal_login'), login)]
+    if live_line:
+        summary_rows.append((t(lang, 'page.live_check'), live_line))
+    summary_html = (f'<div class="card" id="summary"><h2>{t(lang, "page.status")}</h2><table>{_rows(summary_rows)}</table>'
+                    f'<p class="more"><a href="#status">{t(lang, "page.status_details")}</a></p></div>')
+    tab_labels = {'overview': t(lang, 'page.tab_overview'),
+                  'setup': t(lang, 'page.tab_setup') + (f' <span class="pill run count">{left}</span>' if left else ''),
+                  'data': t(lang, 'page.tab_data')}
+    nav = ''.join(f'<a href="#{k}" data-tab="{k}" role="tab">{v}</a>' for k, v in tab_labels.items())
+    script = """<script>
+(function () {
+  var tabs = %s, start = %s, key = 'linznetz-tab';
+  var links = document.querySelectorAll('.tabs a'), panes = {};
+  tabs.forEach(function (k) { panes[k] = document.getElementById(k); });
+  function tabOf(id) {
+    if (tabs.indexOf(id) >= 0) return id;
+    var el = id && document.getElementById(id);
+    for (var k in panes) { if (el && panes[k].contains(el)) return k; }
+    return null;
+  }
+  function show(k, el) {
+    tabs.forEach(function (n) { panes[n].hidden = n !== k; });
+    links.forEach(function (a) { a.setAttribute('aria-selected', a.dataset.tab === k ? 'true' : 'false'); });
+    try { sessionStorage.setItem(key, k); } catch (e) {}
+    // only the body scrolls (see STYLE): an anchor jump or scrollIntoView would also move html,
+    // and with it the sticky tab bar out of sight
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = el ? document.body.scrollTop + el.getBoundingClientRect().top - 72 : 0;
+  }
+  function route() {
+    var id = decodeURIComponent(location.hash.slice(1)), k = tabOf(id), stored = null;
+    try { stored = sessionStorage.getItem(key); } catch (e) {}
+    if (k) { show(k, tabs.indexOf(id) < 0 ? document.getElementById(id) : null); }
+    else { show(tabOf(stored) || start, null); }
+  }
+  document.documentElement.classList.add('js');
+  window.addEventListener('hashchange', route);
+  window.addEventListener('load', route);   // after the browser's own jump to the anchor
+  route();
+})();
+</script>""" % (json.dumps(list(TABS)), json.dumps(start_tab))
+    top = f'{note}{setup_html}{remove_html if removed else ""}'
+    overview = f'{setup_line}{_attention_card(lang, attention(status))}{costs_html}{comparison_html}{summary_html}'
+    setup = f'{_checklist_card(lang, steps, guiding)}{live_meter_html}{supplier_html}{energy_html}'
+    history = f"""<div class="card" id="history"><h2>{t(lang, 'page.import_title')}</h2>
 <p>{t(lang, 'page.import_lead')}</p>
 <ul class="files">
 <li><code>&lt;{t(lang, 'page.metering_point')}&gt;_readings.csv</code><span class="muted">{t(lang, 'page.file_readings')}</span></li>
@@ -758,9 +916,31 @@ def render_page(status: dict, message=None) -> str:
   drop.addEventListener('drop', function (ev) {{ input.files = ev.dataTransfer.files; show(); }});
 }})();
 </script>
-</div>
-<div class="card"><h2>{t(lang, 'page.last_import')}</h2>{import_html}</div>
-{remove_html}
+</div>"""
+    data_rows = [(t(lang, 'page.readings'), range_row(data.get('readings'))),
+                 (t(lang, 'page.reconstructed'), range_row(data.get('reconstructed')))]
+    if 'live' in data and (data.get('live') or status.get('live_check')):
+        data_rows += [(t(lang, 'page.live'), live_row(data.get('live'))), (t(lang, 'page.live_check'), check_row())]
+    stat_rows = [(t(lang, 'page.stat_consumption'), stat_row('consumption'))]
+    if stats.get('consumption'):
+        stat_rows.append((t(lang, 'page.gaps'), gaps_row('consumption')))
+    maintenance = (f'<div class="card" id="status"><h2>{t(lang, "page.status")}</h2><table>{_rows(status_rows)}</table></div>'
+                   f'<div class="card" id="ranges"><h2>{t(lang, "page.data")}</h2><table>{_rows(data_rows)}</table></div>'
+                   f'<div class="card" id="statistics"><h2>{t(lang, "page.statistics")}</h2><table>{_rows(stat_rows)}</table></div>'
+                   f'{history}'
+                   f'<div class="card" id="last-import"><h2>{t(lang, "page.last_import")}</h2>{import_html}</div>'
+                   f'{"" if removed else remove_html}')
+    return f"""<!doctype html>
+<html lang="{lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+{refresh}<title>LINZ NETZ Energy</title><style>{STYLE}</style></head>
+<body><main>
+<div><h1>LINZ NETZ Energy</h1><p class="muted">{site_line}</p></div>
+{top}
+<nav class="tabs" role="tablist">{nav}</nav>
+<section class="tab" id="overview" aria-label="{html.escape(t(lang, 'page.tab_overview'))}">{overview}</section>
+<section class="tab" id="setup" aria-label="{html.escape(t(lang, 'page.tab_setup'))}">{setup}</section>
+<section class="tab" id="data" aria-label="{html.escape(t(lang, 'page.tab_data'))}">{maintenance}</section>
+{script}
 </main></body></html>"""
 
 
@@ -848,7 +1028,7 @@ class Handler(BaseHTTPRequestHandler):
             if to_costs:
                 self._done(None, 'price-upload')
             else:
-                self._done(('page.uploaded', {'files': ', '.join(names)}))
+                self._done(('page.uploaded', {'files': ', '.join(names)}), 'history')
             return
         # the main loop does the work (it holds the connection to HA); the page only asks
         body = self.rfile.read(min(length, 4096)).decode(errors='replace')
@@ -859,17 +1039,22 @@ class Handler(BaseHTTPRequestHandler):
             write_status(self.store, removal_request=path.strip('/'))
             self.wake.set()
             logger.info('Requested on the add-on page: %s', path.strip('/'))
-            self._done((f'page.{path.strip("/")}_requested', {}))
+            self._done((f'page.{path.strip("/")}_requested', {}), 'remove' if path == '/remove' else '')
         elif path == '/fetch':
             write_status(self.store, fetch_request=True)
             self.wake.set()
             logger.info('Requested on the add-on page: portal fetch')
-            self._done(('page.fetch_requested', {}))
+            self._done(('page.fetch_requested', {}), 'status')
         elif path == '/contract':
             fields = {k: v[0].strip() for k, v in parse_qs(body).items() if v}
             write_status(self.store, contract_request=fields, contract_result={'state': 'pending'})
             self.wake.set()
             self._done(None, 'contract')
+        elif path == '/onboarding':
+            # the page alone keeps this (nothing for the main loop to do)
+            skipped = (parse_qs(body).get('guide') or [''])[0] == 'skip'
+            write_status(self.store, guide_skipped=skipped)
+            self._done(None, 'overview' if skipped else 'checklist')
         elif path == '/live_meter':
             entity = (parse_qs(body).get('entity') or [''])[0].strip()
             if entity and not re.fullmatch(r'sensor\.[a-z0-9_]+', entity):
@@ -877,10 +1062,10 @@ class Handler(BaseHTTPRequestHandler):
                 return
             write_status(self.store, live_meter_request={'entity': entity}, live_meter_result=None)
             self.wake.set()
-            self._done(('page.live_meter_requested', {}))
+            self._done(('page.live_meter_requested', {}), 'live')
 
 
-ACTIONS = ('/upload', '/fetch', '/live_meter', '/contract', '/remove', '/resume')
+ACTIONS = ('/upload', '/fetch', '/live_meter', '/contract', '/remove', '/resume', '/onboarding')
 
 
 def start(store: Path, wake: threading.Event, port: int = PORT) -> ThreadingHTTPServer:
