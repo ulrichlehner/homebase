@@ -243,6 +243,7 @@ h3.sub { font-size: 17px; font-weight: 500; margin: 22px 0 0; }
 .tile .label { font-size: 14px; color: var(--muted); font-weight: 500; }
 .tile .value { font-size: 24px; line-height: 1.25; font-weight: 500; }
 .tile .sub { font-size: 14px; color: var(--muted); }
+.tile .sub.fresh { font-size: 13px; margin-top: 4px; }
 .tile.better { border-left: 4px solid var(--ok); } .tile.better .value { color: var(--ok); }
 .tile.worse { border-left: 4px solid var(--err); } .tile.worse .value { color: var(--err); }
 .tiles + p.note { margin-top: 10px; }
@@ -253,12 +254,24 @@ h3.sub { font-size: 17px; font-weight: 500; margin: 22px 0 0; }
 .chart.bars .bar { cursor: pointer; }
 .chart.bars .bar.better { fill: var(--ok); }
 .chart.bars .bar.worse { fill: var(--err); }
-.chart.bars .bar:hover, .chart.bars .bar.sel { opacity: .7; }
+.chart.bars .bar:hover { opacity: .8; }
+.chart.bars .bar.sel { opacity: 1; }
+.chart.bars svg:has(.sel) .bar:not(.sel):not(:hover) { opacity: .55; }
 .chart.bars .grid .zero { stroke: var(--muted); }
 .chart.bars .xlabels span.last { transform: translateX(-100%); }
 .key.better { border-color: var(--ok); border-top-width: 8px; }
 .key.worse { border-color: var(--err); border-top-width: 8px; }
-.readout { margin: 8px 0 0; font-size: 14px; color: var(--text); min-height: 2.6em; }
+/* the details of the chosen bar: always the same four fields, so nothing below moves */
+.readout { display: grid; grid-template-columns: 0.8fr 1fr 1.6fr 1.4fr; gap: 4px 16px; margin-top: 12px; padding: 12px 14px;
+           border: 1px solid var(--divider); border-radius: 10px; }
+.readout > div { display: grid; align-content: start; }
+.readout .label { font-size: 13px; color: var(--muted); }
+.readout .value { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.readout .value.better { color: var(--ok); } .readout .value.worse { color: var(--err); }
+.readout .sub { font-size: 13px; line-height: 1.4; color: var(--muted); min-height: 1.4em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.readout .hint { grid-column: 1 / -1; margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+@media (max-width: 600px) { .readout { grid-template-columns: 1fr 1fr; }
+  .readout .sub { white-space: normal; min-height: 2.8em; } }   /* up to two lines, always two lines high */
 table.grid { table-layout: fixed; margin-top: 12px; }
 table.grid .c-month { width: 22%; } table.grid .c-ct { width: 14%; } table.grid .c-diff { width: 40%; } table.grid .c-until { width: 24%; }
 details.more-rows { margin-top: 4px; }
@@ -380,6 +393,9 @@ def _costs_cards(lang: str, status: dict) -> tuple:
     if contract:
         price = (html.escape(t(lang, 'page.costs_price_line', gross=_eur(c['kwh_ct_gross']), energy=_eur(c['energy_ct'])))
                  if c.get('energy_ct') is not None else f'<span class="muted">{html.escape(t(lang, "page.costs_price_none"))}</span>')
+        if contract.get('supplier_id') == 'gogreen_flex' and c.get('energy_from') and c.get('price_fetched'):
+            price += (f'<br><span class="muted">{html.escape(t(lang, "page.costs_price_fresh", month=_month(c["energy_from"][:7])))} '
+                      f'{_fmt_time(c["price_fetched"], lang)}</span>')
         if (c.get('fetch_error') or '').startswith('not published yet'):
             price += f'<br><span class="pill info">i</span> {html.escape(t(lang, "page.costs_price_pending"))}'
         elif c.get('fetch_error'):
@@ -524,6 +540,14 @@ def _guarantee_note(lang: str, row: dict) -> str:
     return t(lang, 'page.compare_tip_unstated')
 
 
+def _guarantee_short(lang: str, row: dict) -> tuple:
+    """(the guarantee of a row in a few words, what is assumed after it or '')."""
+    if not row['until']:
+        return t(lang, 'page.compare_unstated'), t(lang, 'page.compare_g_unstated')
+    return (t(lang, 'page.compare_g_until', until=_date(row['until'])),
+            t(lang, 'page.compare_g_ended') if row['assumed'] else '')
+
+
 def _switch_chart(lang: str, rows: list, through: str) -> str:
     """Bars per switch month (oldest left): the difference per kWh of a fixed contract from that
     month until `through` (below 0: the fixed price would have been cheaper). Pointing at or
@@ -536,26 +560,40 @@ def _switch_chart(lang: str, rows: list, through: str) -> str:
     hi = max(0, (max(values) // step + 1) * step)
     y = lambda v: 100 * (1 - (v - lo) / (hi - lo))     # noqa: E731
     width = 100 / len(rows)
+    last = len(rows) - 1
     bars, details = [], []
     for i, r in enumerate(rows):
-        details.append(t(lang, 'page.compare_bar', month=_month(r['month']), ct=_eur(r['ct']), eur=_signed(r['eur']),
-                         per=_signed(r['ct_kwh'] or 0), through=_month(through))
-                       + (f' {_guarantee_note(lang, r)}' if r['assumed'] else ''))
+        result, cls = _verdict(lang, r['eur'])
+        guarantee, assumed = _guarantee_short(lang, r)
+        details.append({'month': _month(r['month']), 'ct': f'{_eur(r["ct"])} ct/kWh', 'result': result, 'cls': cls,
+                        'per': f'{_signed(r["ct_kwh"] or 0)} ct/kWh', 'guarantee': guarantee, 'assumed': assumed})
         if r['ct_kwh'] is None:
             continue
         top, bottom = sorted((y(r['ct_kwh']), y(0)))
-        bars.append(f'<rect class="bar {"better" if r["eur"] > 0 else "worse"}" data-i="{i}" x="{i * width + width * .15:.3f}" '
-                    f'y="{top:.3f}" width="{width * .7:.3f}" height="{max(bottom - top, .4):.3f}"/>')
+        bars.append(f'<rect class="bar {"better" if r["eur"] > 0 else "worse"}{" sel" if i == last else ""}" data-i="{i}" '
+                    f'x="{i * width + width * .15:.3f}" y="{top:.3f}" width="{width * .7:.3f}" height="{max(bottom - top, .4):.3f}"/>')
     ticks = range(int(lo), int(hi) + 1, int(step))
     grid = ''.join(f'<line class="{"zero" if v == 0 else ""}" x1="0" x2="100" y1="{y(v):.2f}" y2="{y(v):.2f}" '
                    f'vector-effect="non-scaling-stroke"/>' for v in ticks)
     ylabels = ''.join(f'<span style="top:{y(v):.2f}%">{"+" if v > 0 else "−" if v < 0 else ""}{abs(v)}</span>' for v in ticks)
     every = -(-len(rows) // 4)
-    last = len(rows) - 1
     xlabels = ''.join(f'<span class="{"first" if i == 0 else "last" if i == last else ""}" '
                       f'style="left:{(i + .5) * width if 0 < i < last else 0 if i == 0 else 100:.2f}%">{_month(r["month"])}</span>'
                       for i, r in enumerate(rows) if i == last or (i % every == 0 and last - i >= every))
-    hint = t(lang, 'page.compare_bars_hint')
+    d = details[last]
+    def field(key, label, value, sub_key='', sub=''):
+        # every field has a value and a second line (empty where there is nothing to add): a fixed height
+        sub_attr = f' data-k="{sub_key}"' if sub_key else ''
+        return (f'<div><span class="label">{html.escape(label)}</span>'
+                f'<span class="value" data-k="{key}">{html.escape(value)}</span>'
+                f'<span class="sub"{sub_attr}>{html.escape(sub)}</span></div>')
+    panel = (f'<div class="readout" aria-live="polite">'
+             + field('month', t(lang, 'page.compare_start'), d['month'])
+             + field('ct', t(lang, 'page.compare_price_label'), d['ct'])
+             + field('result', t(lang, 'page.compare_result_label', through=_month(through)), d['result'], 'per', d['per'])
+             .replace('class="value" data-k="result"', f'class="value {d["cls"]}" data-k="result"')
+             + field('guarantee', t(lang, 'page.compare_until'), d['guarantee'], 'assumed', d['assumed'])
+             + f'<p class="hint">{html.escape(t(lang, "page.compare_bars_hint"))}</p></div>')
     return (f'<figure class="chart bars" data-details="{html.escape(json.dumps(details, ensure_ascii=False))}">'
             f'<div class="plot"><div class="ylabels">{ylabels}</div>'
             f'<svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" '
@@ -563,17 +601,21 @@ def _switch_chart(lang: str, rows: list, through: str) -> str:
             f'<div class="xlabels">{xlabels}</div>'
             f'<figcaption><span><span class="key better"></span> {html.escape(t(lang, "page.compare_bars_better"))}</span>'
             f'<span><span class="key worse"></span> {html.escape(t(lang, "page.compare_bars_worse"))}</span>'
-            f'<span>ct/kWh</span></figcaption>'
-            f'<p class="readout" aria-live="polite" data-hint="{html.escape(hint)}">{html.escape(hint)}</p></figure>'
+            f'<span>ct/kWh</span></figcaption>{panel}</figure>'
+            # the panel keeps its layout, only the values change: nothing below moves
             '<script>(function(){var f=document.currentScript.previousElementSibling,d=JSON.parse(f.dataset.details),'
-            'o=f.querySelector(".readout"),sel=null;function show(e){var b=e.target.closest("rect[data-i]");if(!b)return;'
-            'if(sel)sel.classList.remove("sel");sel=b;b.classList.add("sel");o.textContent=d[+b.dataset.i];}'
+            'o=f.querySelector(".readout");function show(e){var b=e.target.closest("rect[data-i]");if(!b)return;'
+            'f.querySelectorAll("rect.sel").forEach(function(r){r.classList.remove("sel");});b.classList.add("sel");'
+            'var x=d[+b.dataset.i];o.querySelectorAll("[data-k]").forEach(function(el){el.textContent=x[el.dataset.k];});'
+            'var r=o.querySelector("[data-k=result]");r.className="value "+x.cls;}'
             'var svg=f.querySelector("svg");svg.addEventListener("pointerover",show);svg.addEventListener("click",show);})();</script>')
 
 
-def _tile(label: str, value: str, sub: str, cls: str = '') -> str:
+def _tile(label: str, value: str, sub: str, cls: str = '', note: str = '') -> str:
+    """A result tile; `note` (HTML) is a further, smaller line, such as how fresh the value is."""
     return (f'<div class="tile {cls}"><span class="label">{html.escape(label)}</span>'
-            f'<span class="value">{html.escape(value)}</span><span class="sub">{html.escape(sub)}</span></div>')
+            f'<span class="value">{html.escape(value)}</span><span class="sub">{html.escape(sub)}</span>'
+            + (f'<span class="sub fresh">{note}</span>' if note else '') + '</div>')
 
 
 def _verdict(lang: str, eur: float) -> tuple:
@@ -599,9 +641,12 @@ def _result_tiles(lang: str, c: dict, fixed_product: str) -> str:
         tiles.append(_tile(t(lang, 'page.compare_last12', months=today['months']), text,
                            t(lang, 'page.compare_last12_sub', actual=_eur(today['actual_ct']), fixed=_eur(today['fixed_ct']),
                              kwh=f'{today["kwh"]:,.0f}'.replace(',', '\u00a0')), cls))
-        tiles.append(_tile(t(lang, 'page.compare_offer'), f'{_eur(today["ct"])} ct/kWh',
-                           t(lang, 'page.compare_offer_sub', product=fixed_product, fee=_eur(today['fee']),
-                             until=_date(today['until']) or t(lang, 'page.compare_unstated'))))
+        sub = t(lang, 'page.compare_offer_sub', product=fixed_product, fee=_eur(today['fee']),
+                until=_date(today['until']) or t(lang, 'page.compare_unstated'))
+        fresh = html.escape(t(lang, 'page.compare_offer_fresh', since=_date(today['seen'])))
+        if c.get('offer_checked'):
+            fresh += f' · {html.escape(t(lang, "page.compare_offer_checked"))} {_fmt_time(c["offer_checked"], lang)}'
+        tiles.append(_tile(t(lang, 'page.compare_offer'), f'{_eur(today["ct"])} ct/kWh', sub, note=fresh))
     per_ct = (f'<p class="muted note">{html.escape(t(lang, "page.compare_per_ct", eur=_eur(today["eur_per_ct_year"])))}</p>'
               if today else '')
     return f'<div class="tiles">{"".join(tiles)}</div>{per_ct}'

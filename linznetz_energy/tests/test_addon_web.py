@@ -317,6 +317,9 @@ def test_costs_card_shows_contract_price_years_and_gaps():
     page = W.render_page(status)
     assert '<h2>Kosten</h2>' in page and 'strom flex future seit 01.03.2023' in page
     assert '32,75 ct/kWh inkl. Netz, Abgaben und USt. (Energiepreis 20,82 ct/kWh netto)' in page
+    fetched = W.render_page({**status, 'costs': {**status['costs'], 'energy_from': '2026-10-01',
+                                                 'price_fetched': '2026-10-01T04:15:00+00:00'}})
+    assert 'go-green-Preis für 10/2026, abgerufen 01.10.2026' in fetched
     assert 'noch nicht veröffentlicht' in page and 'pill warn' not in page.split('<h2>Kosten</h2>')[1].split('</table>')[0]
     assert '2025: 612,40 €' in page and 'letzte 12 Monate: 650,10 €' in page and '11/2026' in page
     assert '<option value="strom flex future" selected>' in page and 'action="contract"' in page
@@ -351,11 +354,20 @@ def test_comparison_card_shows_today_the_chart_and_the_start_months():
     assert '<div class="tile better"><span class="label">Letzte 2 Monate</span><span class="value">8,10 € günstiger' in tiles
     assert '20,28 ct/kWh' in tiles and 'strom future + 3,00 € pro Monat, Garantie bis 31.12.2028' in tiles
     assert '34,68 €' in card
+    fresh = W.render_page({'language': 'de', 'comparison': {**COMPARISON, 'offer_checked': '2026-10-21T08:15:00+00:00'}})
+    assert 'unverändert seit 05.10.2026 · Preisseite geprüft 21.10.2026' in fresh
     assert card.count('<polyline') == 2                                         # paid and offered per month
     bars = card.split('class="chart bars"')[1].split('</figure>')[0]
     assert bars.count('<rect class="bar') == 2
-    assert 'class="bar worse"' in bars and 'class="bar better"' in bars          # green where the contract was cheaper
-    assert '08/2026: Fixpreis 13,44 ct/kWh, −14,78 € (−5,12 ct/kWh) gegenüber dem Bezahlten bis 09/2026.' in bars
+    assert 'class="bar worse"' in bars and 'class="bar better sel"' in bars      # green: the contract was cheaper; newest chosen
+    panel = bars.split('<div class="readout"')[1]
+    # always the same four fields, filled with the newest switch month
+    assert [p.split('</span>')[0] for p in panel.split('<span class="label">')[1:]] == \
+        ['Wechsel', 'Fixpreis', 'Ergebnis bis 09/2026', 'Garantie bis']
+    assert 'data-k="month">09/2026<' in panel and 'class="value better" data-k="result">3,20 € günstiger<' in panel
+    assert 'data-k="guarantee">nicht angegeben<' in panel and 'data-k="assumed">12 Monate angenommen<' in panel
+    assert panel.count('<span class="sub"') == 4                                 # a second line in every field: no shift
+    assert '&quot;result&quot;: &quot;14,78 € teurer&quot;' in bars              # the other month, for the script
     rows = card.split('<table class="grid">')[1].split('</table>')[0]
     assert rows.index('09/2026') < rows.index('08/2026')                       # newest first
     assert 'class="worse">−14,78 €' in rows and 'class="better">+3,20 €' in rows

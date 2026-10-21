@@ -211,6 +211,7 @@ def comparison(store: Path, state: dict, hours: list, comps: list, now: datetime
     result = compare.compare(hours, comps, offers, product, now, zone)
     if result is not None:
         result['offer_error'] = state.get('offer_error')
+        result['offer_checked'] = state.get('offer_check')   # go green's price page was last read
     return result
 
 
@@ -256,6 +257,8 @@ def status(statistic_id: str, cost_hours: list, state: dict, comps: list, zone: 
         'last12': round(last12, 2),
         'unpriced': costs.unpriced_months(cost_hours, zone),
         'energy_ct': energy_now[0].value if energy_now else None,
+        'energy_from': energy_now[0].valid_from.isoformat() if energy_now else None,   # the month a monthly price is for
+        'price_fetched': state.get('price_fetch'),     # the supplier's prices were last fetched (monthly prices only)
         'kwh_ct_gross': round(gross, 2) if energy_now else None,
         'contract': ({'supplier': tariffs.SUPPLIERS[contract['supplier']].name, 'supplier_id': contract['supplier'],
                       'product': contract.get('product', ''), 'start': contract['start'].strftime('%d.%m.%Y'),
