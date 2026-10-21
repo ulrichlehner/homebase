@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.9.0](https://github.com/ulrichlehner/homebase/compare/v1.8.1...v1.9.0) (2026-10-21)
+
+
+### Features
+
+* compare the costs with go green's fixed price ([#70](https://github.com/ulrichlehner/homebase/issues/70)) ([ce15b1f](https://github.com/ulrichlehner/homebase/commit/ce15b1fd9866ba7ed1afee9e59b7cdc5215b2b08))
+* electricity price sensors with their history ([#69](https://github.com/ulrichlehner/homebase/issues/69)) ([18b8b41](https://github.com/ulrichlehner/homebase/commit/18b8b418ceea4b5d36933bfcf311e146df997e7c))
+* the add-on page in three tabs with a setup checklist ([#71](https://github.com/ulrichlehner/homebase/issues/71)) ([49d1f57](https://github.com/ulrichlehner/homebase/commit/49d1f577d93ba3932492d07f10befc6e127c8923))
+
 ## [1.8.1](https://github.com/ulrichlehner/homebase/compare/v1.8.0...v1.8.1) (2026-10-19)
 
 
