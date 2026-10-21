@@ -120,7 +120,7 @@ def test_page_fits_small_screens():
 
 def test_page_scrolls_inside_the_ios_app_frame():
     page = W.render_page({})
-    assert 'html { height: 100%; overflow: hidden; }' in page
+    assert 'html { height: 100%; overflow: hidden; overflow: clip; }' in page   # clip: anchor jumps cannot move it either
     assert 'overflow-y: auto; -webkit-overflow-scrolling: touch' in page
 
 
@@ -237,7 +237,7 @@ def test_actions_redirect_to_the_page_and_show_their_message_once(server):
     opener = urllib.request.build_opener(NoRedirect)
     with pytest.raises(urllib.error.HTTPError) as err:
         opener.open(urllib.request.Request(url + '/fetch', data=b'', method='POST'))
-    assert err.value.code == 303 and err.value.headers['Location'] == './'
+    assert err.value.code == 303 and err.value.headers['Location'] == './#status'    # back to its card
     first = urllib.request.urlopen(url + '/').read().decode()
     assert 'Fetching from the portal' in first
     again = urllib.request.urlopen(url + '/').read().decode()            # the page's own refresh
@@ -322,9 +322,10 @@ def test_costs_card_shows_contract_price_years_and_gaps():
     assert '<option value="strom flex future" selected>' in page and 'action="contract"' in page
     assert 'name="start" required value="2023-03-01"' in page                  # the current contract's start
     ok = W.render_page({**status, 'costs': {**status['costs'], 'fetch_error': None}})   # the usual case
-    assert 'pill info">i' not in ok and 'failed' not in ok
+    card = ok.split('id="costs"')[1].split('</table>')[0]
+    assert 'pill info">i' not in card and 'failed' not in ok
     empty = W.render_page({'language': 'en', 'statistics': {}, 'costs': {'contract': None, 'grid': 'LINZ NETZ'}})
-    assert 'not set yet: choose it below' in empty
+    assert 'not set yet: see <strong>Setup</strong>' in empty
 
 
 
@@ -391,22 +392,91 @@ def test_energy_card_includes_the_cost_step_once_costs_exist():
 
 
 
-def test_costs_card_guides_through_the_setup():
-    base = {'language': 'de', 'site': 'Lakeside', 'statistics': {}}
-    fresh = W.render_page({**base, 'costs': {'contract': None, 'grid': 'LINZ NETZ'}})
-    assert 'unten unter „Lieferant festlegen“ auswählen und speichern' in fresh
-    assert 'nach Schritt 1, sobald die Kosten berechnet sind' in fresh
-    contract = {'supplier': 'go green energy (strom flex)', 'supplier_id': 'gogreen_flex', 'product': 'strom flex future',
-                'start': '01.03.2023', 'start_iso': '2023-03-01', 'params': {}}
-    costs = {'id': 'x', 'from': '06.03.2023', 'eur': 1.0, 'years': {}, 'last12': 0, 'unpriced': ['2023-03', '2023-04'],
-             'contract': contract, 'grid': 'LINZ NETZ'}
-    half = W.render_page({**base, 'costs': costs, 'energy': {'grid_from': [], 'uses_consumption': False, 'uses_cost': False}})
-    assert 'go green energy (strom flex), strom flex future seit 01.03.2023' in half
-    assert '2 Monate ohne Energiepreis: unten eine Preisliste hochladen' in half and 'action="upload?to=costs"' in half
-    assert '<strong>Kostenerfassung</strong>' in half and '„Lakeside Stromkosten“' in half
-    complete = W.render_page({**base, 'costs': {**costs, 'unpriced': []}, 'energy': {'grid_from': [], 'uses_cost': True}})
-    assert 'alle Monate haben einen Energiepreis' in complete and 'das Energie-Dashboard nutzt die Kosten' in complete
-    assert 'action="upload?to=costs"' in complete                               # always there for later corrections
+CONTRACT = {'supplier': 'go green energy (strom flex)', 'supplier_id': 'gogreen_flex', 'product': 'strom flex future',
+            'start': '01.03.2023', 'start_iso': '2023-03-01', 'params': {}}
+DONE = {'language': 'de', 'site': 'Lakeside', 'portal': {'ok': '2026-10-14T12:00:00+00:00'},
+        'data': {'readings': {'count': 105120, 'from': '01.10.2023', 'to': '13.10.2026'}, 'reconstructed': None, 'live': None},
+        'statistics': {'consumption': {'id': 'x', 'hours': 1, 'from': 'a', 'to': 'b', 'kwh': 1.0, 'gaps': []}},
+        'live_meter': 'sensor.lakeside_grid_energy',
+        'costs': {'id': 'x', 'from': '06.03.2023', 'eur': 1.0, 'years': {}, 'last12': 0, 'unpriced': [],
+                  'contract': CONTRACT, 'grid': 'LINZ NETZ'},
+        'energy': {'grid_from': ['linznetz_energy:lakeside_grid_consumption'], 'uses_consumption': True, 'uses_cost': True,
+                   'consumption_statistic': 'linznetz_energy:lakeside_grid_consumption'}}
+
+
+def states(status):
+    return {step: state for step, state, _ in W.setup_steps(status)}
+
+
+def section(page, name):
+    return page.split(f'<section class="tab" id="{name}"')[1].split('</section>')[0]
+
+
+def test_the_page_has_three_tabs_with_the_cards_in_their_place():
+    page = W.render_page({**DONE, 'comparison': None})
+    assert page.count('<section class="tab"') == 3 and 'data-tab="overview"' in page and 'data-tab="data"' in page
+    overview, setup, data = (section(page, n) for n in ('overview', 'setup', 'data'))
+    assert 'id="costs"' in overview and 'id="summary"' in overview and 'action="contract"' not in overview
+    assert 'id="checklist"' in setup and 'id="supplier"' in setup and 'action="contract"' in setup and 'id="energy"' in setup
+    assert 'id="status"' in data and 'id="history"' in data and 'id="remove"' in data
+    assert '"overview"' in page.split('var tabs = ')[1].split('key =')[0]           # all done: opens on the overview
+
+
+def test_the_checklist_follows_the_setup():
+    fresh = {'language': 'de', 'setup': [['problem.username', {}]], 'statistics': {}}
+    assert states(fresh) == {'portal': 'todo', 'download': 'later', 'history': 'later', 'live': 'optional',
+                             'supplier': 'todo', 'prices': 'later', 'dashboard': 'later'}
+    half = {**DONE, 'live_meter': '', 'costs': {**DONE['costs'], 'contract': None, 'from': None},
+            'energy': {'grid_from': ['sensor.x'], 'uses_consumption': False}}
+    assert states(half) == {'portal': 'done', 'download': 'done', 'history': 'done', 'live': 'optional',
+                            'supplier': 'todo', 'prices': 'later', 'dashboard': 'todo'}
+    assert W.open_required(W.setup_steps(half)) == 2
+    assert set(states(DONE).values()) == {'done'}
+    unpriced = {**DONE, 'costs': {**DONE['costs'], 'unpriced': ['2023-03']},
+                'energy': {**DONE['energy'], 'uses_cost': False}}
+    assert states(unpriced)['prices'] == 'optional' and states(unpriced)['dashboard'] == 'todo'   # costs not used yet
+    page = W.render_page(half)
+    checklist = section(page, 'setup').split('id="checklist"')[1].split('</ol>')[0]
+    assert 'Erste Schritte' in checklist and 'noch 2 nötige(r) Schritt(e) offen' in page
+    assert '<a href="#supplier">Dorthin</a>' in checklist and '(optional)' in checklist
+    assert '105\u00a0120 Viertelstunden seit 01.10.2023' in checklist
+
+
+def test_the_guide_opens_the_setup_until_it_is_skipped():
+    half = {**DONE, 'costs': {**DONE['costs'], 'contract': None}}
+    guided = W.render_page(half)
+    assert '"setup"' in guided.split('var tabs = ')[1].split('key =')[0] and 'Vorerst überspringen' in guided
+    assert 'pill run count">1</span>' in guided                                    # the tab says how many are open
+    skipped = W.render_page({**half, 'guide_skipped': True})
+    assert '"overview"' in skipped.split('var tabs = ')[1].split('key =')[0] and 'Vorerst überspringen' not in skipped
+    assert 'Einrichtung: noch 1 Schritt(e) offen.' in section(skipped, 'overview')  # still findable
+    assert 'Einrichtung im Überblick' in skipped
+    done = W.render_page(DONE)
+    assert 'Alles Nötige ist eingerichtet' in done and 'Einrichtung: noch' not in done
+
+
+def test_the_overview_lists_what_needs_a_look():
+    page = W.render_page({**DONE, 'portal': {'ok': None, 'login_failed': '2026-10-14T12:00:00+00:00'},
+                          'statistics': {'consumption': {**DONE['statistics']['consumption'],
+                                                         'gaps': [{'from': 'a', 'to': 'b', 'hours': 3}]}},
+                          'costs': {**DONE['costs'], 'unpriced': ['2023-03', '2023-04']}})
+    card = section(page, 'overview').split('id="attention"')[1].split('</ul>')[0]
+    assert 'Das Portal lehnt die Anmeldung ab.' in card and '1 Lücke(n) in der Verbrauchsstatistik.' in card
+    assert '2 Monat(e) ohne Energiepreis.' in card and '<a href="#price-upload">' in card
+    assert 'id="attention"' not in W.render_page(DONE)                              # nothing to look at: no card
+
+
+def test_skipping_the_guide_is_kept(server):
+    url, store, wake = server
+
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **kw):
+            return None
+    with pytest.raises(urllib.error.HTTPError) as err:
+        urllib.request.build_opener(NoRedirect).open(
+            urllib.request.Request(url + '/onboarding', data=b'guide=skip', method='POST'))
+    assert err.value.headers['Location'] == './#overview' and W.read_status(store)['guide_skipped'] is True
+    assert not wake.is_set()                                                        # nothing for the main loop
 
 
 def test_a_price_list_uploaded_in_the_card_returns_there(server):

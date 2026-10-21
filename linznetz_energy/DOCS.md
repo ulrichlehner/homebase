@@ -164,12 +164,12 @@ supplier is counted until its charges are added.
 From 1 April 2026 the grid usage charge is 20 % lower from April to September between 10:00
 and 16:00 (Sommer-Nieder-Arbeitspreis); the add-on counts these hours with the lower price.
 
-The **Costs** card on the add-on page walks through the setup in three steps and shows the state of
-each: set the supplier, upload prices for earlier months (optional), use the costs in the Energy
-dashboard. After saving, the card shows "being calculated" and updates itself until the costs are there.
+The supplier and the price lists are set on the add-on page under **Setup**, card **Supplier and
+prices**; the costs themselves are on the **Overview**. After saving, the card shows "being
+calculated" and updates itself until the costs are there.
 
-**Supplier.** You can switch suppliers, so the supplier is set on the add-on page under **Costs**,
-**Set the supplier**, from a date:
+**Supplier.** You can switch suppliers, so the supplier is set on the add-on page under **Setup**,
+**Supplier and prices**, **Set the supplier**, from a date:
 
 | Supplier | Prices |
 | --- | --- |
@@ -182,7 +182,7 @@ suppliers can be added to the add-on as modules.
 **Earlier months.** go green shows the last 13 months; the add-on keeps every month it has
 fetched, so from then on nothing is missing. Older months have no energy price; the page lists
 them under **Months without energy price** (they count grid charges, levies and fees only). A
-price list fills them: choose it or drop it in the **Costs** card (it uploads right away), as `prices.csv`
+price list fills them: choose it or drop it in the **Supplier and prices** card under **Setup** (it uploads right away), as `prices.csv`
 or any name ending in `_prices.csv`, for example with the monthly prices from your bills:
 
 ```text
@@ -231,7 +231,7 @@ Any entity in Home Assistant that has the meter's energy counter live (a total i
 the live source: for example the meter's wM-Bus radio received with the wmbusmeters add-on and the
 `amiplus_linznetz` driver of this repository, or a reader on the meter's customer interface.
 
-Pick it on the add-on page (**Open Web UI**) under **Live meter**: the list shows the sensors that
+Pick it on the add-on page (**Open Web UI**) under **Setup**, **Live meter**: the list shows the sensors that
 count energy upwards (Wh, kWh or MWh, without daily or monthly utility meters) with their current
 value, so the right counter is easy to spot. **Save** applies it right away, without a restart.
 The choice is kept in the add-on's own folder (and so in its backups); the page is the one place
@@ -298,24 +298,35 @@ Without a broker the add-on works the same, only without these entities.
 ## The add-on page
 
 **Open Web UI** on the add-on page (or the sidebar entry, if you switch on "Show in sidebar") opens
-the add-on's page inside Home Assistant. It shows
+the add-on's page inside Home Assistant. It has three tabs:
 
-- what the add-on does right now (first download, import, writing statistics), refreshing itself
-  while something runs, plus the last and next run and the portal login,
-- the data it has: portal readings and reconstructed history with their ranges,
-- the statistic with its range, total and sources, its gaps (hours no source covers, for example
-  months the portal no longer has; older readings fill them, see below), and the live vs portal check,
-- the live meter choice (see above),
-- the costs: grid operator, supplier, the price now, totals per year, months without energy price, and the
-  form to set the supplier,
-- the fixed price comparison (see "Fixed price comparison"),
-- the Energy dashboard card, the history import and the result of the last import,
-- at the bottom, removing everything from Home Assistant (see "Uninstalling").
+- **Overview**, what you look at often: a short list of what needs a look (a rejected portal login,
+  gaps in the statistic, live meter deviations, missing prices, double counting in the Energy
+  dashboard), each with a link to where it is fixed; the costs (supplier, price now, totals per
+  year); the fixed price comparison; and the status in short.
+- **Setup**: the setup checklist, then the cards for the live meter (see above), supplier and
+  prices, and the Energy dashboard.
+- **Data & maintenance**: the status in full (runs, portal login and schedule, **Fetch now**), the
+  data and their ranges, the statistic with its sources and gaps (hours no source covers, for
+  example months the portal no longer has; older readings fill them, see below), the history
+  import with the result of the last import, and at the bottom removing everything from Home
+  Assistant (see "Uninstalling").
+
+Messages (for example after an upload), an incomplete configuration and the password warning
+show above the tabs. The page refreshes itself while something runs and stays on its tab.
+
+**Getting started.** The checklist lists every setup step in order with its state: portal
+access, first download, older history (optional), live meter (optional, recommended), supplier,
+prices for earlier months (optional) and the Energy dashboard. Each open step links to its card.
+While a required step is open, the page opens on **Setup** with the checklist as "Getting started"
+and the tab shows how many are left. **Skip for now** opens the **Overview** instead, where a line
+says how many steps are still open. Once everything required is done, the checklist stays under
+**Setup** as a reference.
 
 ## Bringing older history
 
 The portal keeps only about 36 months. If you have older data from the homebase tools, upload it on
-the add-on page under **Import older readings** (the names start with your metering point number):
+the add-on page under **Data & maintenance**, **Import older readings** (the names start with your metering point number):
 
 - `<meterId>_readings.csv`: older portal readings. They are merged row by row; readings the add-on
   already has win, so the file can overlap with the portal.
