@@ -218,17 +218,39 @@ upstream. Everything that differs:
 
 Field names, quantities and the `unique_id`s of the entities are those of the stock driver.
 
-**3. Check the add-on log:**
+**3. Set the receiver.** Tab **Home** → `device`:
+
+```
+rtlwmbus:CMD(rtl_sdr -f 868.95M -s 1600000 - 2>/dev/null | rtl_wmbus -f -p s -a -t 0)
+```
+
+The default `auto:t1` starts rtl_wmbus at 868.625 MHz with `-s` and decodes S1 and T1/C1, each
+with two methods (run length and time2), so every telegram arrives twice. The meter only sends T1
+on 868.95 MHz, so most of that work is wasted:
+
+| Option | Effect |
+|---|---|
+| `rtl_sdr -f 868.95M` | listens on the T1 frequency directly, no frequency shift |
+| `-p s` | no S1 decoding. rtl_wmbus runs it even without `-s`, so `rtlwmbus:868.95M` alone saves nothing |
+| `-a` | faster, less accurate arctangent |
+| `-t 0` | only the run length method, no duplicate telegrams |
+| `-f` | rtl_wmbus exits when rtl_sdr stops delivering, and wmbusmeters restarts the pipeline |
+
+On a Raspberry Pi 5 this took wmbusmeters from 22 % to 7.6 % of one CPU core, with telegrams still
+every 5 s. If telegrams go missing, drop `-t 0` first.
+
+**4. Check the add-on log:**
 
 - no `No such driver`, no restart loop,
-- ends with `Started auto rtlwmbus … listening on t1`.
+- ends with `Started config rtlwmbus listening on none using CMD(…)` (with the default device:
+  `Started auto rtlwmbus … listening on t1`).
 
 To see telegrams, set `logtelegrams` to `true` in the Home tab for a while. The log lines contain
 the raw decrypted telegram, counters included, and the add-on's start lines show the key: keep
 the log private. `tools/telegram_log.py` turns it into anonymised samples, see
 [`samples/`](samples/README.md). Set it back to `false` afterwards.
 
-**4. Check Home Assistant.** Settings → Devices & services → MQTT → your meter:
+**5. Check Home Assistant.** Settings → Devices & services → MQTT → your meter:
 
 - import, export and powers show values, entity IDs unchanged (no `_2` suffixes),
 - import and export are plausible against the meter display or the portal and only rise slowly,
@@ -262,7 +284,7 @@ Preferred: no custom code.
    docs for the exact option syntax):
 
    ```
-   device=rtlwmbus
+   device=rtlwmbus    # better the CMD from step 3 of the install above
    name=strom
    driver=amiplus
    id=<METER-ID>      # from the add-on log, see findings above
