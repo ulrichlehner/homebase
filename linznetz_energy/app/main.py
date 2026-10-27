@@ -861,7 +861,7 @@ def check_password_secret(hass, store: Path, lang: str) -> None:
             write_state(store, state)
         return
     if not state.get('secret_warned'):
-        logger.warning('The portal password is stored as plain text in the add-on configuration; '
+        logger.warning('The portal password is stored as plain text in the app configuration; '
                        'keep it in secrets.yaml and enter "!secret linznetz_password" instead (see the documentation)')
         notify(hass, SECRET_NOTIFICATION, t(lang, 'secret.title'), secret_instructions(lang))
         state['secret_warned'] = True
@@ -883,7 +883,7 @@ def handle_live_meter_request(hass, store: Path) -> None:
     state = read_state(store)
     state['live_meter'] = entity_id
     write_state(store, state)
-    logger.info('Live meter set on the add-on page: %s', entity_id or '(none, portal only)')
+    logger.info('Live meter set on the app page: %s', entity_id or '(none, portal only)')
     web.write_status(store, live_meter_request=None, live_meter_result={'state': 'saved', 'entity': entity_id})
 
 
@@ -903,7 +903,7 @@ def handle_removal_request(hass, options: Options, store: Path) -> None:
         state.pop('removed', None)
         write_state(store, state)
         web.write_status(store, removal_request=None, removal={}, phase='starting', detail='')
-        logger.info('Reactivated on the add-on page')
+        logger.info('Reactivated on the app page')
         return
     web.write_status(store, phase='removing', detail='')
     energy = energy_status(hass, options)
@@ -941,7 +941,7 @@ def remove_all(hass, options: Options) -> None:
         raise RuntimeError('the MQTT broker did not take the removal of the device')
     for notification_id in ALL_NOTIFICATIONS:
         notify(hass, notification_id, '', None)
-    logger.info('Removed from Home Assistant: statistics %s, the MQTT device, the notifications; the add-on is paused',
+    logger.info('Removed from Home Assistant: statistics %s, the MQTT device, the notifications; the app is paused',
                 ', '.join(existing) or '(none)')
 
 
@@ -997,7 +997,7 @@ def announce_setup(store: Path, problems: list) -> None:
     """Explains an incomplete configuration in the log, on the add-on page and as a
     notification; dismisses that notification once the configuration is complete."""
     if problems:
-        logger.warning('The add-on is not configured yet:')
+        logger.warning('The app is not configured yet:')
         for key, values in problems:
             logger.warning('  %s', t('en', key, **values))
         logger.warning(t('en', 'setup.howto'))
@@ -1058,7 +1058,7 @@ def connect() -> HomeAssistant:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description='LINZ NETZ Energy add-on')
+    parser = argparse.ArgumentParser(description='LINZ NETZ Energy app')
     parser.add_argument('--once', action='store_true', help='run one cycle and exit')
     parser.add_argument('-d', '--debug', action='store_true')
     args = parser.parse_args(argv)
@@ -1109,7 +1109,7 @@ def main(argv=None) -> int:
                     check_password_secret(hass, store, config.get('language') or 'en')
                     fetch_now = bool(web.read_status(store).get('fetch_request'))
                     if fetch_now:
-                        logger.info('Portal fetch requested on the add-on page')
+                        logger.info('Portal fetch requested on the app page')
                         web.write_status(store, fetch_request=None)
                     run_once(hass, options, store, tz, datetime.now(UTC), config.get('language') or 'en', fetch_now,
                              portal_only=not full and not woken)
@@ -1135,7 +1135,7 @@ def main(argv=None) -> int:
         logger.debug('Next %s at %s', 'run' if full else 'portal check', at.isoformat())
         woken = wake.wait(max(1.0, (at - datetime.now(UTC)).total_seconds()))
         if woken:
-            logger.info('Woken up by the add-on page')
+            logger.info('Woken up by the app page')
 
 
 if __name__ == '__main__':
