@@ -1,6 +1,6 @@
 # Homebase
 
-> Not affiliated with LINZ NETZ GmbH. The tools and the Home Assistant add-on use the public LINZ NETZ
+> Not affiliated with LINZ NETZ GmbH. The tools and the Home Assistant app use the public LINZ NETZ
 > customer portal with your own login, the same way you would in the browser.
 
 Home energy monitoring: fetches quarter-hour smart meter readings from the
@@ -27,7 +27,7 @@ Everything lives in one data folder (`DATA_DIR`, see below):
 
 `databot csv` keeps the readings file current and rewrites the unified file; `render.py` draws the
 charts from the unified file. Both run on demand; the regular fetching for Home Assistant is done by
-the add-on in `linznetz_energy/`.
+the app in `linznetz_energy/`.
 
 Prerequisite: the quarter-hour analysis ("Viertelstundenauswertung") must be enabled for the meter
 in the portal. The portal shows the values of a day one to two days later.
@@ -61,7 +61,7 @@ starts a new file with whatever the portal still has.
 
 ## Commands
 
-All commands read the configuration from `.env` (see [App setup](#app)).
+All commands read the configuration from `.env` (see [Command line tools](#command-line-tools)).
 
 ### Readings CSV
 
@@ -171,10 +171,10 @@ to change how many days are requested from the portal per request, and `-d` for 
 
 ## Releases
 
-The Home Assistant add-on in `linznetz_energy/` is versioned with [release-please](https://github.com/googleapis/release-please)
+The Home Assistant app in `linznetz_energy/` is versioned with [release-please](https://github.com/googleapis/release-please)
 from [conventional commits](https://www.conventionalcommits.org/): `fix:` gives a patch, `feat:` a minor
 and `feat!:` or a `BREAKING CHANGE:` footer a major release; `docs:`, `chore:`, `test:` and `refactor:`
-give none. It started at 0.1.0 and reached 1.0.0 once the add-on covered the whole plan (live meter readings,
+give none. It started at 0.1.0 and reached 1.0.0 once the app covered the whole plan (live meter readings,
 portal, history, the Energy dashboard). On every push to `main` release-please opens or updates a release PR with the next version
 in `linznetz_energy/config.yaml` and the new entries in `linznetz_energy/CHANGELOG.md`. Merging it
 creates the tag and the GitHub release, and the image workflow builds the images of that version.
@@ -182,7 +182,7 @@ Version images are never overwritten: HA offers the update as soon as the releas
 the images are built (a few minutes). The only exception is a manual run of the workflow
 `addon-image.yml` with `force`, for example to replace an image built from a branch by mistake.
 
-### Add-on icon and logo
+### App icon and logo
 
 `linznetz_energy/icon.png` and `logo.png` are rendered from the SVG sources in
 `linznetz_energy/assets/` (`icon.svg`; `logo.svg` embeds it and adds the name). Change the SVG, then
@@ -193,9 +193,9 @@ run `./homebase assets` and commit the PNGs too; `./homebase assets --check` (an
 
 | Folder              | Content                                                                                  |
 | ------------------- | ---------------------------------------------------------------------------------------- |
-| `lib/homebase/`     | the shared library (Python package `homebase`), no command line, no add-on specifics: `portal` (LINZ NETZ client), `readings` (the CSV archive), `disaggregate`, `fusion`, `livearchive` (the archive of the radio readings), `hass` (Home Assistant websocket client) |
+| `lib/homebase/`     | the shared library (Python package `homebase`), no command line, no app specifics: `portal` (LINZ NETZ client), `readings` (the CSV archive), `disaggregate`, `fusion`, `livearchive` (the archive of the radio readings), `hass` (Home Assistant websocket client) |
 | `databot/`          | the command line tools for Docker on the Mac: `databot.py` (`csv`, `merge`, `check`, `disaggregate`, `fuse`), `render.py` (charts), `reconstruct.py` (chart OCR), `ha_spike.py` (HA import test) |
-| `linznetz_energy/`  | the Home Assistant add-on: `app/main.py` (main loop), `app/web.py` (its page in HA), `config.yaml`, docs, assets |
+| `linznetz_energy/`  | the Home Assistant app: `app/main.py` (main loop), `app/web.py` (its page in HA), `config.yaml`, docs, assets |
 | `smartmeter/`       | the wM-Bus driver and MQTT discovery for the RF readings of the meter                    |
 
 Both images install the library from `lib/` (`databot/Dockerfile` and `linznetz_energy/Dockerfile`,
@@ -220,7 +220,7 @@ dependencies, `pytest` wired into the Testing view, tesseract, shellcheck, git/G
 survive rebuilds, and the host's Docker, so `./homebase …` and the tasks in `.vscode/tasks.json` work
 unchanged. Use an absolute `DATA_DIR` in `.env` there (`~` would expand to the container's home).
 
-To try the add-on in a real Home Assistant without touching your own, pick the second container,
+To try the app in a real Home Assistant without touching your own, pick the second container,
 "HA app test" (`.devcontainer/ha-app`, from Home Assistant's
 [app testing guide](https://contributors.home-assistant.io/apps/guides/testing/)). It runs the
 Supervisor and Home Assistant in Docker on your computer:
@@ -237,7 +237,7 @@ radio and no AppArmor in this container; the portal works with your login.
 
 Requires Docker (Docker Desktop on the Mac).
 
-### App
+### Command line tools
 
 Clone this repo and create a `./.env` with the following content, then run `./homebase csv`:
 

@@ -14,5 +14,5 @@ reading in Home Assistant, completed and checked with the LINZ NETZ portal, with
 
 See the Documentation tab.
 
-> Not affiliated with LINZ NETZ GmbH. The add-on uses the public LINZ NETZ customer portal with your own
+> Not affiliated with LINZ NETZ GmbH. The app uses the public LINZ NETZ customer portal with your own
 > login, the same way you would in the browser.

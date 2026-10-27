@@ -1,6 +1,6 @@
 # LINZ NETZ Energy
 
-> Not affiliated with LINZ NETZ GmbH. The add-on uses the public LINZ NETZ customer portal with your own
+> Not affiliated with LINZ NETZ GmbH. The app uses the public LINZ NETZ customer portal with your own
 > login, the same way you would in the browser.
 
 Fetches the quarter-hour readings of your smart meter from the
@@ -16,11 +16,11 @@ writes them into Home Assistant as a long-term statistic for the Energy dashboar
 
 ## First start
 
-Install the add-on (Home Assistant now calls add-ons "apps"), fill in the **Configuration** tab
+Install the app (Home Assistant calls add-ons "apps" since 2026.2), fill in the **Configuration** tab
 (portal username, portal password and the metering point; everything else has defaults), save and
 start it. If you start it before that, it starts anyway and tells you what is missing: on its page
 (**Open Web UI**), in a notification and in the log. After saving the configuration, restart the
-add-on on the **Info** tab, and the first download begins.
+app on the **Info** tab, and the first download begins.
 
 Note: Home Assistant only enables **Save** after a field was changed. The page and the
 notifications follow the language of Home Assistant (German and English; the log stays English).
@@ -40,50 +40,50 @@ The form hides the password, but the YAML view of the configuration shows it. Ke
 Assistant's `secrets.yaml` instead, the way Home Assistant handles secrets everywhere:
 
 1. Add a line to `secrets.yaml` in the Home Assistant configuration folder, for example with the
-   File editor add-on (Settings > Apps > Install app > File editor); keep the quotes:
+   File editor app (Settings > Apps > Install app > File editor); keep the quotes:
 
    ```yaml
    linznetz_password: "your-portal-password"
    ```
 
-2. In the add-on's **Configuration** tab, open the menu (⋮) > **Edit in YAML** and write
+2. In the app's **Configuration** tab, open the menu (⋮) > **Edit in YAML** and write
 
    ```yaml
    portal_password: "!secret linznetz_password"
    ```
 
-   then save and restart the add-on.
+   then save and restart the app.
 
 If saving reports "Unknown secret 'linznetz_password'", Home Assistant has not seen the line yet:
 make sure `secrets.yaml` is saved (in File editor the disk icon at the top right is red while
 something is unsaved), wait a minute (the Supervisor reads `secrets.yaml` at most once a minute),
 reload the page and save again. Double or single quotes around `!secret …` make no difference.
 
-The add-on configuration then only holds the reference; Home Assistant puts the password in when
-the add-on starts. The same works for `portal_username`. Choosing the live meter on the add-on page
+The app configuration then only holds the reference; Home Assistant puts the password in when
+the app starts. The same works for `portal_username`. Choosing the live meter on the app page
 keeps the reference as it is. Backups contain `secrets.yaml`, so keep them encrypted (the default
 for Home Assistant backups).
 
-While the password is stored as plain text, the add-on page shows these steps and Home
-Assistant gets one notification with them; the add-on works either way.
+While the password is stored as plain text, the app page shows these steps and Home
+Assistant gets one notification with them; the app works either way.
 
-There is no fetch interval to set: the add-on knows when the portal can have something new
+There is no fetch interval to set: the app knows when the portal can have something new
 (see below).
 
 ## What it does
 
-Every hour at a quarter past (Home Assistant has compiled the previous hour by then), the add-on
+Every hour at a quarter past (Home Assistant has compiled the previous hour by then), the app
 
 1. takes over history files you dropped into its `import/` folder (see below),
 2. fetches new readings from the portal when it can have something new: LINZ NETZ publishes a
    day one to two days later, at a time of its own. So while yesterday is not complete on the
-   portal yet, the add-on looks at every hourly run between 06:00 and 22:00, and every quarter
+   portal yet, the app looks at every hourly run between 06:00 and 22:00, and every quarter
    hour (:00, :15, :30, :45) from one hour before to two hours after the time new days usually
    arrive, so a new day is in Home Assistant within 15 minutes; once it has arrived, it waits for
-   the next day. That is a few logins a day. The add-on page shows the next fetch and when new
+   the next day. That is a few logins a day. The app page shows the next fetch and when new
    days usually arrive, to the quarter hour. A quarter hour check only looks at the portal; when it
    brings a new day, the rest of the run follows right away. The first run downloads everything the portal still has (about
-   three years) right away, **Fetch now** on the add-on page fetches at any time, and after a
+   three years) right away, **Fetch now** on the app page fetches at any time, and after a
    rejected login it waits 6 hours,
 3. imports one external statistic, `linznetz_energy:<site>_grid_consumption`, shown as
    "<Site> grid consumption" (in German "<Site> Netzbezug"): the best source per hour (the live meter
@@ -91,7 +91,7 @@ Every hour at a quarter past (Home Assistant has compiled the previous hour by t
    completely every time, so values the portal delivers or corrects later end up in Home Assistant
    too. This is the statistic for the Energy dashboard.
 
-The live meter and the portal are compared by the add-on itself (its page, the status entities and a
+The live meter and the portal are compared by the app itself (its page, the status entities and a
 notification), so there is no separate portal statistic; the one written by versions before 1.0.0
 is deleted once.
 
@@ -100,7 +100,7 @@ from grid**.
 
 ## How the statistic is built
 
-The statistic has one value per hour. For every hour the add-on takes the best source it has:
+The statistic has one value per hour. For every hour the app takes the best source it has:
 
 | Order | Source | When it is used |
 | --- | --- | --- |
@@ -119,14 +119,14 @@ A few rules on top:
 
 - **Live first, portal as check.** When the portal later has an hour the live meter already
   delivered, the live value stays. If the two differ by more than 2 % (at least 20 Wh), the hour
-  counts as a deviation on the add-on page; whole days are compared too.
-- **Reception gaps.** When the meter sends no usable counter for a while, the add-on splits the
+  counts as a deviation on the app page; whole days are compared too.
+- **Reception gaps.** When the meter sends no usable counter for a while, the app splits the
   consumption of that gap between the hours by the meter's power readings. Without power readings
   the split is an estimate, and the measured portal value replaces it once the portal has it.
 - **Nothing is double.** Each hour has exactly one value from one source, so switching sources
   never counts anything twice.
 - **Gaps stay gaps.** An hour no source has gets no value; the running total simply continues.
-  The add-on page lists such gaps under **Statistics**, and older readings fill them (see
+  The app page lists such gaps under **Statistics**, and older readings fill them (see
   "Bringing older history").
 - **Rebuilt every hour.** The whole statistic is written again each time, so a value the portal
   delivers or corrects later replaces the earlier one in Home Assistant.
@@ -134,11 +134,11 @@ A few rules on top:
 An example day, seen on the next morning: the hours until midnight come from the live meter, one
 hour around a reception gap is split by the power readings, and an hour in which the receiver was
 off is still empty. A day later the portal has the whole day: the empty hour gets the portal value,
-and the add-on checks the live hours against the portal.
+and the app checks the live hours against the portal.
 
 ## Costs
 
-The add-on also writes the costs of the consumption, as on the bills of grid operator and supplier
+The app also writes the costs of the consumption, as on the bills of grid operator and supplier
 together: the statistic `linznetz_energy:<site>_grid_cost`, shown as "<Site> electricity cost" (in
 German "<Site> Stromkosten"), a running total in EUR. In the Energy dashboard, pick it at the grid
 connection under **Cost tracking**, **Use an entity tracking the total costs**. (For a statistic
@@ -153,40 +153,40 @@ Every hour costs:
   the Erneuerbaren-Pauschalen, spread evenly over the hours of their month or year,
 - 20 % VAT on all of it; a subsidy such as the Stromkostenzuschuss is deducted after VAT, as on the bill.
 
-**Grid operator.** It follows from the metering point. The add-on knows the charges and levies of
+**Grid operator.** It follows from the metering point. The app knows the charges and levies of
 LINZ NETZ since 2023. Once a day it also reads the grid usage charge, the flat rate and the grid
 loss charge from the current regulation (Systemnutzungsentgelte-Verordnung, SNE-V) in the Austrian
 legal information system [RIS](https://www.ris.bka.gv.at), from December on also next January's
-version, and keeps them. So new grid charges count without an add-on update. The card shows
+version, and keeps them. So new grid charges count without an app update. The card shows
 "grid charges checked today"; if the RIS cannot be read, the built-in charges count. If neither
 has charges for the current year, the card and a Home Assistant notification say so: the costs
-then use the last known charges until an add-on update. The metering fee and the levies come
-from other regulations and are updated with the add-on. For another grid operator only the
+then use the last known charges until an app update. The metering fee and the levies come
+from other regulations and are updated with the app. For another grid operator only the
 supplier is counted until its charges are added.
 
 From 1 April 2026 the grid usage charge is 20 % lower from April to September between 10:00
-and 16:00 (Sommer-Nieder-Arbeitspreis); the add-on counts these hours with the lower price.
+and 16:00 (Sommer-Nieder-Arbeitspreis); the app counts these hours with the lower price.
 
-The supplier and the price lists are set on the add-on page under **Setup**, card **Supplier and
+The supplier and the price lists are set on the app page under **Setup**, card **Supplier and
 prices**; the costs themselves are on the **Overview**. After saving, the card shows "being
 calculated" and updates itself until the costs are there.
 
-**Supplier.** You can switch suppliers, so the supplier is set on the add-on page under **Setup**,
+**Supplier.** You can switch suppliers, so the supplier is set on the app page under **Setup**,
 **Supplier and prices**, **Set the supplier**, from a date:
 
 | Supplier | Prices |
 | --- | --- |
-| go green energy (strom flex) | the energy price changes every month; the add-on reads it from the same data go green's [flex price page](https://www.gogreenenergy.at/flexpreisentwicklung.html) shows (the last 13 months), as soon as a new month is published, and keeps it. Basic fee and online bonus: as entered for the contract until the add-on first reads them from go green, then as published, each change from the month it is seen (the online bonus only if the contract has one); the "plus" products add their monthly fee. |
+| go green energy (strom flex) | the energy price changes every month; the app reads it from the same data go green's [flex price page](https://www.gogreenenergy.at/flexpreisentwicklung.html) shows (the last 13 months), as soon as a new month is published, and keeps it. Basic fee and online bonus: as entered for the contract until the app first reads them from go green, then as published, each change from the month it is seen (the online bonus only if the contract has one); the "plus" products add their monthly fee. |
 | Fixed price | any supplier with a price guarantee: energy price and basic fee as entered |
 
 A new supplier from a date ends the previous one; the costs before stay as they were. More
-suppliers can be added to the add-on as modules.
+suppliers can be added to the app as modules.
 
 **How fresh the prices are.** Under **Price now** the Costs card says which month go green's
-monthly price is for and when the add-on fetched it; the fixed price tile of the comparison says
+monthly price is for and when the app fetched it; the fixed price tile of the comparison says
 since when the offer is unchanged and when go green's price page was last checked.
 
-**Earlier months.** go green shows the last 13 months; the add-on keeps every month it has
+**Earlier months.** go green shows the last 13 months; the app keeps every month it has
 fetched, so from then on nothing is missing. Older months have no energy price; the page lists
 them under **Months without energy price** (they count grid charges, levies and fees only). A
 price list fills them: choose it or drop it in the **Supplier and prices** card under **Setup** (it uploads right away), as `prices.csv`
@@ -203,7 +203,7 @@ values are net, `vat` as a fraction; `valid_to` is the first day no longer cover
 For go green's "future" products the energy price includes the future surcharge (the bill lists
 it separately). A price list has the last word: its rows replace fetched or built-in values of
 the same charge for their period, for example a basic fee that differed for some months.
-`window` (optional, last column) limits a per-kWh row to months and hours, such as `04-09 10-16`. The prices are kept in `prices.csv` in the add-on folder; importing the same list
+`window` (optional, last column) limits a per-kWh row to months and hours, such as `04-09 10-16`. The prices are kept in `prices.csv` in the app folder; importing the same list
 again changes nothing.
 
 ### Fixed price comparison
@@ -229,27 +229,27 @@ The fixed product matches your strom flex product ("strom future" for "strom fle
   that time is assumed from then on, and a guarantee that was not stated counts as 12 months; an
   (i) next to the guarantee explains which applies.
 
-go green publishes no history of its fixed prices. The add-on knows them from snapshots of go
+go green publishes no history of its fixed prices. The app knows them from snapshots of go
 green's [price page](https://www.gogreenenergy.at/strom.html) in the Internet Archive (monthly
 since 11/2024; before that only the lowest fixed price, without fee and guarantee), reads the page
-once a day and keeps each new offer in `fixed_offers.csv` in the add-on folder. An offer counts
+once a day and keeps each new offer in `fixed_offers.csv` in the app folder. An offer counts
 from the day it was seen; a month gets the offer shown on its 15th. Bonuses for new customers
 and other one-off conditions are not included.
 
 ## Live meter readings (optional)
 
 Any entity in Home Assistant that has the meter's energy counter live (a total in kWh) can serve as
-the live source: for example the meter's wM-Bus radio received with the wmbusmeters add-on and the
+the live source: for example the meter's wM-Bus radio received with the wmbusmeters app and the
 `amiplus_linznetz` driver of this repository, or a reader on the meter's customer interface.
 
-Pick it on the add-on page (**Open Web UI**) under **Setup**, **Live meter**: the list shows the sensors that
+Pick it on the app page (**Open Web UI**) under **Setup**, **Live meter**: the list shows the sensors that
 count energy upwards (Wh, kWh or MWh, without daily or monthly utility meters) with their current
 value, so the right counter is easy to spot. **Save** applies it right away, without a restart.
-The choice is kept in the add-on's own folder (and so in its backups); the page is the one place
+The choice is kept in the app's own folder (and so in its backups); the page is the one place
 to pick it.
 
 Choosing another counter later starts a new live archive, because its readings do not continue
-the old ones; the hours before stay covered by the portal. With a live meter, the add-on
+the old ones; the hours before stay covered by the portal. With a live meter, the app
 
 - reads the new counter readings every hour (only reads, nothing is changed in Home Assistant),
 - cleans them: repeated values count from their first occurrence, phases in which the meter sends
@@ -260,7 +260,7 @@ the old ones; the hours before stay covered by the portal. With a live meter, th
   day come from the live meter right away, and where it has no value (a gap, a misread phase) the
   portal fills in a day or two later,
 - splits the counter across reception gaps by the meter's **power**: the meter sends no usable
-  counter for about half an hour now and then, while its power readings keep coming. The add-on
+  counter for about half an hour now and then, while its power readings keep coming. The app
   finds the power sensor of the same device by itself (for the wM-Bus meter
   `…_current_power_consumption`) and keeps minute means of it for 14 days. On real data that
   splits the hours around a gap to within 1 Wh of the portal (an even split was off by up to
@@ -276,7 +276,7 @@ the old ones; the hours before stay covered by the portal. With a live meter, th
 ## Switching the Energy dashboard
 
 The statistic "<Site> grid consumption" ("<Site> Netzbezug") is meant for the Energy dashboard: the
-whole history, the live meter readings, gaps filled by the portal. The add-on never changes the
+whole history, the live meter readings, gaps filled by the portal. The app never changes the
 dashboard itself; its page shows what the dashboard uses now and what to do:
 
 1. **Settings > Backup**: create a backup.
@@ -291,8 +291,8 @@ This can be undone at any time: the old statistics of the sensor stay, switch ba
 
 ## Status entities
 
-If an MQTT broker is set up in Home Assistant (for example the Mosquitto add-on), the add-on creates
-a device **LINZ NETZ Energy <site>** with these entities (no credentials needed, the add-on gets the
+If an MQTT broker is set up in Home Assistant (for example the Mosquitto app), the app creates
+a device **LINZ NETZ Energy <site>** with these entities (no credentials needed, the app gets the
 broker from Home Assistant):
 
 | Entity | Content |
@@ -307,9 +307,9 @@ broker from Home Assistant):
 | Electricity price energy | the same at the supplier: the energy price of the current contract |
 | Electricity price total | both together |
 
-Without a broker the add-on works the same, only without these entities.
+Without a broker the app works the same, only without these entities.
 
-The add-on page lists all of them with their current entity IDs under **Setup**, **Sensors and
+The app page lists all of them with their current entity IDs under **Setup**, **Sensors and
 statistics**. When the price sensors are first created, a Home Assistant notification points there.
 
 ### Electricity prices
@@ -319,11 +319,11 @@ the grid operator's per-kWh charges and levies on one, the supplier's energy pri
 Fixed fees (per month or year) do not depend on the consumption and are left out; they are in the
 cost statistic. The grid price follows the summer low rate (April to September, 10:00 to 16:00), the
 energy price follows a monthly price (goGreen Strom FLEX) or a contract change. The sensors change a
-few minutes after the full hour, when the add-on runs. Before a supplier is set on the add-on page
+few minutes after the full hour, when the app runs. Before a supplier is set on the app page
 they are unknown.
 
 Their history goes back to the start of the first contract, not only to when the sensors were
-created: the add-on writes the price of every past hour into the sensors' long-term statistics
+created: the app writes the price of every past hour into the sensors' long-term statistics
 (again completely when a price changes, for example after a price list import). Show them with a
 **Statistics graph** card (statistic type "mean", period "hour" to "month") or a **History graph**
 card, for example:
@@ -341,17 +341,17 @@ days_to_show: 365
 chart_type: line
 ```
 
-## The add-on page
+## The app page
 
-**Open Web UI** on the add-on page (or the sidebar entry, if you switch on "Show in sidebar") opens
-the add-on's page inside Home Assistant. It has three tabs:
+**Open Web UI** on the app page (or the sidebar entry, if you switch on "Show in sidebar") opens
+the app's page inside Home Assistant. It has three tabs:
 
 - **Overview**, what you look at often: a short list of what needs a look (a rejected portal login,
   gaps in the statistic, live meter deviations, missing prices, double counting in the Energy
   dashboard), each with a link to where it is fixed; the costs (supplier, price now, totals per
   year); the fixed price comparison; and the status in short.
 - **Setup**: the setup checklist, then the cards for the live meter (see above), supplier and
-  prices, the Energy dashboard, and **Sensors and statistics**: everything the add-on gives Home
+  prices, the Energy dashboard, and **Sensors and statistics**: everything the app gives Home
   Assistant (the statistics with their use, every sensor with its current entity ID), plus a price
   chart card to copy into a dashboard.
 - **Data & maintenance**: the status in full (runs, portal login and schedule, **Fetch now**), the
@@ -374,47 +374,47 @@ says how many steps are still open. Once everything required is done, the checkl
 ## Bringing older history
 
 The portal keeps only about 36 months. If you have older data from the homebase tools, upload it on
-the add-on page under **Data & maintenance**, **Import older readings** (the names start with your metering point number):
+the app page under **Data & maintenance**, **Import older readings** (the names start with your metering point number):
 
-- `<meterId>_readings.csv`: older portal readings. They are merged row by row; readings the add-on
+- `<meterId>_readings.csv`: older portal readings. They are merged row by row; readings the app
   already has win, so the file can overlap with the portal.
 - `<meterId>_reconstructed_15min.csv`: the reconstructed history from `./homebase disaggregate`. It
   replaces an earlier one and becomes part of the consumption statistic.
 
-The add-on imports the files right away, the page and a notification list what was imported.
+The app imports the files right away, the page and a notification list what was imported.
 Importing the same file again changes nothing. Files that cannot be imported (another metering
 point, an unexpected header, another file) are listed with the reason.
 
-Alternatively, copy the files into the `import` folder of the add-on configuration folder (for
-example with the Samba add-on); they are picked up on the next full hour. Processed files move to
+Alternatively, copy the files into the `import` folder of the app configuration folder (for
+example with the Samba app); they are picked up on the next full hour. Processed files move to
 `import/done/`, rejected ones to `import/failed/`.
 
 ## Data
 
-The CSV files (readings, the reconstructed history and the raw portal exports) live in the add-on
+The CSV files (readings, the reconstructed history and the raw portal exports) live in the app
 configuration folder `/addon_configs/<id>_linznetz_energy/`, reachable with the Samba or SSH
-add-on, and are part of every Home Assistant backup that includes the add-on.
+app, and are part of every Home Assistant backup that includes the app.
 
 ## Security
 
-The add-on runs with Ingress (Home Assistant handles the login of its page, and the page only
+The app runs with Ingress (Home Assistant handles the login of its page, and the page only
 answers Home Assistant) and its own AppArmor profile (`apparmor.txt`): it may use the network,
 read Python and the system files it needs, and write only to its own folders; it starts no other
 program. Access outside these rules is denied; the host logs it as `apparmor="DENIED"` with
 `profile="…linznetz_energy"` (Terminal & SSH: `ha host logs --identifier audit | grep linznetz`).
 
-Home Assistant's security rating of the add-on counts the profile once the add-on is installed.
+Home Assistant's security rating of the app counts the profile once the app is installed.
 
 ## Uninstalling
 
-Uninstalling an add-on does not touch what it created in Home Assistant itself: the statistic lives
+Uninstalling an app does not touch what it created in Home Assistant itself: the statistic lives
 in Home Assistant's database, and the device with the status entities is kept by the MQTT broker.
 So, before uninstalling:
 
 1. If the Energy dashboard uses "<Site> grid consumption", switch it back to another source first.
-2. On the add-on page, at the bottom: **Remove everything from Home Assistant**. It deletes the
-   statistics (consumption, costs and the price history), the device with its status entities and the add-on's notifications, and pauses the
-   add-on so nothing is created again. (It refuses while the Energy dashboard still uses the
+2. On the app page, at the bottom: **Remove everything from Home Assistant**. It deletes the
+   statistics (consumption, costs and the price history), the device with its status entities and the app's notifications, and pauses the
+   app so nothing is created again. (It refuses while the Energy dashboard still uses the
    statistic. Changed your mind? **Reactivate** brings everything back within an hour.)
-3. Uninstall the add-on and tick the option to also delete its data: that removes its own files
-   (the readings archive). Backups that include the add-on keep them.
+3. Uninstall the app and tick the option to also delete its data: that removes its own files
+   (the readings archive). Backups that include the app keep them.
