@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.1](https://github.com/ulrichlehner/homebase/compare/v1.12.0...v1.12.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* the app's page, notifications and log say "app" ("die App") ([#84](https://github.com/ulrichlehner/homebase/issues/84)) ([3fd81bc](https://github.com/ulrichlehner/homebase/commit/3fd81bc87d1e630235e5b23882c2bbca3778af2b))
+
 ## [1.12.0](https://github.com/ulrichlehner/homebase/compare/v1.11.0...v1.12.0) (2026-10-21)
 
 
