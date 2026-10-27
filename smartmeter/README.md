@@ -42,12 +42,12 @@ live power plus import/export counters, usable in the Energy dashboard. Scraping
 - **Decryption with the real key confirmed:** check bytes OK, driver `amiplus`, serial number
   matches the meter number in the portal.
 - Home Assistant already works with the
-  [wmbusmeters HA add-on](https://github.com/wmbusmeters/wmbusmeters-ha-addon), an RTL-SDR dongle
+  [wmbusmeters HA app](https://github.com/wmbusmeters/wmbusmeters-ha-addon), an RTL-SDR dongle
   and a Raspberry Pi running Home Assistant.
 - Findings from that setup:
-  - The official **Mosquitto MQTT broker** add-on must be installed.
-  - The meter ID the add-on needs is **not** the meter number or metering point number from the
-    portal. Take it from the add-on log, from the telegram of the matching electricity meter.
+  - The official **Mosquitto MQTT broker** app must be installed.
+  - The meter ID the app needs is **not** the meter number or metering point number from the
+    portal. Take it from the app log, from the telegram of the matching electricity meter.
   - Old readings from the CSV files may have to be merged into HA's history. Counters must line up
     with the live meter, or `total_increasing` breaks in the Energy dashboard.
 - **Wrong or zero energy values, sometimes** (found 2026-10-06, analysed 2026-10-15): see
@@ -111,7 +111,7 @@ In a log of seven days (2026-10-12 to 19, 117,847 telegrams, one every 5 s, all 
   correctly every time; they can only be ignored.
 - All zero: no counter at all, with normal device clock, access number and power values.
 - Power values (`0B 2B`, `0B AB 3C`) were never affected; they keep coming every 5 s during all
-  phases. The [LINZ NETZ Energy add-on](../linznetz_energy) uses them to split the consumption of
+  phases. The [LINZ NETZ Energy app](../linznetz_energy) uses them to split the consumption of
   such a gap between the hours (to about 1 Wh against the portal).
 
 In Home Assistant a `total_increasing` sensor counts a drop as a meter reset and the return as
@@ -127,7 +127,7 @@ consumption of the whole counter, so every phase books tens or hundreds of kWh t
 - each energy field is therefore defined twice: first for any energy record, scaled to 0 and
   turned into `null` (`force_scale = 0`, `null_value = 0`), then for the LN-666 record, which
   wins when it is there. The `null` keeps the field in every telegram. That matters because the
-  add-on builds the Home Assistant entities from the first telegram after each start and
+  app builds the Home Assistant entities from the first telegram after each start and
   removes the ones it does not contain: without it, a start during a phase removed both energy
   sensors,
 - keeps the field names of `amiplus` (`total_energy_consumption_kwh`,
@@ -142,7 +142,7 @@ Earlier versions read the digits as Wh whatever the VIF said (`vif_scaling = Non
 `force_scale = 1/1000`, `null_value = 0`). That is right for phases with a wrong VIF and wrong for
 phases whose digits match their VIF (the drops to about 1/10 000 and 1/10 on 2026-10-09 and
 2026-10-11), see above. Avoid `override_vif_unit` in any case: it only exists in wmbusmeters
-since 2026-09-25, and an older add-on image silently ignores it.
+since 2026-09-25, and an older app image silently ignores it.
 
 Tests:
 
@@ -153,10 +153,10 @@ smartmeter/tests/run.sh     # synthetic telegrams (tests/telegrams.txt), custom 
 `tests/telegrams_real.txt` adds 472 real telegrams (anonymised, around every switch between
 record kinds): the spec record gives the expected kWh and every other record gives no value,
 while the builtin `amiplus` reports the wrong ones. All 117,847 telegrams of
-[`samples/`](samples/README.md) as one wmbusmeters run (as in the add-on): every spec telegram
+[`samples/`](samples/README.md) as one wmbusmeters run (as in the app): every spec telegram
 gives its counter, every other one `null`; the first telegram of a phase still yields both
-energy entities in the add-on's discovery. Without a local build, run the tests with the
-wmbusmeters of the add-on image:
+energy entities in the app's discovery. Without a local build, run the tests with the
+wmbusmeters of the app image:
 
 ```bash
 docker run --rm -v "$PWD:/repo" -e WMBUSMETERS=/wmbusmeters/wmbusmeters --entrypoint bash \
@@ -170,24 +170,24 @@ on a telegram with your key:
 DRIVER=drivers/amiplus_linznetz.xmq ./wmbus-test.sh analyze [KEY] [HEX]
 ```
 
-## Install in Home Assistant (wmbusmeters add-on 3.1.0, HA OS)
+## Install in Home Assistant (wmbusmeters app 3.1.0, HA OS)
 
-Running on HA OS 18.3 with add-on `wmbusmeters-ha-addon` 3.1.0 and the official Mosquitto
+Running on HA OS 18.3 with app `wmbusmeters-ha-addon` 3.1.0 and the official Mosquitto
 broker. Step 1 before step 2.
 
-**1. Add the driver.** Add-on web UI → tab **Drivers** → add a driver:
+**1. Add the driver.** App web UI → tab **Drivers** → add a driver:
 
-- file name `amiplus_linznetz.xmq`, **with** the extension. The add-on stores exactly this name,
+- file name `amiplus_linznetz.xmq`, **with** the extension. The app stores exactly this name,
   and wmbusmeters only loads `*.xmq` files,
 - content: `drivers/amiplus_linznetz.xmq` from this repo, Save.
 
-The add-on copies `/data/drivers` to its `wmbusmeters.drivers.d` folder on every start. Leave
-`wmbusmeters config location` at its default `/homeassistant/wmbusmeters`: the add-on rebuilds
+The app copies `/data/drivers` to its `wmbusmeters.drivers.d` folder on every start. Leave
+`wmbusmeters config location` at its default `/homeassistant/wmbusmeters`: the app rebuilds
 that folder from its own settings on every start.
 
 **2. Switch the meter.** Tab **Home** → Meters → `driver = amiplus_linznetz`, `id`, `key`, `name`.
-The `id` is the one from the add-on log, not the meter number from the portal. Save, restart the
-add-on.
+The `id` is the one from the app log, not the meter number from the portal. Save, restart the
+app.
 
 Naming: `name` becomes the MQTT topic (`wmbusmeters/<name>`), the device name and the prefix of all
 entity names. A readable name such as `<Place> grid` works: Home Assistant shows
@@ -198,7 +198,7 @@ other) and leave out the street and house number, because names show up in logs 
 Scheme `<Place> <Role>`: `<Place> grid` for the grid meter, later `<Place> PV` for a PV inverter,
 with the municipality as the place.
 
-**Entities.** Since add-on 3.1.0 the MQTT discovery is generated from the driver, when the first
+**Entities.** Since app 3.1.0 the MQTT discovery is generated from the driver, when the first
 telegram of the meter arrives after a start ("Enable mqtt discovery" on, Home tab). No discovery
 file is needed: the driver's fields give six entities, import and export (kWh,
 `total_increasing`, `energy`), both powers (kW, `measurement`, `power`), the device date and time
@@ -239,14 +239,14 @@ on 868.95 MHz, so most of that work is wasted:
 On a Raspberry Pi 5 this took wmbusmeters from 22 % to 7.6 % of one CPU core, with telegrams still
 every 5 s. If telegrams go missing, drop `-t 0` first.
 
-**4. Check the add-on log:**
+**4. Check the app log:**
 
 - no `No such driver`, no restart loop,
 - ends with `Started config rtlwmbus listening on none using CMD(…)` (with the default device:
   `Started auto rtlwmbus … listening on t1`).
 
 To see telegrams, set `logtelegrams` to `true` in the Home tab for a while. The log lines contain
-the raw decrypted telegram, counters included, and the add-on's start lines show the key: keep
+the raw decrypted telegram, counters included, and the app's start lines show the key: keep
 the log private. `tools/telegram_log.py` turns it into anonymised samples, see
 [`samples/`](samples/README.md). Set it back to `false` afterwards.
 
@@ -267,7 +267,7 @@ the log private. `tools/telegram_log.py` turns it into anonymised samples, see
 | energy values 1000× too high after switching the driver | `override_vif_unit` is ignored by older wmbusmeters builds |
 | hourly bars of 90 to 100 kWh, value briefly 1/10 or 1/10 000 of the counter | non-spec energy records read by an earlier driver version |
 | entity IDs still carry the old name after deleting and re-adding the device | HA restores entity IDs via the `unique_id`; rename them by hand in the entity settings |
-| the add-on log prints key, ID and meter name in clear text on every start | by design, never share or commit it |
+| the app log prints key, ID and meter name in clear text on every start | by design, never share or commit it |
 
 **After it is confirmed in operation:**
 
@@ -279,30 +279,30 @@ the log private. `tools/telegram_log.py` turns it into anonymised samples, see
 
 Preferred: no custom code.
 
-1. **RTL-SDR on the HA host plus the wmbusmeters add-on** (needs Mosquitto). The HA host must be
-   within radio range of the meter cabinet. Add-on configuration, roughly (check the current add-on
+1. **RTL-SDR on the HA host plus the wmbusmeters app** (needs Mosquitto). The HA host must be
+   within radio range of the meter cabinet. App configuration, roughly (check the current app
    docs for the exact option syntax):
 
    ```
    device=rtlwmbus    # better the CMD from step 3 of the install above
    name=strom
    driver=amiplus
-   id=<METER-ID>      # from the add-on log, see findings above
+   id=<METER-ID>      # from the app log, see findings above
    key=<KEY>
    ```
 
    Values go only into the HA configuration, never into the repo.
 
-2. **Sensors:** with "Enable mqtt discovery" on, the add-on (3.1.0 or later) creates them from
-   the driver, see [Install in Home Assistant](#install-in-home-assistant-wmbusmeters-add-on-310-ha-os).
+2. **Sensors:** with "Enable mqtt discovery" on, the app (3.1.0 or later) creates them from
+   the driver, see [Install in Home Assistant](#install-in-home-assistant-wmbusmeters-app-310-ha-os).
 
 3. **Energy dashboard:** configure grid consumption and feed-in.
 
-   Better: the add-on in [`linznetz_energy/`](../linznetz_energy) takes this counter as its live
+   Better: the app in [`linznetz_energy/`](../linznetz_energy) takes this counter as its live
    source, cleans misread phases (wrong scale, near-zero values, repeated values), fills gaps from
    the LINZ NETZ portal and writes one statistic with the whole history for the Energy dashboard. A
    guard sensor in Home Assistant against the misread spikes is not needed then.
 
 Fallbacks if the HA host is out of range: an ESP32 plus SX1276/SX1262 as a remote receiver → MQTT →
-wmbusmeters bridge add-on, or the Smart-Meter-Adapter, variant MBUS (xDevelop, about 150 €, WLAN/MQTT).
+wmbusmeters bridge app, or the Smart-Meter-Adapter, variant MBUS (xDevelop, about 150 €, WLAN/MQTT).
 If HA runs as a container, run wmbusmeters as its own container next to it.

@@ -1,9 +1,9 @@
 # Real telegrams of the LINZ NETZ meter
 
-Captured with the wmbusmeters add-on in Home Assistant (`logtelegrams: true`, RTL-SDR, T1 mode),
+Captured with the wmbusmeters app in Home Assistant (`logtelegrams: true`, RTL-SDR, T1 mode),
 2026-10-12 12:01 to 2026-10-19 11:05 (meter time), one telegram every 5 s: 117,847 telegrams.
 They are the material for the [driver](../drivers/amiplus_linznetz.xmq) and for the
-[LINZ NETZ Energy add-on](../../linznetz_energy), which splits the reception gaps by power.
+[LINZ NETZ Energy app](../../linznetz_energy), which splits the reception gaps by power.
 
 | File | Content |
 | --- | --- |
@@ -14,7 +14,7 @@ They are the material for the [driver](../drivers/amiplus_linznetz.xmq) and for 
 ## What was changed, what was not
 
 wmbusmeters logs each telegram already decrypted (`telegram=|<header>_<payload>|`).
-[`../tools/telegram_log.py`](../tools/telegram_log.py) keeps only those lines (the add-on's
+[`../tools/telegram_log.py`](../tools/telegram_log.py) keeps only those lines (the app's
 configuration lines with the key are never read) and replaces:
 
 - the meter id in the header and the fabrication number (`0C 78` record) with the fantasy id
@@ -32,7 +32,7 @@ python3 smartmeter/tools/telegram_log.py records LOG smartmeter/samples/<period>
 python3 smartmeter/tools/telegram_log.py samples LOG smartmeter/tests/telegrams_real.txt
 ```
 
-`LOG` is the add-on log: in Home Assistant under Settings → Add-ons → wmbusmeters → Log →
+`LOG` is the app log: in Home Assistant under Settings → Apps → wmbusmeters → Log →
 download, or with an admin token `GET /api/hassio/addons/<slug>/logs?lines=2000000`. Check the
 output for the real meter id (also byte-reversed), the fabrication number and the key before
 committing.
@@ -61,14 +61,14 @@ committing.
 - Spec counter: import 118,376 to 182,371 Wh, never decreasing, no jumps; export unchanged
   (no PV), export power always 0 W; power up to 10,011 W.
 - Power records (`0B 2B`, `0B AB 3C`) were present in every telegram, also during the phases.
-- Reception: the median interval is 5 s; gaps over 2 minutes only at add-on restarts (2 to
+- Reception: the median interval is 5 s; gaps over 2 minutes only at app restarts (2 to
   2.5 min) and during the setup on 12.10. (up to 15 min). One telegram (16.10. 08:46) could not
   be decrypted and was dropped by wmbusmeters ("telegram should have been fully encrypted, but
   was not"), a reception error; one MQTT publish failed (19.10. 10:59, "Bad file descriptor"),
   the next telegram 5 s later went through.
 
 The driver gives the expected kWh for every spec telegram and `null` for every other one, one
-telegram per run (`tests/run.sh`) and over all 117,847 telegrams in one run, as in the add-on.
+telegram per run (`tests/run.sh`) and over all 117,847 telegrams in one run, as in the app.
 
 Non-spec phases:
 

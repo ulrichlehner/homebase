@@ -7,18 +7,18 @@ reconstructed day (March 2023) up to the current hour:
 2. gaps and glitches of the wM-Bus radio readings (RF) filled by the portal values,
 3. RF readings validated against the portal.
 
-Constraints: runs inside Home Assistant OS as a normal add-on from a custom add-on repository
+Constraints: runs inside Home Assistant OS as a normal app from a custom app repository
 (no HACS, no custom integration, HA not exposed to the internet). As native to HA as possible:
 feedback through notifications, status for automations through regular entities (MQTT discovery).
-HA has no native file upload for add-ons (the configuration tab has no file field, the media upload
-only takes images, audio and video), so the add-on has one small page through Ingress, HA's own
-mechanism for add-on pages (HA login, opens inside HA, HA look): status and history upload. The
+HA has no native file upload for apps (the configuration tab has no file field, the media upload
+only takes images, audio and video), so the app has one small page through Ingress, HA's own
+mechanism for app pages (HA login, opens inside HA, HA look): status and history upload. The
 user does not want Samba as the way in. Every derived file is
 non-destructive and repeatable: inputs are never modified, the same inputs give the same output.
 
 ## Design in short
 
-The add-on writes **external statistics** (like the Opower integration does). It never writes
+The app writes **external statistics** (like the Opower integration does). It never writes
 into the statistics of the RF sensor, whose running `sum` would have to be shifted for every
 filled gap and which the recorder keeps extending every hour.
 
@@ -46,12 +46,12 @@ files, HA statistics have no field for it.
 | fused, used in the Energy tab | `linznetz_energy:<place>_grid_consumption`        | external statistic, kWh, `sum`, "<Place> grid consumption" |
 | feed-in (PV site, later)     | `linznetz_energy:<place>_grid_return`             | external statistic, kWh, `sum`            |
 | fused power (optional)       | `linznetz_energy:<place>_grid_power`              | external statistic, kW, `mean`/`min`/`max` |
-| RF vs portal deviation       | `sensor.<place>_grid_rf_deviation`         | MQTT discovery, published by the add-on   |
+| RF vs portal deviation       | `sensor.<place>_grid_rf_deviation`         | MQTT discovery, published by the app   |
 
-The statistic domain is the add-on slug `linznetz_energy` (unique: `linznetz` is also the domain
+The statistic domain is the app slug `linznetz_energy` (unique: `linznetz` is also the domain
 of the HACS integration ha_linznetz). The main statistic has the plain name, matching HA's term
 "grid consumption" and the RF sensor (`total_energy_consumption`); "fused" is an implementation
-detail. Add-on options: `portal_username`, `portal_password`, `metering_point` (the
+detail. App options: `portal_username`, `portal_password`, `metering_point` (the
 Zählpunktnummer, not the meter number), `site`, `fetch_interval_hours`.
 
 The RF entities keep their IDs: renaming them gains nothing (the `linznetz_energy:` prefix already
@@ -64,13 +64,13 @@ can be added later.
 
 Each step ends with something that can be checked before the next one starts. Steps 0 to 5 were
 done in one branch (`fusion-disaggregate`, PR #13, step 5 pulled in so the first install starts with
-the full history), merged so the add-on installs from the plain repository URL. Steps 6 to 8 follow
+the full history), merged so the app installs from the plain repository URL. Steps 6 to 8 follow
 in one new branch and PR. Nothing touches the live
 HA setup before step 7, except the separate `…_grid_consumption_portal` statistic.
 
 ### Step 0: Prerequisites
 
-- [x] HA host: Raspberry Pi 5, `aarch64` (add-on image must be built for it)
+- [x] HA host: Raspberry Pi 5, `aarch64` (app image must be built for it)
 - [x] RF entity IDs: `sensor.<place>_grid_*`
 - [x] Full HA backup before the first statistics import (step 3): "Before HA Energy Add-on", 2026-10-14
 
@@ -117,7 +117,7 @@ Done when the backtest error is acceptable and the source files are unchanged.
 - [x] Dry run over the misread phases of 9.10. and 11.10.: not possible, HA has no data of them.
       The raw states and the 5-minute and hourly statistics of the counter all start at 12.10.
       13:18, when the entities were renamed. The cleaning of such phases is covered by synthetic
-      tests (a tenth of the counter, near-zero values, spikes); the add-on's live archive keeps
+      tests (a tenth of the counter, near-zero values, spikes); the app's live archive keeps
       the raw readings for 90 days, so the next real misread phase can be replayed from there
 - [x] Cross-check with the RF power sensor (integrated, 12.10. 13:18 to 14.10.): 35 complete
       hours -0.33 % against the portal, mean 3 Wh per hour, 13.10. 9.718 vs 9.772 kWh
@@ -126,7 +126,7 @@ Done when the backtest error is acceptable and the source files are unchanged.
 
 ### Step 3: HA import spike (script from the Mac, test data only)
 
-- [x] `lib/homebase/hass.py` (small websocket client, reused by the add-on) and `./homebase ha-spike
+- [x] `lib/homebase/hass.py` (small websocket client, reused by the app) and `./homebase ha-spike
       info | import | clear` (`databot/ha_spike.py`), tested without HA; the metadata fields newer
       HA versions want (`mean_type`, `unit_class`) are discovered and logged
 - [x] Run against HA 2026.10.1: one week (168 hours, 70.167 kWh) imported as `linznetz:test_grid`,
@@ -138,11 +138,11 @@ Done when the backtest error is acceptable and the source files are unchanged.
 - [x] Visual check in a statistics graph card: 13.10. shows 9.77 kWh like the Energy tab, and
       9.10./11.10. are plausible (about 11 and 10 kWh) where the RF statistics have the spikes
 - [x] Delete the test statistic (`./homebase ha-spike clear`); the token stays until step 8 for
-      read-only checks from the Mac (the add-on uses the Supervisor token)
+      read-only checks from the Mac (the app uses the Supervisor token)
 
-### Step 4: Add-on skeleton
+### Step 4: App skeleton
 
-- [x] `repository.yaml` + add-on folder `linznetz_energy/` in this repo, reusing `databot/`
+- [x] `repository.yaml` + app folder `linznetz_energy/` in this repo, reusing `databot/`
       (now the library `lib/homebase/`); main loop `linznetz_energy/app/main.py`
 - [x] `config.yaml` with `homeassistant_api: true` (websocket through the Supervisor, no token),
       options: portal login (password field), meter ID, site name, `fetch_interval_hours`
@@ -150,7 +150,7 @@ Done when the backtest error is acceptable and the source files are unchanged.
       comes from HA; the RF entity follows in step 6
 - [x] Image per architecture (`aarch64`, `amd64`) built by GitHub Actions
       (`.github/workflows/addon-image.yml`), `ghcr.io/ulrichlehner/homebase-linznetz-energy-<arch>`
-- [x] CSV storage in the add-on config folder (`addon_config`, part of HA backups)
+- [x] CSV storage in the app config folder (`addon_config`, part of HA backups)
 - [x] Portal fetch every 12 hours, import of `…_grid_consumption_portal` every hour (complete rebuild,
       in chunks of 5000 rows)
 - [x] Login failure is its own state: HA notification, retry after the interval, the statistic is
@@ -158,7 +158,7 @@ Done when the backtest error is acceptable and the source files are unchanged.
 - [x] Portal client: an expired session is retried with a fresh login (`SessionExpiredError`)
 - [ ] Portal client: tests against recorded, anonymized portal responses of each step of the
       form flow, so layout changes of the portal show up in the tests
-- [x] Tested from the Mac with the add-on image against HA: 27337 hours (6626.673 kWh) imported
+- [x] Tested from the Mac with the app image against HA: 27337 hours (6626.673 kWh) imported
       as `linznetz_energy:<place>_grid_consumption_portal`, portal login and the login-failure notification
       (created and dismissed again) work
 - [x] Image published and public on ghcr.io (both architectures, version 0.1.0)
@@ -174,10 +174,10 @@ Done when the backtest error is acceptable and the source files are unchanged.
 ### Step 5: Load the history once
 
 The portal keeps about 36 months: on 2026-10-14 it starts at 2023-10-01, September 2023 exists only
-in the CSV archive. Without this step the add-on's statistic starts at whatever the portal still has.
+in the CSV archive. Without this step the app's statistic starts at whatever the portal still has.
 
-- [x] `import/` folder in the add-on config folder (reachable over Samba, created on start; the
-      `share` mapping is gone): `<meterId>_readings.csv` is merged row by row (rows the add-on
+- [x] `import/` folder in the app config folder (reachable over Samba, created on start; the
+      `share` mapping is gone): `<meterId>_readings.csv` is merged row by row (rows the app
       already has win), `<meterId>_reconstructed_15min.csv` replaces the previous one; processed
       files move to `import/done/`, rejected ones (other meter, wrong header, other file) to
       `import/failed/`; idempotent; HA notification with what was imported
@@ -185,15 +185,15 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
       "no data" too)
 - [x] New statistic `linznetz_energy:<site>_grid_consumption` (portal, then reconstructed; RF in step 6),
       `…_grid_consumption_portal` stays portal only
-- [x] Tested end to end with the add-on image against HA: 109348 readings and 17180
+- [x] Tested end to end with the app image against HA: 109348 readings and 17180
       reconstructed quarter hours imported; `…_portal` 27337 hours from 2023-09-01 (6626.673
       kWh), `…_fused` 31631 hours from 2023-03-06 (7301.395 kWh)
-- [x] Add-on page (Ingress, "Open Web UI"): status (state, runs, portal login, data ranges, both
+- [x] App page (Ingress, "Open Web UI"): status (state, runs, portal login, data ranges, both
       statistics with sources and deviating hours, last import) and the history upload, which
       imports right away; only reachable through the Ingress proxy; light and dark mode; tested
       locally against HA: first download, then upload added exactly 2880 readings (September
       2023) and the reconstruction
-- [x] On the installed add-on: upload both files on the add-on page (2026-10-15; no gaps, all
+- [x] On the installed app: upload both files on the app page (2026-10-15; no gaps, all
       hours identical to the files)
 
 ### Step 6: Fusion live, running alongside the current setup
@@ -208,22 +208,22 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
       later timestamp made the next step look like 35 kW and cut off a whole evening, found in the
       live test on 2026-10-14)
 - [x] RF vs portal per complete day, notification for days beyond 2 % (once per day), status on the
-      add-on page
+      app page
 - [x] Status entities over MQTT discovery (`services: mqtt:want`, broker from the Supervisor): device
       "LINZ NETZ Energy <site>", entities `sensor.<site>_linznetz_last_portal_fetch`,
       `…_portal_data_until`, `…_live_data_until`, `…_live_deviation`, `…_deviating_hours`,
       `binary_sensor.<site>_linznetz_portal_login_problem`; tested with a local Mosquitto
 - [x] Tested read-only against HA: 57 RF hours up to the current hour, 13.10. RF vs portal 0.0 %
-- [x] Release, choose the live meter on the installed add-on, check the entities in HA (2026-10-15)
+- [x] Release, choose the live meter on the installed app, check the entities in HA (2026-10-15)
 - [ ] About 2 weeks in parallel while the Energy tab still uses the RF sensor, compare daily
       (from 2026-10-15, so until about 2026-10-29)
 
 ### Step 7: Switch the Energy tab
 
-- [x] Prepared in the add-on: a card "Energy dashboard" on the add-on page reads the dashboard
+- [x] Prepared in the app: a card "Energy dashboard" on the app page reads the dashboard
       configuration (`energy/get_prefs`, read only) and shows whether "<Site> grid consumption" is
       the grid source, otherwise the steps (and the warning about counting twice when both stay);
-      DOCS.md "Switching the Energy dashboard". The add-on never changes the dashboard itself.
+      DOCS.md "Switching the Energy dashboard". The app never changes the dashboard itself.
 - [ ] After about 2 weeks in parallel: HA backup, change the grid source to `…_grid_consumption`
       (reversible, the old statistics stay), check the daily totals against the portal
 - Dropped: a fused power statistic for the power chart. External statistics are hourly only, so it
@@ -238,13 +238,13 @@ in the CSV archive. Without this step the add-on's statistic starts at whatever 
 - [x] After the first release (v0.1.0): remove `release-as` from `release-please-config.json`
 - [x] Remove `stage: experimental` and release 1.0.0 (`release-as: 1.0.0`, with step 6 and 7)
 - [x] After v1.0.0: remove `release-as` again
-- [x] Add-on README and DOCS, homebase README, `smartmeter/` docs (pointer to the add-on; a guard
+- [x] App README and DOCS, homebase README, `smartmeter/` docs (pointer to the app; a guard
       sensor in HA against the misread spikes is not needed)
 - [x] Decide whether the Docker databot keeps writing the CSV archive outside HA: no, cron removed
 
 ## Related projects and what we take from them
 
-We stay with the tools of this repo (portal client, CSV files, add-on); these projects are
+We stay with the tools of this repo (portal client, CSV files, app); these projects are
 references only. All three are HACS custom integrations, none fuses portal and live data.
 
 - [DarkC35/ha_linznetz](https://github.com/DarkC35/ha_linznetz) (LINZ NETZ): imports the
@@ -259,7 +259,7 @@ references only. All three are HACS custom integrations, none fuses portal and l
   [VarChar42/hassio-netzooe-eservice](https://github.com/VarChar42/hassio-netzooe-eservice)
   (Netz OÖ, a different grid operator with a JSON API): sensors for meter reading and
   daily/weekly consumption, no hourly history. Taken: a portal login failure should surface as a
-  clear "re-authenticate" state (they use HA's auth-failed flow), for the add-on that means a
+  clear "re-authenticate" state (they use HA's auth-failed flow), for the app that means a
   persistent notification and an error sensor instead of silent gaps.
 
 ## Related projects
@@ -281,7 +281,7 @@ own approach and take over what improves it (already reflected in the steps abov
 
 ## Risks
 
-- Portal login changes (for example 2FA): the add-on must report it clearly and fall back to
+- Portal login changes (for example 2FA): the app must report it clearly and fall back to
   RF only. Second data source as fallback: the daily e-mail report "Tagesbericht
   Viertelstundenverbrauch" (S/MIME encrypted, see ha_linznetz).
 - The recorder websocket API changes between HA releases: the step 3 script doubles as a check
@@ -291,7 +291,7 @@ own approach and take over what improves it (already reflected in the steps abov
 ## Log
 
 - 2026-10-19: AppArmor enforced. Besides the `.pyc` writes (fixed in 1.7.1) the audit log had no
-  `ALLOWED` entries of the add-on in 2.5 days.
+  `ALLOWED` entries of the app in 2.5 days.
 - 2026-10-19: AppArmor log after 2.5 days in complain mode: 588 `ALLOWED` entries, all Python
   writing `.pyc` files of standard modules into `/usr/local/lib/python3.12/__pycache__` (the slim
   image ships none). Fixed with `PYTHONDONTWRITEBYTECODE=1` instead of a write rule for `/usr`;
@@ -308,7 +308,7 @@ own approach and take over what improves it (already reflected in the steps abov
   and online bonus are recorded from the month they are first seen, a change starts a new period;
   fetched supplier rows count only inside that supplier's contract; an imported price list wins
   over everything for its period.
-- 2026-10-16: costs. The add-on writes `linznetz_energy:<site>_grid_cost` (EUR, running total) for the
+- 2026-10-16: costs. The app writes `linznetz_energy:<site>_grid_cost` (EUR, running total) for the
   Energy dashboard's "total costs" option (the only cost option HA offers for an external statistic).
   Per hour: kWh x the per-kWh prices valid then, plus the fixed fees spread over their month or year,
   VAT, subsidies after VAT. Grid charges and levies per grid operator in `homebase.tariffs.GRID`
@@ -319,7 +319,7 @@ own approach and take over what improves it (already reflected in the steps abov
   guarantee. Other sources checked: go green's monthly Excel (current month only), E-Control's
   tariff calculator (grid operator by postcode works, the price calculation is captcha-protected
   and current-only), durchblicker (no interface). Months older than 13 months come from a one-time
-  price list (from the bills) imported on the add-on page. Recalculated against the real
+  price list (from the bills) imported on the app page. Recalculated against the real
   bills, every full billing year since 2023 matches both bills to within a few cents.
 - 2026-10-15: the counter inside a reception gap is split by the meter's power (the sensor of the
   same device, found via the entity registry; minute means kept 14 days in `…_live_power.csv`).
@@ -333,12 +333,12 @@ own approach and take over what improves it (already reflected in the steps abov
   14.10. (±101, ±44, ±56 Wh, each pair summing to the exact value); afterwards 0 deviations, the
   remaining live hours match the portal to 2 Wh. A first rejected portal login is retried at the
   next run (another session can cause it), only a second one in a row notifies and waits 6 hours.
-- 2026-10-15: no fetch interval option any more (`fetch_interval_hours` removed): the add-on looks
+- 2026-10-15: no fetch interval option any more (`fetch_interval_hours` removed): the app looks
   for yesterday on the portal every hour between 06:00 and 22:00 until it is complete, then waits
   for the next day; after a rejected login 6 hours. It notes when new days arrive and shows the
   usual time on the page (median of the last 14), so the publishing time of LINZ NETZ becomes
   visible.
-- 2026-10-15: the live meter is chosen only on the add-on page and kept in the add-on's state; the
+- 2026-10-15: the live meter is chosen only on the app page and kept in the app's state; the
   option `live_meter_entity` is gone from the Configuration tab (no migration: pick it again).
   "Fetch now" button for the portal. Page typography: inline code for entity IDs, numbered steps
   with Home Assistant's own menu labels for the Energy dashboard switch, select and button of the
@@ -347,11 +347,11 @@ own approach and take over what improves it (already reflected in the steps abov
   writes only to `/data`, `/config`, `/tmp`, no other programs; checked with `apparmor_parser`).
   Next: read the host log for `apparmor="ALLOWED"` entries of `linznetz_energy` after some days of
   running, add what is missing, then remove `complain`.
-- 2026-10-15: the live meter can be picked on the add-on page from the sensors that count energy
-  upwards; the page writes it into the add-on configuration (`/addons/self/options`, which an add-on
+- 2026-10-15: the live meter can be picked on the app page from the sensors that count energy
+  upwards; the page writes it into the app configuration (`/addons/self/options`, which an app
   may call for itself without extra permissions; the stored options are read first, so `!secret`
   references stay). Another counter starts a new live archive. DOCS explain the portal password as
-  `!secret`. New logo layout and a shorter add-on description.
+  `!secret`. New logo layout and a shorter app description.
 - 2026-10-15: dry run (read only) over the whole HA history of the counter, 12.10. 13:18 to 15.10.:
   13,371 readings, 1 rejected (the first one after the restart), no misread phase, no hour
   missing; 13.10. live 9.772 kWh vs portal 9.772 kWh, mean deviation 0.8 Wh per hour. The misread
@@ -360,61 +360,61 @@ own approach and take over what improves it (already reflected in the steps abov
 - 2026-10-15: code review of #23: flat counter periods (PV export) give 0 Wh hours instead of
   gaps, removal refused when the Energy dashboard cannot be read and failures shown on the page,
   unacknowledged MQTT publishes count as failed, the live archive appends and re-cleans 14 days.
-- 2026-10-14: "Remove everything from Home Assistant" on the add-on page (statistics, MQTT device,
-  notifications; refused while the Energy dashboard uses the statistic; pauses the add-on,
-  "Reactivate" undoes it), because uninstalling an add-on leaves statistics and MQTT entities behind.
+- 2026-10-14: "Remove everything from Home Assistant" on the app page (statistics, MQTT device,
+  notifications; refused while the Energy dashboard uses the statistic; pauses the app,
+  "Reactivate" undoes it), because uninstalling an app leaves statistics and MQTT entities behind.
 - 2026-10-14: `rf_entity` renamed to `live_meter_entity` before 1.0.0 (any live counter of the meter
   works, wM-Bus radio is one example); entities `…_live_data_until`, `…_live_deviation`, archive
   `…_live_raw.csv`/`…_live_hourly.csv`, module `livearchive`; CLI `--live` (`--rf` stays as alias).
-- 2026-10-14: the portal-only statistic `…_grid_consumption_portal` is dropped in 1.0.0 (the add-on
+- 2026-10-14: the portal-only statistic `…_grid_consumption_portal` is dropped in 1.0.0 (the app
   compares radio and portal itself) and deleted once on the first start; GitHub: squash merges only,
   PR title as commit message, branches deleted after merging (no duplicate changelog entries).
 - 2026-10-14: step 7 prepared (Energy dashboard card, docs) and step 8 done in the same PR as
-  step 6 (#23); the add-on becomes 1.0.0. The switch of the Energy tab stays the user's click.
+  step 6 (#23); the app becomes 1.0.0. The switch of the Energy tab stays the user's click.
 - 2026-10-14: step 6 implemented (RF archive and fusion, deviation notification, MQTT status entities).
   The live test found a cleaning bug: a repeated counter value with a later timestamp cut off the
   rest of the evening; repeated values now count from their first occurrence.
 - 2026-10-14: cron container removed (cron scripts, `start.sh`, `docker-compose.yml`,
   `./homebase up/down/logs`, the workflow that published the tool image); the tool image is only
   built locally (`homebase-databot:local`).
-- 2026-10-14: add-on texts (notifications, page) follow the language of HA (de/en), plainer
+- 2026-10-14: app texts (notifications, page) follow the language of HA (de/en), plainer
   wording; page with larger type and a drop zone for the upload; full metering point on the page;
   metering point keeps only letters and digits (invisible characters from copying).
 - 2026-10-14: first install: starting before configuring failed with a regex message. Onboarding
-  reworked (0.1.1): the add-on starts anyway and explains the missing settings, the metering point
+  reworked (0.1.1): the app starts anyway and explains the missing settings, the metering point
   accepts spaces and lowercase, `site` defaults to `home`. HA now calls add-ons "Apps".
-- 2026-10-14: naming review before the first install: statistic domain `linznetz_energy` (= add-on
+- 2026-10-14: naming review before the first install: statistic domain `linznetz_energy` (= app
   slug), `…_grid_consumption` (Energy dashboard) and `…_grid_consumption_portal`, options
   `portal_username`, `portal_password`, `metering_point`.
 - 2026-10-14: HA cleaned up after the tests: the statistics `…_grid_consumption_portal` and
-  `…_grid_consumption` written by the local add-on test runs deleted (the installed add-on creates
+  `…_grid_consumption` written by the local app test runs deleted (the installed app creates
   them fresh), no `linznetz:` statistic, entity or notification left from the tests (since renamed to
   `linznetz_energy:<site>_grid_consumption` and `…_grid_consumption_portal`).
 - 2026-10-14: code restructured for separation of concerns: `lib/homebase/` (library: portal,
   readings, disaggregate, fusion, hass), `databot/` (command line tools), `linznetz_energy/app/`
-  (add-on: main, web). All derived files byte-identical before and after, add-on image tested
+  (app: main, web). All derived files byte-identical before and after, app image tested
   against HA again.
-- 2026-10-14: the user does not want Samba: history upload and status on an add-on page through
+- 2026-10-14: the user does not want Samba: history upload and status on an app page through
   Ingress (the configuration tab cannot take files).
 - 2026-10-14: decisions: RF is the primary source (portal verifies and fills gaps, deviations
   are flagged and notified, RF stays); the first-download notifications are enough until the
   status entities of step 6.
 - 2026-10-14: design rule: native HA only, no custom UI (Ingress); notifications for the first
-  download added. - 2026-10-14: initial version 0.1.0 instead of 1.0.0 (the add-on is not complete); old 0.1.0/0.1.1
+  download added. - 2026-10-14: initial version 0.1.0 instead of 1.0.0 (the app is not complete); old 0.1.0/0.1.1
   images from early branch builds exist on ghcr, so 0.1.0 is rebuilt once after the merge
   (`addon-image.yml` with `force`).
 - 2026-10-14: step 5 done ahead of the rest (in PR #13, so the first install starts with the full
-  history): `import/` folder in the add-on, fused statistic with the reconstructed history.
-- 2026-10-14: add-on versioning switched to 1.0.0 with release-please (standard-version is
+  history): `import/` folder in the app, fused statistic with the reconstructed history.
+- 2026-10-14: app versioning switched to 1.0.0 with release-please (standard-version is
   deprecated); maintainer email in `repository.yaml`.
 - 2026-10-14: the portal now starts at 2023-10-01 (checked with a full download into a scratch
   folder): September 2023 is gone from the portal and exists only in the CSV archive. The user
-  decided to merge after step 4 and install the add-on from `main`.
-- 2026-10-14: step 3 done (visual check OK, test statistic deleted). Step 4 add-on written and
+  decided to merge after step 4 and install the app from `main`.
+- 2026-10-14: step 3 done (visual check OK, test statistic deleted). Step 4 app written and
   tested from the Mac against HA; next: publish the image and install it on HA.
 - 2026-10-14: step 3 run against HA 2026.10.1 (backup "Before HA Energy Add-on" taken first):
   import, read back and overwrite work; imports are asynchronous, the spike polls.
-- 2026-10-14: user keeps the recorder at `purge_keep_days: 10` (raw states), the add-on archives
+- 2026-10-14: user keeps the recorder at `purge_keep_days: 10` (raw states), the app archives
   the RF readings itself. Step 3 code written; waiting for the HA backup and `HA_URL`/`HA_TOKEN`.
 - 2026-10-14: fusion dry run with the real RF energy counter: it matches the portal to about 1 Wh
   per hour (the portal values come from the same meter register). The counter has about 11
