@@ -169,7 +169,7 @@ def test_page_offers_removal_and_after_it_reactivation():
 
 def test_the_confirm_dialog_text_stays_inside_its_attribute():
     page = W.render_page({'language': 'en'})
-    assert 'onsubmit="return confirm(&quot;Delete the statistic, the device and the notifications of the add-on?&quot;)"' in page
+    assert 'onsubmit="return confirm(&quot;Delete the statistic, the device and the notifications of the app?&quot;)"' in page
 
 
 def test_live_meter_card_lists_the_candidates():

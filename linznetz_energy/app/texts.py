@@ -1,4 +1,4 @@
-"""Texts the user sees (notifications and the add-on page), in the language of Home Assistant.
+"""Texts the user sees (notifications and the app page), in the language of Home Assistant.
 
 German and English; any other language falls back to English. The log stays English.
 `t(lang, key, **values)` returns the text with the values filled in.
@@ -46,7 +46,7 @@ TEXTS = {
                          'a minute; the app page shows the progress.',
         'download_done.title': 'LINZ NETZ Energy: first download done',
         'price_sensors.title': 'LINZ NETZ Energy: new price sensors',
-        'price_sensors.text': 'The add-on now shows the electricity price per kWh as sensors: {entities} (grid, energy, total), '
+        'price_sensors.text': 'The app now shows the electricity price per kWh as sensors: {entities} (grid, energy, total), '
                               'with their history back to the start of the contract. How to add them to a dashboard: the '
                               'app page (Open Web UI), Setup, "Sensors and statistics".',
         'download_done.text': '{count} quarter-hour readings from {first} to {last}. Older history can be uploaded on '
@@ -81,7 +81,7 @@ TEXTS = {
         'page.prices_copy': 'Copy',
         'page.prices_copied': 'Copied',
         'page.exposed': 'Sensors and statistics',
-        'page.exposed_lead': 'What the add-on gives Home Assistant, for the Energy dashboard, other dashboards and automations.',
+        'page.exposed_lead': 'What the app gives Home Assistant, for the Energy dashboard, other dashboards and automations.',
         'page.exposed_statistics': 'Statistics',
         'page.exposed_consumption': 'Grid consumption',
         'page.exposed_consumption_use': 'in the Energy dashboard: Electricity grid, energy imported from grid (see "Energy dashboard")',
@@ -89,7 +89,7 @@ TEXTS = {
         'page.exposed_cost_use': 'in the Energy dashboard: Cost tracking, entity tracking the total costs',
         'page.exposed_sensors': 'Sensors',
         'page.exposed_device': 'On the device **LINZ NETZ Energy {site}** (Settings > Devices & services > MQTT).',
-        'page.exposed_no_mqtt': 'None yet: the sensors need an MQTT broker in Home Assistant (for example the Mosquitto add-on).',
+        'page.exposed_no_mqtt': 'None yet: the sensors need an MQTT broker in Home Assistant (for example the Mosquitto app).',
         'page.exposed_note': 'The entity IDs are the ones Home Assistant uses now; if you rename one, this list follows.',
         'page.ent_price_total': 'what one more kWh costs now, with VAT, without fixed fees; history back to the first contract',
         'page.ent_price_energy': 'the supplier\'s energy price of the current hour (changes with the contract or monthly)',
@@ -107,7 +107,7 @@ TEXTS = {
         'page.status_details': 'Runs, portal schedule and fetch now: Data & maintenance',
         'page.setup_open': 'Setup: {count} step(s) still open.',
         'page.supplier_card': 'Supplier and prices',
-        'page.supplier_lead': 'Who supplies the energy, from when, and the prices for months the add-on cannot fetch.',
+        'page.supplier_lead': 'Who supplies the energy, from when, and the prices for months the app cannot fetch.',
         'page.attention': 'Needs a look',
         'page.attn_login': 'The portal rejects the login.',
         'page.attn_gaps': '{count} gap(s) in the consumption statistic.',
@@ -124,8 +124,8 @@ TEXTS = {
         'page.check_go': 'Go there',
         'page.check_optional': '(optional)',
         'page.check_portal': 'Portal access',
-        'page.check_portal_todo': 'Enter the LINZ NETZ portal login and the metering point in the add-on configuration (see above).',
-        'page.check_portal_problem': 'The portal rejects the login: check user name and password in the add-on configuration.',
+        'page.check_portal_todo': 'Enter the LINZ NETZ portal login and the metering point in the app configuration (see above).',
+        'page.check_portal_problem': 'The portal rejects the login: check user name and password in the app configuration.',
         'page.check_portal_done': 'signed in to the LINZ NETZ portal',
         'page.check_portal_run': 'the first login follows at the next run',
         'page.check_download': 'First download',
@@ -141,14 +141,14 @@ TEXTS = {
         'page.check_live_optional': 'recommended: with a live energy counter in Home Assistant, the statistic is current to the hour instead of one to two days behind',
         'page.check_supplier': 'Supplier',
         'page.check_supplier_done': '{supplier} since {start}',
-        'page.check_supplier_todo': 'set the supplier and its start, so the add-on can calculate the costs',
+        'page.check_supplier_todo': 'set the supplier and its start, so the app can calculate the costs',
         'page.check_prices': 'Prices for earlier months',
         'page.check_prices_optional': '{count} month(s) without energy price: a price list from your bills fills them',
         'page.check_prices_done': 'every month has an energy price',
         'page.check_prices_later': 'after the supplier',
         'page.check_dashboard': 'Energy dashboard',
         'page.check_dashboard_done': 'uses the consumption statistic (and the costs)',
-        'page.check_dashboard_todo': 'switch the grid consumption (and the costs) in the Energy dashboard to the add-on\'s statistics',
+        'page.check_dashboard_todo': 'switch the grid consumption (and the costs) in the Energy dashboard to the app\'s statistics',
         'page.check_dashboard_later': 'once the first statistic is written',
         'page.costs_lead': 'What the consumption costs, as on the bills of grid operator and supplier together: '
                            'energy price and fees of the supplier, grid charges and levies, VAT.',
@@ -160,13 +160,13 @@ TEXTS = {
         'page.costs_price': 'Price now',
         'page.costs_price_line': '{gross} ct/kWh incl. grid, levies and VAT (energy price {energy} ct/kWh net), plus fixed fees',
         'page.costs_price_none': 'no energy price for this month yet',
-        'page.costs_fetch_error': 'fetching the price failed: {error}; the add-on tries again',
+        'page.costs_fetch_error': 'fetching the price failed: {error}; the app tries again',
         'page.costs_grid_online': 'grid charges checked today in the Austrian legal information system (RIS)',
-        'page.costs_grid_table': 'grid charges from the add-on (could not check them online: {error})',
-        'page.costs_grid_outdated': 'grid charges for {year} are missing: the costs use the last known ones until an add-on update',
+        'page.costs_grid_table': 'grid charges from the app (could not check them online: {error})',
+        'page.costs_grid_outdated': 'grid charges for {year} are missing: the costs use the last known ones until an app update',
         'grid_outdated.title': 'LINZ NETZ Energy: grid charges for {year} missing',
-        'grid_outdated.text': 'The add-on has no grid charges for {year} yet and could not read them online. The costs use the last known charges until then. Update the add-on when a new version is available.',
-        'page.costs_price_pending': 'the supplier has not published this month\'s price yet; the add-on checks every 6 hours',
+        'grid_outdated.text': 'The app has no grid charges for {year} yet and could not read them online. The costs use the last known charges until then. Update the app when a new version is available.',
+        'page.costs_price_pending': 'the supplier has not published this month\'s price yet; the app checks every 6 hours',
         'page.costs_years': 'Per year',
         'page.costs_last12': 'last 12 months: {eur} €',
         'page.compare': 'Fixed price comparison',
@@ -285,12 +285,12 @@ TEXTS = {
         'page.energy_none': 'nothing yet',
         'page.energy_unknown': 'The configuration of the Energy dashboard could not be read.',
         'page.remove_title': 'Remove everything from Home Assistant',
-        'page.remove_text': 'Before uninstalling the add-on: this deletes what it created in Home Assistant (the '
-                            'statistic, the device with its status entities, its notifications) and pauses the add-on. '
+        'page.remove_text': 'Before uninstalling the app: this deletes what it created in Home Assistant (the '
+                            'statistic, the device with its status entities, its notifications) and pauses the app. '
                             'Its own files stay until you uninstall it with "delete data". Not possible while the '
                             'Energy dashboard uses the statistic.',
         'page.remove_check': 'I understand that the statistic with the whole history is deleted from Home Assistant.',
-        'page.remove_confirm': 'Delete the statistic, the device and the notifications of the add-on?',
+        'page.remove_confirm': 'Delete the statistic, the device and the notifications of the app?',
         'page.remove_button': 'Remove everything',
         'page.remove_unconfirmed': 'Please tick the box to confirm.',
         'page.remove_requested': 'Removing, the page updates itself.',
@@ -299,7 +299,7 @@ TEXTS = {
         'page.remove_failed': 'Removing did not work ({error}), nothing is paused. Details are in the log; '
                               'try again later.',
         'page.removed_title': 'Removed from Home Assistant',
-        'page.removed_text': 'The statistic, the device and the notifications are gone, and the add-on is paused. Now '
+        'page.removed_text': 'The statistic, the device and the notifications are gone, and the app is paused. Now '
                              'uninstall it and tick "delete data" to remove its files too. Changed your mind? '
                              'Reactivate it: everything is created again within an hour.',
         'page.resume': 'Reactivate',
@@ -417,7 +417,7 @@ TEXTS = {
                          'eine Minute; die Seite der App zeigt den Fortschritt.',
         'download_done.title': 'LINZ NETZ Energy: erster Download fertig',
         'price_sensors.title': 'LINZ NETZ Energy: neue Preissensoren',
-        'price_sensors.text': 'Das Add-on zeigt jetzt den Strompreis pro kWh als Sensoren: {entities} (Netz, Energie, gesamt), '
+        'price_sensors.text': 'Die App zeigt jetzt den Strompreis pro kWh als Sensoren: {entities} (Netz, Energie, gesamt), '
                               'mit Verlauf bis zum Beginn des Vertrags. Wie man sie in ein Dashboard einbaut, steht auf der '
                               'App-Seite (Weboberfläche öffnen) unter Einrichtung, „Sensoren und Statistiken“.',
         'download_done.text': '{count} Viertelstundenwerte vom {first} bis {last}. Ältere Daten lassen sich auf der '
@@ -451,7 +451,7 @@ TEXTS = {
         'page.prices_copy': 'Kopieren',
         'page.prices_copied': 'Kopiert',
         'page.exposed': 'Sensoren und Statistiken',
-        'page.exposed_lead': 'Was das Add-on Home Assistant bereitstellt, für das Energie-Dashboard, andere Dashboards und Automationen.',
+        'page.exposed_lead': 'Was die App Home Assistant bereitstellt, für das Energie-Dashboard, andere Dashboards und Automationen.',
         'page.exposed_statistics': 'Statistiken',
         'page.exposed_consumption': 'Netzbezug',
         'page.exposed_consumption_use': 'im Energie-Dashboard: Stromnetz, aus dem Netz bezogene Energie (siehe „Energie-Dashboard“)',
@@ -459,7 +459,7 @@ TEXTS = {
         'page.exposed_cost_use': 'im Energie-Dashboard: Kostenerfassung, Entität mit den Gesamtkosten',
         'page.exposed_sensors': 'Sensoren',
         'page.exposed_device': 'Am Gerät **LINZ NETZ Energy {site}** (Einstellungen > Geräte & Dienste > MQTT).',
-        'page.exposed_no_mqtt': 'Noch keine: die Sensoren brauchen einen MQTT-Broker in Home Assistant (etwa das Mosquitto-Add-on).',
+        'page.exposed_no_mqtt': 'Noch keine: die Sensoren brauchen einen MQTT-Broker in Home Assistant (etwa die Mosquitto-App).',
         'page.exposed_note': 'Die Entitäts-IDs sind die, die Home Assistant jetzt verwendet; wird eine umbenannt, folgt diese Liste.',
         'page.ent_price_total': 'was eine kWh mehr jetzt kostet, mit USt., ohne Fixkosten; Verlauf bis zum ersten Vertrag',
         'page.ent_price_energy': 'der Energiepreis des Lieferanten in dieser Stunde (ändert sich mit dem Vertrag oder monatlich)',
@@ -477,7 +477,7 @@ TEXTS = {
         'page.status_details': 'Läufe, Portal-Zeitplan und Jetzt abrufen: Daten & Wartung',
         'page.setup_open': 'Einrichtung: noch {count} Schritt(e) offen.',
         'page.supplier_card': 'Lieferant und Preise',
-        'page.supplier_lead': 'Wer die Energie liefert, ab wann, und die Preise für Monate, die das Add-on nicht abrufen kann.',
+        'page.supplier_lead': 'Wer die Energie liefert, ab wann, und die Preise für Monate, die die App nicht abrufen kann.',
         'page.attention': 'Bitte ansehen',
         'page.attn_login': 'Das Portal lehnt die Anmeldung ab.',
         'page.attn_gaps': '{count} Lücke(n) in der Verbrauchsstatistik.',
@@ -494,8 +494,8 @@ TEXTS = {
         'page.check_go': 'Dorthin',
         'page.check_optional': '(optional)',
         'page.check_portal': 'Portal-Zugang',
-        'page.check_portal_todo': 'Login für das LINZ NETZ Portal und den Zählpunkt in der Add-on-Konfiguration eintragen (siehe oben).',
-        'page.check_portal_problem': 'Das Portal lehnt die Anmeldung ab: Benutzername und Passwort in der Add-on-Konfiguration prüfen.',
+        'page.check_portal_todo': 'Login für das LINZ NETZ Portal und den Zählpunkt in der App-Konfiguration eintragen (siehe oben).',
+        'page.check_portal_problem': 'Das Portal lehnt die Anmeldung ab: Benutzername und Passwort in der App-Konfiguration prüfen.',
         'page.check_portal_done': 'im LINZ NETZ Portal angemeldet',
         'page.check_portal_run': 'die erste Anmeldung folgt beim nächsten Lauf',
         'page.check_download': 'Erster Download',
@@ -511,14 +511,14 @@ TEXTS = {
         'page.check_live_optional': 'empfohlen: mit einem Live-Energiezähler in Home Assistant ist die Statistik stundenaktuell statt ein bis zwei Tage hinterher',
         'page.check_supplier': 'Lieferant',
         'page.check_supplier_done': '{supplier} seit {start}',
-        'page.check_supplier_todo': 'Lieferant und Beginn festlegen, damit das Add-on die Kosten berechnen kann',
+        'page.check_supplier_todo': 'Lieferant und Beginn festlegen, damit die App die Kosten berechnen kann',
         'page.check_prices': 'Preise für ältere Monate',
         'page.check_prices_optional': '{count} Monat(e) ohne Energiepreis: eine Preisliste aus den Rechnungen füllt sie',
         'page.check_prices_done': 'alle Monate haben einen Energiepreis',
         'page.check_prices_later': 'nach dem Lieferanten',
         'page.check_dashboard': 'Energie-Dashboard',
         'page.check_dashboard_done': 'nutzt die Verbrauchsstatistik (und die Kosten)',
-        'page.check_dashboard_todo': 'den Netzbezug (und die Kosten) im Energie-Dashboard auf die Statistiken des Add-ons umstellen',
+        'page.check_dashboard_todo': 'den Netzbezug (und die Kosten) im Energie-Dashboard auf die Statistiken der App umstellen',
         'page.check_dashboard_later': 'sobald die erste Statistik geschrieben ist',
         'page.costs_lead': 'Was der Verbrauch kostet, wie auf den Rechnungen von Netzbetreiber und Lieferant zusammen: '
                            'Energiepreis und Gebühren des Lieferanten, Netzentgelte und Abgaben, Umsatzsteuer.',

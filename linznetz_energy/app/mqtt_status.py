@@ -79,7 +79,7 @@ def messages(site: str, site_id: str, lang: str, version: str, values: dict) -> 
     node = f'linznetz_energy_{site_id}'
     state_topic = f'linznetz_energy/{site_id}/state'
     device = {'identifiers': [node], 'name': f'LINZ NETZ Energy {site}', 'manufacturer': 'homebase',
-              'model': 'LINZ NETZ Energy add-on', 'sw_version': version}
+              'model': 'LINZ NETZ Energy app', 'sw_version': version}
     out = []
     for key, (component, device_class, unit, state_class, diagnostic, icon) in ENTITIES.items():
         config = {

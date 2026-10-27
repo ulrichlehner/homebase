@@ -1268,12 +1268,12 @@ class Handler(BaseHTTPRequestHandler):
                 return
             write_status(self.store, removal_request=path.strip('/'))
             self.wake.set()
-            logger.info('Requested on the add-on page: %s', path.strip('/'))
+            logger.info('Requested on the app page: %s', path.strip('/'))
             self._done((f'page.{path.strip("/")}_requested', {}), 'remove' if path == '/remove' else '')
         elif path == '/fetch':
             write_status(self.store, fetch_request=True)
             self.wake.set()
-            logger.info('Requested on the add-on page: portal fetch')
+            logger.info('Requested on the app page: portal fetch')
             self._done(('page.fetch_requested', {}), 'status')
         elif path == '/contract':
             fields = {k: v[0].strip() for k, v in parse_qs(body).items() if v}
@@ -1304,5 +1304,5 @@ def start(store: Path, wake: threading.Event, port: int = PORT) -> ThreadingHTTP
         'store': store, 'wake': wake, 'allow_any': os.environ.get('ADDON_WEB_ALLOW_ANY') == '1'})
     server = ThreadingHTTPServer(('0.0.0.0', port), handler)
     threading.Thread(target=server.serve_forever, name='ingress', daemon=True).start()
-    logger.info('Add-on page listening on port %d (Ingress)', port)
+    logger.info('App page listening on port %d (Ingress)', port)
     return server

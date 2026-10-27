@@ -26,7 +26,7 @@ logger = logging.getLogger('addon.prices')
 ARCHIVE = 'prices.csv'
 OFFERS = 'fixed_offers.csv'      # go green's fixed price offers read from its price page (see homebase.compare)
 FETCH_EVERY = timedelta(hours=6)
-USER_AGENT = 'Mozilla/5.0 (Home Assistant add-on LINZ NETZ Energy)'
+USER_AGENT = 'Mozilla/5.0 (Home Assistant app LINZ NETZ Energy)'
 
 
 def http_get(url: str) -> bytes:
